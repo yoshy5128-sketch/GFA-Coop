@@ -304,7 +304,8 @@ body.settings-screen-active #follow-button {
     display: none;
 }
 #title-settings-button,
-#title-deploy-button {
+#title-deploy-button,
+#title-coop-button {
     width: 100%;
     min-height: 36px;
     border: 1px solid #9c7c68;
@@ -323,6 +324,10 @@ body.settings-screen-active #follow-button {
     border-color: #d78b52;
     background: rgba(123, 35, 20, 0.96);
 }
+#title-coop-button {
+    border-color: #55b7c8;
+    background: rgba(19, 78, 92, 0.96);
+}
 #title-settings-button:hover,
 #title-settings-button:focus-visible {
     background: rgba(58, 63, 66, 0.98);
@@ -330,6 +335,10 @@ body.settings-screen-active #follow-button {
 #title-deploy-button:hover,
 #title-deploy-button:focus-visible {
     background: rgba(164, 48, 24, 0.98);
+}
+#title-coop-button:hover,
+#title-coop-button:focus-visible {
+    background: rgba(24, 111, 130, 0.98);
 }
 #title-deploy-button:disabled {
     opacity: 0.6;
@@ -351,7 +360,8 @@ body.settings-screen-active #follow-button {
         font-size: 10px;
     }
     #title-settings-button,
-    #title-deploy-button {
+    #title-deploy-button,
+    #title-coop-button {
         min-height: 31px;
         font-size: 11px;
     }

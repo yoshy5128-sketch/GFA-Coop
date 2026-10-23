@@ -2,26 +2,7 @@ import { GfaPeerTransport } from './net/peer-transport.js';
 import { normalizeRoomCode } from './net/protocol.js';
 
 const launchButton = document.getElementById('title-coop-button');
-const overlay = document.createElement('div');
-overlay.id = 'coop-lobby-overlay';
-overlay.hidden = true;
-overlay.innerHTML = `
-  <section id="coop-lobby" role="dialog" aria-modal="true" aria-labelledby="coop-lobby-title">
-    <button id="coop-lobby-close" type="button" aria-label="閉じる">×</button>
-    <h2 id="coop-lobby-title">GFA LAN CO-OP</h2>
-    <p class="coop-lobby-help">同じWi-Fiまたはテザリングに接続し、2台で同じルームコードを入力してください。</p>
-    <div class="coop-role-buttons">
-      <button type="button" data-coop-role="host" class="active">HOST / PLAYER 1</button>
-      <button type="button" data-coop-role="guest">GUEST / PLAYER 2</button>
-    </div>
-    <label class="coop-room-field">ROOM CODE
-      <input id="coop-room-code" maxlength="6" value="GFA001" autocomplete="off" inputmode="text">
-    </label>
-    <button id="coop-connect" type="button">P2P接続を開始</button>
-    <div id="coop-status" role="status">未接続</div>
-    <p class="coop-lobby-note">初回接続にはシグナリングサーバーへの通信が必要です。ゲーム状態は接続後に端末間で直接交換します。</p>
-  </section>`;
-document.body.appendChild(overlay);
+const overlay = document.getElementById('coop-lobby-overlay');
 
 let selectedRole = 'host';
 let transport = null;
@@ -57,13 +38,6 @@ function createTransport() {
   });
   return transport;
 }
-
-launchButton?.addEventListener('click', () => {
-  overlay.hidden = false;
-  overlay.querySelector('#coop-room-code').focus();
-});
-overlay.querySelector('#coop-lobby-close').addEventListener('click', () => { overlay.hidden = true; });
-overlay.addEventListener('click', event => { if (event.target === overlay) overlay.hidden = true; });
 
 for (const button of overlay.querySelectorAll('[data-coop-role]')) {
   button.addEventListener('click', () => {
