@@ -4,3 +4,8 @@ desktop.ini
 *.tmp
 *.log
 *.sfk
+node_modules/
+.env
+.env.*
+coverage/
+npm-debug.log*

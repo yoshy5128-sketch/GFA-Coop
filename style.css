@@ -646,3 +646,51 @@ body.settings-screen-active #follow-button {
         display: none !important;
     }
 }
+#title-coop-button {
+    border-color: #4de3ff;
+    color: #d9fbff;
+    background: linear-gradient(180deg, rgba(0, 120, 155, 0.92), rgba(0, 49, 76, 0.96));
+}
+
+#title-coop-button.connected {
+    border-color: #66ff9a;
+    color: #dffff0;
+}
+
+#coop-lobby-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2200;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    background: rgba(0, 5, 12, 0.86);
+}
+
+#coop-lobby-overlay[hidden] { display: none; }
+
+#coop-lobby {
+    position: relative;
+    width: min(460px, 94vw);
+    padding: 24px;
+    border: 1px solid rgba(77, 227, 255, 0.62);
+    border-radius: 14px;
+    color: #eafcff;
+    background: linear-gradient(145deg, rgba(5, 28, 42, 0.98), rgba(3, 10, 20, 0.98));
+    box-shadow: 0 20px 80px rgba(0, 0, 0, 0.7), 0 0 35px rgba(0, 190, 255, 0.14);
+    font-family: system-ui, sans-serif;
+}
+
+#coop-lobby h2 { margin: 0 36px 8px 0; letter-spacing: 0.08em; }
+#coop-lobby-close { position: absolute; top: 12px; right: 12px; width: 34px; height: 34px; }
+.coop-lobby-help, .coop-lobby-note { color: #b9d8e2; line-height: 1.55; }
+.coop-lobby-note { margin-bottom: 0; font-size: 12px; }
+.coop-role-buttons { display: flex; gap: 8px; margin: 18px 0; }
+.coop-role-buttons button { flex: 1; padding: 12px 8px; }
+.coop-role-buttons button.active { color: #03151c; background: #6de6ff; }
+.coop-room-field { display: grid; gap: 7px; color: #9ccbd8; font-size: 12px; font-weight: 700; }
+#coop-room-code { width: 100%; padding: 12px; border: 1px solid #4b9bb1; border-radius: 7px; text-align: center; letter-spacing: 0.25em; font-size: 20px; text-transform: uppercase; }
+#coop-connect { width: 100%; margin-top: 12px; padding: 12px; font-weight: 800; }
+#coop-status { min-height: 22px; margin-top: 12px; color: #ffd27a; text-align: center; }
+#coop-status[data-state="connected"] { color: #73ffa4; }
+#coop-status[data-state="error"], #coop-status[data-state="disconnected"] { color: #ff8e83; }

@@ -1,3 +1,35 @@
+# GUNFIGHT ARENA CO-OP
+
+既存のGunFightArenaを維持したまま、2人協力プレイを追加する独立開発版です。
+
+## 開発状態
+
+- GFAシングルプレイ本体を独立リポジトリへ移行済み
+- WebSocketシグナリングとWebRTC DataChannel接続を実装済み
+- 高速状態用（非順序・再送なし）と重要イベント用（順序保証）の2チャンネルを分離
+- DUALTANK v0.4.9のシグナリング切断誤判定対策を継承
+- ゲーム状態・リモートプレイヤー同期は次フェーズ
+
+## ローカル起動
+
+```sh
+npm install
+npm start
+```
+
+ブラウザで `http://localhost:3000` を開き、タイトル画面の `LAN CO-OP` から接続します。2台の端末で試す場合はHTTPS公開環境を使用してください。
+
+## テスト
+
+```sh
+npm test
+npm run check
+```
+
+---
+
+## Original GUNFIGHT ARENA
+
 GunFightArenaへようこそ!!
 
 面倒なことは一切抜きで、今すぐ撃ち合いを始めたい！
