@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#000000">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="GFA">
+    <link rel="apple-touch-icon" href="./icon-192.png">
+    <title>Gun Fight Arena</title>
+    <style>
+        .character-editor-root {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+        .character-editor-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin: 0 0 10px 0;
+            flex: 0 0 auto;
+        }
+        .character-editor-title {
+            color: white;
+            margin: 0;
+            line-height: 1.2;
+        }
+        .character-editor-mobile-fullscreen-btn {
+            display: none;
+            padding: 7px 12px;
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .character-editor-shell {
+            display: grid;
+            grid-template-columns: 420px 1fr;
+            gap: 16px;
+            align-items: stretch;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .character-editor-pane {
+            background-color: #222;
+            border-radius: 6px;
+            padding: 12px;
+            box-sizing: border-box;
+            min-height: 0;
+            height: 100%;
+        }
+        .character-editor-preview-pane {
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+            touch-action: pan-y;
+        }
+        #character-preview-container canvas {
+            touch-action: none !important;
+        }
+        #character-preview-container {
+            touch-action: none;
+            overscroll-behavior: contain;
+        }
+        .character-editor-settings-title-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .character-editor-settings-title-row h3 {
+            margin: 0;
+            color: white;
+        }
+        .character-editor-set-buttons {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(52px, 1fr));
+            gap: 6px;
+            min-width: 174px;
+        }
+        .character-editor-set-buttons button {
+            padding: 7px 8px;
+            background-color: #555;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: bold;
+            touch-action: manipulation;
+        }
+        .character-editor-set-buttons button.active {
+            background-color: #4CAF50;
+        }
+        .character-editor-set-buttons button.empty {
+            background-color: #444;
+            color: #aaa;
+        }
+        .character-editor-settings-pane {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .character-editor-settings-scroll {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+        .character-editor-forms {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .character-section {
+            background: #333;
+            padding: 14px;
+            border-radius: 5px;
+        }
+        .character-section h4 {
+            margin: 0 0 12px;
+        }
+        .character-custom-field {
+            margin-bottom: 11px;
+        }
+        .character-custom-field label {
+            color: white;
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+        .character-custom-field select,
+        .character-custom-field input[type="color"] {
+            width: 100%;
+            min-height: 38px;
+            padding: 6px;
+            box-sizing: border-box;
+            border: 1px solid #777;
+            border-radius: 4px;
+            background: #f2f2f2;
+        }
+        .character-editor-actions {
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            margin-top: 8px;
+            padding-top: 8px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            background: #222;
+        }
+        .character-editor-actions button {
+            width: 100%;
+            min-width: 0;
+            max-width: 100%;
+            white-space: normal;
+            word-break: break-word;
+        }
+        .character-preview-buttons,
+        .character-default-buttons {
+            text-align: center;
+        }
+        .character-action-label-mobile {
+            display: none;
+        }
+        .character-preview-label-mobile {
+            display: none;
+        }
+        @media (max-width: 980px) {
+            #character-editor-screen .character-editor-root {
+                padding: 8px !important;
+            }
+            .character-editor-header {
+                justify-content: space-between;
+                padding-right: 2px;
+                margin-bottom: 6px;
+            }
+            .character-editor-title {
+                font-size: 1.25em;
+            }
+            .character-editor-mobile-fullscreen-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                padding: 5px 9px;
+                font-size: 0.8em;
+            }
+            .character-editor-shell {
+                grid-template-columns: 1fr;
+                gap: 8px;
+                grid-template-rows: minmax(225px, 42vh) minmax(0, 1fr);
+            }
+            .character-editor-pane {
+                padding: 8px;
+            }
+            .character-editor-preview-pane > h3 {
+                margin-top: 0 !important;
+                margin-bottom: 5px !important;
+                font-size: 0.95em;
+            }
+            .character-editor-preview-pane {
+                overflow: hidden;
+            }
+            .character-editor-forms {
+                grid-template-columns: 1fr;
+            }
+            .character-section {
+                display: none;
+                padding: 10px;
+            }
+            .character-section.active {
+                display: block;
+            }
+            .character-custom-field {
+                margin-bottom: 10px;
+            }
+            .character-custom-field select,
+            .character-custom-field input[type="color"] {
+                min-height: 44px;
+                font-size: 16px;
+            }
+            #character-preview-container {
+                min-height: 190px !important;
+            }
+            .character-preview-buttons {
+                display: grid;
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 4px;
+                margin-top: 6px !important;
+            }
+            .character-preview-buttons button {
+                margin: 0 !important;
+                padding: 4px 0 !important;
+                min-width: 0;
+                font-size: 12px;
+                line-height: 1;
+            }
+            .character-preview-label-desktop {
+                display: none;
+            }
+            .character-preview-label-mobile {
+                display: inline;
+            }
+            .character-default-buttons {
+                display: none;
+            }
+            .character-editor-actions {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                gap: 4px;
+                margin-top: 4px;
+                padding-top: 4px;
+            }
+            #character-editor-fullscreen {
+                display: none;
+            }
+            .character-editor-actions button {
+                padding: 5px 4px !important;
+                min-height: 28px;
+                font-size: 12px !important;
+                line-height: 1;
+                border-radius: 4px !important;
+            }
+            .character-action-label-desktop {
+                display: none;
+            }
+            .character-action-label-mobile {
+                display: inline;
+            }
+            .character-editor-settings-title-row {
+                align-items: stretch;
+                flex-direction: column;
+                gap: 6px;
+                margin-bottom: 6px;
+            }
+            .character-editor-set-buttons {
+                min-width: 0;
+                width: 100%;
+                gap: 4px;
+            }
+            .character-editor-set-buttons button {
+                padding: 5px 4px;
+                min-height: 28px;
+                font-size: 12px;
+            }
+        }
+        @media (max-width: 980px) and (orientation: landscape) {
+            #character-editor-screen .character-editor-root {
+                padding: 6px !important;
+            }
+            .character-editor-shell {
+                grid-template-columns: 40% 60%;
+                grid-template-rows: minmax(0, 1fr);
+                gap: 6px;
+            }
+            .character-editor-header {
+                margin-bottom: 4px;
+            }
+            .character-editor-preview-pane {
+                overflow: hidden;
+            }
+            #character-preview-container {
+                min-height: 150px !important;
+            }
+            .character-editor-forms {
+                grid-template-columns: 1fr;
+            }
+            .character-editor-actions {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
+            .character-editor-actions button {
+                font-size: 12px !important;
+                padding: 5px 4px !important;
+            }
+        }
+
+        .gun-editor-shell {
+            display: grid;
+            grid-template-columns: 420px 1fr;
+            gap: 16px;
+            align-items: stretch;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .gun-editor-root {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .gun-editor-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin: 0 0 10px 0;
+            flex: 0 0 auto;
+        }
+        .gun-editor-title {
+            color: white;
+            margin: 0;
+            line-height: 1.2;
+        }
+        .gun-editor-mobile-fullscreen-btn {
+            display: none;
+            padding: 7px 12px;
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .gun-editor-pane {
+            background-color: #222;
+            border-radius: 6px;
+            padding: 12px;
+            box-sizing: border-box;
+            min-height: 0;
+            height: 100%;
+        }
+        .gun-editor-preview-pane {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .gun-editor-settings-pane {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .gun-editor-settings-scroll {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+        .gun-editor-actions {
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            margin-top: 8px;
+            padding-top: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+            background: #222;
+        }
+        .gun-editor-actions button {
+            min-width: 0;
+            max-width: 100%;
+            white-space: normal;
+            word-break: break-word;
+        }
+        .gun-editor-controls-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        @media (max-width: 980px) {
+            .gun-editor-header {
+                justify-content: space-between;
+                padding-right: 2px;
+            }
+            .gun-editor-mobile-fullscreen-btn {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .gun-editor-shell {
+                grid-template-columns: 42% 58%;
+                gap: 10px;
+                width: 100%;
+                max-width: 100vw;
+                overflow-x: hidden;
+            }
+            .gun-editor-preview-pane {
+                overflow: hidden;
+            }
+            #gun-preview-container {
+                min-height: 200px !important;
+            }
+            .gun-editor-controls-grid {
+                grid-template-columns: 1fr;
+            }
+            .gun-editor-actions {
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 6px;
+                justify-content: stretch;
+            }
+            .gun-editor-actions button {
+                width: 100%;
+            }
+        }
+        @media (max-width: 980px) and (orientation: landscape) {
+            .gun-editor-shell {
+                grid-template-columns: 40% 60%;
+            }
+            .gun-editor-controls-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+            .gun-editor-actions {
+                grid-template-columns: 1fr 1fr;
+            }
+            .gun-editor-actions button {
+                width: 100%;
+                font-size: 0.9em;
+                padding: 8px 10px !important;
+            }
+        }
+        .armory-root { height: 100%; max-width: 1120px; margin: 0 auto; padding: 12px; box-sizing: border-box; color: #f4f6f5; display: flex; flex-direction: column; gap: 10px; }
+        .armory-header { min-height: 44px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #4c5754; }
+        .armory-header h2 { margin: 0; font-size: 22px; letter-spacing: 0; }
+        .armory-close-icon { width: 40px; height: 40px; border: 1px solid #7f8b87; background: #252b29; color: white; font-size: 24px; cursor: pointer; }
+        .armory-character-tabs, .armory-weapon-tabs, .armory-variant-grid { display: grid; gap: 6px; }
+        .armory-character-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        .armory-weapon-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .armory-variant-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .armory-tab, .armory-variant { min-height: 48px; border: 1px solid #596460; background: #272e2c; color: #e7ecea; cursor: pointer; padding: 7px 8px; }
+        .armory-tab.active, .armory-variant.active { border-color: #62d4aa; background: #17634d; color: white; }
+        .armory-variant strong, .armory-variant span { display: block; letter-spacing: 0; }
+        .armory-variant strong { font-size: 15px; }
+        .armory-variant span { margin-top: 3px; font-size: 11px; color: #cbd5d1; }
+        .armory-shell { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(300px, 44%) minmax(0, 56%); gap: 10px; }
+        .armory-pane { min-height: 0; border: 1px solid #45504c; background: #171c1a; padding: 10px; box-sizing: border-box; }
+        .armory-preview-pane { display: flex; flex-direction: column; }
+        #armory-preview { min-height: 160px; flex: 1; background: #d4d9d7; overflow: hidden; }
+        #armory-preview canvas { display: block; width: 100%; height: 100%; }
+        .armory-preview-meta { display: flex; justify-content: space-between; align-items: end; gap: 8px; margin-top: 8px; }
+        .armory-preview-meta strong { font-size: 17px; }
+        .armory-preview-meta span { color: #aebbb6; font-size: 12px; }
+        .armory-settings-pane { overflow-y: auto; }
+        .armory-section-label { margin: 4px 0 7px; color: #b8c5c0; font-size: 12px; text-transform: uppercase; }
+        .armory-variant-grid { margin-top: 12px; }
+        .armory-actions { display: flex; justify-content: flex-end; gap: 8px; }
+        .armory-actions button { min-height: 42px; padding: 8px 16px; border: 1px solid #69746f; color: white; background: #303735; cursor: pointer; }
+        #armory-save-close { background: #237456; border-color: #62d4aa; }
+        @media (max-width: 700px) and (orientation: portrait) {
+            .armory-root { padding: 8px; gap: 8px; }
+            .armory-header h2 { font-size: 19px; }
+            .armory-shell { grid-template-columns: 1fr; grid-template-rows: minmax(210px, 39vh) minmax(0, 1fr); }
+            #armory-preview { min-height: 160px; }
+            .armory-pane { padding: 8px; }
+            .armory-weapon-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .armory-tab { min-height: 44px; font-size: 12px; }
+            .armory-variant-grid { grid-template-columns: 1fr; }
+            .armory-variant { min-height: 44px; }
+            .armory-actions { display: grid; grid-template-columns: 1fr 1fr; }
+        }
+    </style>
+    
+    <link rel="stylesheet" href="style.css?v=20260923d">
+    <link rel="manifest" href="./manifest.json">
+
+    <script src="./vendor/nipplejs-0.8.4.js"></script>
+    <script src="./vendor/three-r128.min.js"></script>
+</head>
+<body class="settings-screen-active">
+    <div id="title-logo-screen" aria-label="Gun Fight Arena title">
+        <div id="title-logo-stage">
+            <img id="title-logo-image" src="logo.png" alt="GunFightArena">
+            <div id="title-launch-panel">
+                <label class="title-launch-field" for="title-game-mode">
+                    <span>MODE</span>
+                    <select id="title-game-mode">
+                        <option value="arcade">PLAYER VS AI</option>
+                        <option value="ffa">FREE FOR ALL</option>
+                        <option value="teamArcade">TEAM DEATHMATCH</option>
+                        <option value="billbattle">INDOOR COMBAT VS AI</option>
+                        <option value="billbattleTdm">INDOOR COMBAT TDM</option>
+                    </select>
+                </label>
+                <label class="title-launch-field title-map-field" for="title-map-selector">
+                    <span>MAP</span>
+                    <select id="title-map-selector"></select>
+                </label>
+                <label class="title-launch-field title-indoor-size" for="title-indoor-size" hidden>
+                    <span>INDOOR ROOMSIZE</span>
+                    <select id="title-indoor-size">
+                        <option value="80">80 (DEFAULT)</option>
+                        <option value="70">70</option>
+                        <option value="60">60</option>
+                        <option value="50">50</option>
+                        <option value="random">SIZE RANDOM</option>
+                    </select>
+                </label>
+                <button id="title-settings-button" type="button">GFA SETTING</button>
+                <button id="title-deploy-button" type="button">DEPLOY</button>
+            </div>
+        </div>
+    </div>
+    <div id="start-screen" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); z-index: 500; display: flex; justify-content: center; align-items: center; overflow-y: auto;">
+        <div style="padding: 20px; background-color: rgba(0,0,0,0.8); border-radius: 10px; text-align: left; max-width: 90%; max-height: 90vh; overflow-y: auto;">
+            <h1 style="text-align: center;">Gun Fight Settings</h1>
+
+            <h2 style="margin-top: 20px;">HP Settings(体力)</h2>
+            <label for="player-hp">Player HP:</label>
+            <select id="player-hp" style="font-size: 1em; padding: 5px;">
+                <option value="3">3</option>
+                <option value="10">10</option>
+                <option value="20" selected>20</option>
+                <option value="Infinity">Infinite</option>
+            </select>
+            <br>
+            <label for="ai-hp" style="margin-top: 10px; display: inline-block;">AI HP:</label>
+            <select id="ai-hp" style="font-size: 1em; padding: 5px;">
+                <option value="3">3</option>
+                <option value="10">10</option>
+                <option value="20" selected>20</option>
+                <option value="Infinity">Infinite</option>
+            </select>
+
+            <h2 style="margin-top: 20px;">Move Speed（移動速度）</h2>
+            <div id="move-speed-setting" style="margin-top: 10px;">
+                <input type="range" id="move-speed" min="1.0" max="1.5" step="0.05" value="1.0" aria-label="Move Speed" style="width: 100%;">
+                <span id="move-speed-value">1.0x</span>
+            </div>
+
+            <h2 style="margin-top: 20px;">Projectile Speed(弾丸速度)</h2>
+            <div id="projectile-speed-setting" style="margin-top: 10px;">
+                <input type="range" id="projectile-speed" min="0.5" max="2.0" step="0.05" value="1.0" style="width: 100%;">
+                <span id="projectile-speed-value">1.0x</span>
+            </div>
+
+            <h2 style="margin-top: 20px;">Character Customization</h2>
+            <button id="open-character-editor" style="padding: 10px 20px; font-size: 1em; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 10px;">
+                Character Editor
+            </button>
+            <div style="margin-top: 8px;">
+                <button id="open-gun-editor" style="padding: 10px 20px; font-size: 1em; background-color: #ff7b00; color: white; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 10px;">
+                    ARMORY
+                </button>
+            </div>
+
+            <h2 style="margin-top: 20px;">Weapon Count(配置数)</h2>
+            <label for="mg-count">Machine Guns (MG):</label>
+            <select id="mg-count" style="font-size: 1em; padding: 5px;">
+                <option value="0">0</option>
+                <option value="1" selected>1</option>
+                <option value="3">3</option>
+                <option value="5">5</option>
+                <option value="10">10</option>
+            </select>
+            <br>
+            <label for="rr-count" style="margin-top: 10px; display: inline-block;">Rocket Launchers (RL):</label>
+            <select id="rr-count" style="font-size: 1em; padding: 5px;">
+                <option value="0">0</option>
+                <option value="1" selected>1</option>
+                <option value="3">3</option>
+                <option value="5">5</option>
+                <option value="10">10</option>
+            </select>
+            <br>
+            <label for="sr-count" style="margin-top: 10px; display: inline-block;">Sniper Rifles (SR):</label>
+            <select id="sr-count" style="font-size: 1em; padding: 5px;">
+                <option value="0">0</option>
+                <option value="1" selected>1</option>
+                <option value="3">3</option>
+                <option value="5">5</option>
+                <option value="10">10</option>
+            </select>
+            <br>
+            <label for="sg-count" style="margin-top: 10px; display: inline-block;">Shotguns (SG):</label>
+            <select id="sg-count" style="font-size: 1em; padding: 5px;">
+                <option value="0">0</option>
+                <option value="1" selected>1</option>
+                <option value="3">3</option>
+                <option value="5">5</option>
+                <option value="10">10</option>
+            </select>
+            <br>
+            <label for="mr-count" style="margin-top: 10px; display: inline-block;">M1 Rifles (MR):</label>
+            <select id="mr-count" style="font-size: 1em; padding: 5px;">
+                <option value="0">0</option>
+                <option value="1" selected>1</option>
+                <option value="3">3</option>
+                <option value="5">5</option>
+                <option value="10">10</option>
+            </select>
+
+            <h2 style="margin-top: 20px;">Default Weapon (Infinite Ammo)</h2>
+            <div style="margin-bottom: 8px;">
+                <label for="default-weapon-target" style="margin-right: 6px;">Target:</label>
+                <select id="default-weapon-target" style="font-size: 1em; padding: 4px 6px;">
+                    <option value="all">ALL</option>
+                    <option value="player" selected>Player</option>
+                    <option value="ai1">AI 1</option>
+                    <option value="ai2">AI 2</option>
+                    <option value="ai3">AI 3</option>
+                </select>
+            </div>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="checkbox" id="default-weapon-pistol" name="default-weapon" value="pistol"> Pistol
+            </label>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="checkbox" id="default-weapon-mg" name="default-weapon" value="machinegun"> Machine Gun
+            </label>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="checkbox" id="default-weapon-rr" name="default-weapon" value="rocketlauncher"> Rocket Launcher
+            </label>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="checkbox" id="default-weapon-sr" name="default-weapon" value="sniperrifle"> Sniper Rifle
+            </label>
+            <label style="display: block;">
+                <input type="checkbox" id="default-weapon-sg" name="default-weapon" value="shotgun"> Shotgun
+            </label>
+            <label style="display: block;">
+                <input type="checkbox" id="default-weapon-mr" name="default-weapon" value="m1rifle"> M1 Rifle
+            </label>
+
+
+            <h2 style="margin-top: 20px;">AI Shotlevel(AIの射撃精度)</h2>
+            <div style="margin-bottom: 5px;">
+                <input type="range" id="ai-shot-slider" min="0" max="100" step="1" value="80" style="width: 100%;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.8em; color: #ccc; margin-top: 2px;">
+                    <span>狙い甘</span>
+                    <span>超正確</span>
+                </div>
+                <div style="text-align: right; font-size: 0.85em; color: #9fe6ff;">
+                    Precision: <span id="ai-shot-value">80</span>
+                </div>
+            </div>
+
+            <h2 style="margin-top: 20px;">AI Count(参加人数）</h2>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="radio" name="ai-count" value="1"> 1 AI
+            </label>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="radio" name="ai-count" value="2"> 2 AIs
+            </label>
+            <label style="display: block;">
+                <input type="radio" name="ai-count" value="3" checked> 3 AIs
+            </label>
+
+            <h2 style="margin-top: 20px;">Map Selection</h2>
+            <select id="unified-map-selector" style="font-size: 1em; padding: 5px; width: 100%; max-width: 300px; margin-bottom: 10px;"></select>
+            <div style="text-align: center;">
+                <button id="map-editor-button" style="padding: 10px 20px; font-size: 1em; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">Open Map Editor</button>
+            </div>
+            <div style="text-align: center; margin-top: 10px;">
+                <button id="save-map-settings-btn" style="padding: 10px 20px; font-size: 1em; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">Save Setting</button>
+            </div>
+
+
+            <h2 style="margin-top: 20px;">Game Mode</h2>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="radio" name="game-mode" value="arcade" checked> Outdoor PvAI (時間内にキル数を競う - 全員無限復活)
+            </label>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="radio" name="game-mode" value="ffa"> Free For All (全員が敵同士 - 全員無限復活)
+            </label>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="radio" name="game-mode" value="teamArcade"> Team Deathmatch Outdoor (2V2 チーム戦でキル数を競う - 全員無限復活)
+            </label>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="radio" name="game-mode" value="billbattle"> INDOOR COMBAT (室内バトル) <span id="billbattle-hi-score-display" style="color: #ffd966; font-weight: bold;">Hi-Sc 0ROOM</span>
+            </label>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="radio" name="game-mode" value="billbattleTdm"> INDOOR COMBAT TDM (2V2・時間制限・全員無限復活)
+            </label>
+            <div id="billbattle-options" style="margin-top: 10px; padding-left: 10px;">
+                <label style="display: block; margin-bottom: 4px;">Roomsize:(部屋の大きさ)</label>
+                <select id="billbattle-size" style="margin-bottom: 8px;">
+                    <option value="80">80 (Default)</option>
+                    <option value="70">70</option>
+                    <option value="60">60</option>
+                    <option value="50">50</option>
+                    <option value="random">SIZE RANDOM</option>
+                </select>
+                <label for="billbattle-obstacles" style="display: block; margin-bottom: 4px;">Obstacles:（障害物の数）</label>
+                <select id="billbattle-obstacles" style="margin-bottom: 8px;">
+                    <option value="1">1 (Default)</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                </select>
+                <label style="display: block; margin-bottom: 4px;">Lighting:(照明の数)</label>
+                <select id="billbattle-lighting">
+                    <option value="12" selected>12 (ALL ON)</option>
+                    <option value="11">11</option>
+                    <option value="10">10</option>
+                    <option value="9">9</option>
+                    <option value="8">8</option>
+                    <option value="7">7</option>
+                    <option value="6">6</option>
+                    <option value="5">5</option>
+                    <option value="4">4</option>
+                    <option value="3">3</option>
+                    <option value="2">2</option>
+                    <option value="1">1</option>
+                    <option value="0">0</option>
+                </select>
+            </div>
+
+            <div id="indoor-light-intensity-setting" style="margin-top: 20px;">
+                <label for="indoor-light-intensity">INDOORCOMBAT Light Intensity:(室内照明の明るさ) <span id="indoor-light-intensity-value">2.0</span></label>
+                <input type="range" id="indoor-light-intensity" min="0" max="2" step="0.1" value="2" style="width: 100%; margin-top: 6px;">
+            </div>
+
+            <div id="medikit-setting" style="margin-top: 20px;">
+                <div style="font-size: 1.2em; font-weight: bold;">Medikit</div>
+                <div style="font-size: 1em;">ArcadeMode＆IndoorCombatOnly</div>
+                <select id="medikit-count" style="font-size: 1em; padding: 5px; margin-top: 6px;">
+                    <option value="0">0</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5" selected>5</option>
+                </select>
+            </div>
+
+            <h2 style="margin-top: 20px;">KillCamera</h2>
+              <label style="display: block; margin-bottom: 5px;">
+                  <input type="radio" name="killcam-mode" value="playerOnly" checked> PlayerOnly（プレイヤーが倒した敵のみ再生）
+              </label>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="radio" name="killcam-mode" value="off"> OFF（キルカメラなし プレイヤー死亡時のみ再生）
+            </label>
+            
+            <h2 style="margin-top: 20px;">Barrel Respawn(爆発するドラム缶)</h2>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="radio" name="barrel-respawn" value="true"> ON（30秒後に同じ場所へ復活）
+            </label>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="radio" name="barrel-respawn" value="false" checked> OFF
+            </label>
+
+            <h2 style="margin-top: 20px;">Auto-Aim（Sniper Rifle）</h2>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="radio" name="auto-aim" value="true" checked> ON
+            </label>
+            <label style="display: block;">
+                <input type="radio" name="auto-aim" value="false"> OFF
+            </label>
+            
+            <div id="voice-volume-setting" style="margin-top: 20px;">
+                <label for="voice-volume">Voice Volume: <span id="voice-volume-value">100%</span></label>
+                <input type="range" id="voice-volume" min="0" max="200" step="5" value="100" style="width: 100%; margin-top: 6px;">
+            </div>
+
+            <h2 style="margin-top: 20px;">Night Mode(夜戦)</h2>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="checkbox" id="time-lapse-mode"> Time Lapse Mode (昼→夜→昼)
+            </label>
+            <label style="display: block; margin-bottom: 5px;">
+                <input type="checkbox" id="night-mode"> Night Mode(常に夜)
+            </label>
+            <div id="night-mode-intensity-setting" style="margin-top: 10px;">
+                <label for="night-mode-intensity">Night Mode Light Intensity:(照明の明るさ)</label>
+                <input type="range" id="night-mode-intensity" min="0" max="2" step="0.1" value="2" style="width: 100%;">
+                <span id="night-mode-intensity-value">0.8</span>
+            </div>
+
+            <h2 style="margin-top: 20px;">Button Setting (For-SmartPhone)</h2>
+            <div style="text-align: center; margin-top: 10px;">
+                <button id="button-setting-btn" style="padding: 10px 20px; font-size: 1em; background-color: #00aaff; color: white; border: none; border-radius: 5px; cursor: pointer;">Open Button Settings</button>
+            </div>
+
+            <div style="text-align: center; margin-top: 30px;">
+                <button id="start-game-btn" style="padding: 15px 30px; font-size: 1.5em; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">Start Game</button>
+                <button id="resume-game-btn" style="padding: 15px 30px; font-size: 1.5em; background-color: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; display: none;">Resume Game</button>
+                <button id="restart-pause-btn" style="padding: 15px 30px; font-size: 1.5em; background-color: lightblue; color: black; border: none; border-radius: 5px; cursor: pointer; display: none; margin-top: 10px;">Restart</button>
+                <button id="back-to-title-btn" type="button" style="display: block; margin: 10px auto 0; padding: 12px 30px; font-size: 1.1em; background-color: #333; color: white; border: 1px solid #888; border-radius: 5px; cursor: pointer;">TOP</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="button-settings-screen" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); z-index: 200;">
+        <h1 style="color: white; text-align: center; margin-top: 50px;">Button Positions</h1>
+        <p style="color: white; text-align: center;">Drag the buttons to your desired positions.</p>
+        
+        <div id="button-setting-feedback" style="color: limegreen; text-align: center; margin-bottom: 10px; font-size: 1.2em; display: none;"></div>
+
+        <div id="preview-joystick-zone" style="position: absolute; left: 10%; bottom: 10%; width: 150px; height: 150px; background-color: rgba(0, 150, 255, 0.4); border-radius: 50%; cursor: move; border: 2px dashed white;">
+            <div style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: white; text-align: center;">Move</div>
+        </div>
+        <div id="preview-fire-button" style="position: absolute; right: 20px; bottom: 120px; width: 80px; height: 80px; z-index: 10; background-color: rgba(255, 0, 0, 0.7); border-radius: 50%; border: 2px solid #fff; color: white; font-size: 18px; font-weight: bold; display: flex; justify-content: center; align-items: center; cursor: move;">Shoot</div>
+        <div id="preview-crouch-button" style="position: absolute; right: 20px; bottom: 55px; width: 60px; height: 60px; z-index: 10; background-color: rgba(100, 100, 255, 0.7); border-radius: 50%; border: 2px solid #fff; color: white; font-size: 14px; font-weight: bold; display: flex; justify-content: center; align-items: center; cursor: move;">Crouch</div>
+        <div id="preview-zoom-button" style="position: absolute; right: 90px; bottom: 55px; width: 60px; height: 60px; z-index: 10; background-color: rgba(0, 200, 150, 0.7); border-radius: 50%; border: 2px solid #fff; color: white; font-size: 14px; font-weight: bold; display: flex; justify-content: center; align-items: center; cursor: move;">Zoom</div>
+        <!-- Add this new preview follow button -->
+        <div id="preview-follow-button" style="position: absolute; right: 20px; bottom: 190px; width: 60px; height: 60px; z-index: 10; background-color: rgba(0, 150, 255, 0.7); border-radius: 50%; border: 2px solid #fff; color: white; font-size: 14px; font-weight: bold; display: flex; justify-content: center; align-items: center; cursor: move;">FOLLOW</div>
+
+        <div style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);">
+            <button id="save-button-positions" style="padding: 15px 30px; font-size: 1.5em; background-color: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">Save</button>
+            <button id="back-to-settings" style="padding: 15px 30px; font-size: 1.5em; background-color: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">Back</button>
+        </div>
+    </div>
+
+    <div id="bgm-settings-screen" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.9); color: white; z-index: 1000; overflow-y: auto; padding: 20px; box-sizing: border-box; flex-direction: column; align-items: center;">
+        <div style="max-width: 500px; width: 100%; text-align: left; margin: 0 auto; padding: 0 10px; box-sizing: border-box;">
+            <h2 style="color: white; text-align: center; margin-bottom: 20px;">BGM Setting</h2>
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px;">Volume: <span id="bgm-volume-value">100%</span></label>
+                <input id="bgm-volume" type="range" min="0" max="100" value="100" style="width: 100%; display: block; margin: 0 auto;">
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label style="margin-right: 15px;"><input type="radio" name="bgm-mode" id="bgm-mode-order" value="order"> 通常</label>
+                <label><input type="radio" name="bgm-mode" id="bgm-mode-random" value="random"> ランダム</label>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px; color: #aaa;">再生モード:</label>
+                <label style="display: block; margin-bottom: 5px;">
+                    <input type="radio" name="bgm-play-mode" id="bgm-play-mode-stage" value="stage" checked> ステージごとに曲を変える
+                </label>
+                <label style="display: block;">
+                    <input type="radio" name="bgm-play-mode" id="bgm-play-mode-continuous" value="continuous"> 曲が終わるまで同じ曲を流し続ける
+                </label>
+            </div>
+            <div id="bgm-track-list" style="display: flex; flex-direction: column; gap: 6px; width: 100%; margin: 0 auto;"></div>
+            <div style="text-align: center; margin-top: 20px;">
+                <button id="bgm-reload-btn" style="padding: 8px 18px; font-size: 1.0em; background-color: #666; color: white; border: none; border-radius: 5px; cursor: pointer; margin-right: 10px;">Song Reload</button>
+                <button id="bgm-settings-back-btn" style="padding: 10px 20px; font-size: 1.0em; background-color: #444; color: white; border: none; border-radius: 5px; cursor: pointer;">Back</button>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="joystick-move"></div>
+    <div id="fire-button">Shoot</div>
+    <!-- Add this new crouch button -->
+    <div id="crouch-button" class="state-button" style="position: fixed; right: 20px; bottom: 55px; width: 60px; height: 60px; z-index: 10; background-color: rgba(100, 100, 255, 0.7); border-radius: 50%; border: 2px solid #fff; color: white; font-size: 14px; font-weight: bold; justify-content: center; align-items: center; cursor: pointer; box-shadow: 0 0 10px rgba(100, 100, 255, 0.5);"><span class="state-button-label">Crouch</span><span class="state-button-on">ON</span></div>
+    <div id="zoom-button" class="state-button" style="position: fixed; right: 90px; bottom: 55px; width: 60px; height: 60px; z-index: 10; background-color: rgba(0, 200, 150, 0.7); border-radius: 50%; border: 2px solid #fff; color: white; font-size: 14px; font-weight: bold; display: flex; justify-content: center; align-items: center; cursor: pointer; box-shadow: 0 0 10px rgba(0, 200, 150, 0.5);"><span class="state-button-label">Zoom</span><span class="state-button-on">ON</span></div>
+    <!-- Add this new follow button for smartphones -->
+    <div id="follow-button" style="position: fixed; right: 20px; bottom: 190px; width: 60px; height: 60px; z-index: 10; background-color: rgba(0, 150, 255, 0.7); border-radius: 50%; border: 2px solid #fff; color: white; font-size: 14px; font-weight: bold; justify-content: center; align-items: center; cursor: pointer; box-shadow: 0 0 10px rgba(0, 150, 255, 0.5);">FOLLOW</div>
+    
+    <div id="crosshair">
+        <div class="cross-line" id="line-h"></div>
+        <div class="cross-line" id="line-v"></div>
+        <div class="crosshair-circle" id="crosshair-circle"></div>
+        <div class="crosshair-plus-h" id="crosshair-plus-h"></div>
+        <div class="crosshair-plus-v" id="crosshair-plus-v"></div>
+    </div>
+
+    <div id="scope-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: transparent; z-index: 150; display: none; pointer-events: none;">
+        <div id="night-vision-overlay"></div>
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100vmin; height: 100vmin; border-radius: 50%; box-shadow: 0 0 0 100vmax rgba(0,0,0,0.95);"></div>
+        <div style="position: absolute; background-color: black; width: 2px; height: 30%; top: 10%; left: 50%; transform: translateX(-50%);"></div>
+        <div style="position: absolute; background-color: black; width: 2px; height: 30%; bottom: 10%; left: 50%; transform: translateX(-50%);"></div>
+        <div style="position: absolute; background-color: black; height: 2px; width: 30%; left: 10%; top: 50%; transform: translateY(-50%);"></div>
+        <div style="position: absolute; background-color: black; height: 2px; width: 30%; right: 10%; top: 50%; transform: translateY(-50%);"></div>
+        <div class="scope-center-cross-h"></div>
+        <div class="scope-center-cross-v"></div>
+        <div id="cancel-scope-button" style="position: absolute; left: 20px; top: 50%; transform: translateY(-50%); width: 60px; height: 60px; border-radius: 50%; background-color: rgba(255, 255, 255, 0.5); color: black; font-size: 30px; display: flex; justify-content: center; align-items: center; cursor: pointer; pointer-events: auto; display: none;">
+            ×
+        </div>
+    </div>
+
+    <div id="loading-screen" style="position: fixed; inset: 0; z-index: 10000; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 14px; background: #05070a; color: white; font-family: Arial, sans-serif;">
+        <div style="font-size: 1.8em; font-weight: bold; letter-spacing: 0;">LOADING</div>
+        <div id="loading-status" style="font-size: 0.95em; color: #b8d8ff;">Preparing arena...</div>
+    </div>
+    
+    <audio id="playerGunSound" src="pgun.mp3" preload="none"></audio>
+    <audio id="mgGunSound" src="mg.mp3" preload="none"></audio>
+    <audio id="rrGunSound" src="rr.mp3" preload="none"></audio>
+    <audio id="rr2GunSound" src="rr2.mp3" preload="none"></audio>
+    <audio id="srGunSound" src="pss.mp3" preload="none"></audio>
+    <audio id="m1GunSound" src="m1.mp3" preload="none"></audio>
+    <audio id="aiM1GunSound" src="m1_.mp3" preload="none"></audio>
+    <audio id="aiM1GunSound2" src="m1_.mp3" preload="none"></audio>
+    <audio id="aiM1GunSound3" src="m1_3.mp3" preload="none"></audio>
+    <audio id="aimgGunSound" src="aimg.mp3" preload="none"></audio>
+    <audio id="ai1mGunSound" src="ai1m.mp3" preload="none"></audio>
+    <audio id="ai2mGunSound" src="ai2m.mp3" preload="none"></audio>
+    <audio id="aiGunSound" src="aigun.mp3" preload="none"></audio>
+    <audio id="explosionSound" src="bom2.mp3" preload="none"></audio>
+    <audio id="impactSound" src="impact.mp3" preload="none"></audio>
+    <audio id="setSound" src="set.mp3" preload="none"></audio>
+    <audio id="aiSrGunSound" src="ss.mp3" preload="none"></audio>
+    <audio id="playerSgSound" src="sgun.mp3" preload="none"></audio>
+    <audio id="aiSgSound" src="aisgun.mp3" preload="none"></audio>
+    <audio id="rel-audio" src="rel.mp3" preload="none" volume="1.0"></audio>
+    <audio id="pistol-reload-audio" src="r1911.mp3" preload="none"></audio>
+    <audio id="clipSound" src="clip.mp3" preload="none"></audio>
+    <audio id="bgm-opm" src="opm.mp3" preload="none" loop></audio>
+    <audio id="bgm-game" src="bgm/0001.mp3" preload="none"></audio>
+    
+    <div id="character-editor-screen" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.95); z-index: 9999;">
+        <div class="character-editor-root" style="padding: 12px; max-width: 1200px; margin: 0 auto; box-sizing: border-box;">
+            <div class="character-editor-header">
+                <h2 class="character-editor-title">Character Editor</h2>
+                <button id="character-editor-fullscreen-top" class="character-editor-mobile-fullscreen-btn">FullScreen</button>
+            </div>
+            <div class="character-editor-shell">
+                <!-- プレビュー画面 -->
+                <div class="character-editor-pane character-editor-preview-pane">
+                    <h3 style="color: white; margin-bottom: 10px;">Preview</h3>
+                    <div id="character-preview-container" style="width: 100%; flex: 1; min-height: 300px; background-color: #111; border-radius: 3px;">
+                        <!-- 3Dプレビュー -->
+                    </div>
+                    <div class="character-preview-buttons" style="margin-top: 10px; text-align: center;">
+                        <button id="preview-player" style="margin: 5px; padding: 5px 10px; background-color: #ff3333; color: white; border: none; border-radius: 3px; cursor: pointer;"><span class="character-preview-label-desktop">Player</span><span class="character-preview-label-mobile">P</span></button>
+                        <button id="preview-enemy1" style="margin: 5px; padding: 5px 10px; background-color: #3333ff; color: white; border: none; border-radius: 3px; cursor: pointer;"><span class="character-preview-label-desktop">Enemy 1</span><span class="character-preview-label-mobile">E1</span></button>
+                        <button id="preview-enemy2" style="margin: 5px; padding: 5px 10px; background-color: #00ff00; color: white; border: none; border-radius: 3px; cursor: pointer;"><span class="character-preview-label-desktop">Enemy 2</span><span class="character-preview-label-mobile">E2</span></button>
+                        <button id="preview-enemy3" style="margin: 5px; padding: 5px 10px; background-color: #ff8800; color: white; border: none; border-radius: 3px; cursor: pointer;"><span class="character-preview-label-desktop">Enemy 3</span><span class="character-preview-label-mobile">E3</span></button>
+                    </div>
+                    <div class="character-default-buttons" style="margin-top: 5px; text-align: center;">
+                        <button id="default-player" style="margin: 5px; padding: 3px 8px; background-color: #666; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 0.8em;">Default.PL</button>
+                        <button id="default-enemy1" style="margin: 5px; padding: 3px 8px; background-color: #666; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 0.8em;">Default.E1</button>
+                        <button id="default-enemy2" style="margin: 5px; padding: 3px 8px; background-color: #666; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 0.8em;">Default.E2</button>
+                        <button id="default-enemy3" style="margin: 5px; padding: 3px 8px; background-color: #666; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 0.8em;">Default.E3</button>
+                    </div>
+                </div>
+                
+                <!-- カスタマイズ設定 -->
+                <div class="character-editor-pane character-editor-settings-pane">
+                    <div class="character-editor-settings-title-row">
+                        <h3>Settings</h3>
+                        <div class="character-editor-set-buttons">
+                            <button id="character-set-1" data-character-set-slot="1">SET1</button>
+                            <button id="character-set-2" data-character-set-slot="2">SET2</button>
+                            <button id="character-set-3" data-character-set-slot="3">SET3</button>
+                        </div>
+                    </div>
+                    <div class="character-editor-settings-scroll">
+                    <div id="customization-forms" class="character-editor-forms">
+                        <!-- Player Character Customization -->
+                        <div class="character-section" style="background-color: #333; padding: 15px; border-radius: 5px;">
+                            <h4 style="color: #ff3333; margin-bottom: 10px;">Player Character</h4>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Hair Style:</label>
+                                <select id="player-hair-style" style="width: 100%; padding: 5px;">
+                                    <option value="default">Default</option>
+                                    <option value="short">Short</option>
+                                    <option value="long">Afro</option>
+                                    <option value="spiky">Spiky</option>
+                                    <option value="bald">Cap</option>
+                                    <option value="helmet">Helmet</option>
+                                </select>
+                            </div>
+
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Build:</label>
+                                <select id="player-body-type" style="width: 100%; padding: 5px;">
+                                    <option value="slim">Slim</option>
+                                    <option value="standard">Standard</option>
+                                    <option value="athletic">Athletic</option>
+                                    <option value="heavy">Heavy</option>
+                                    <option value="tall">Tall</option>
+                                    <option value="compact">Compact</option>
+                                </select>
+                            </div>
+
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Face:</label>
+                                <select id="player-face-type" style="width: 100%; padding: 5px;">
+                                    <option value="calm">Calm</option>
+                                    <option value="focused">Focused</option>
+                                    <option value="stern">Stern</option>
+                                    <option value="sharp">Sharp</option>
+                                    <option value="wide">Wide</option>
+                                </select>
+                            </div>
+
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Gear:</label>
+                                <select id="player-gear-type" style="width: 100%; padding: 5px;">
+                                    <option value="none">None</option>
+                                    <option value="vest">Vest</option>
+                                    <option value="camo1">Camo 1</option>
+                                    <option value="camo2">Camo 2</option>
+                                </select>
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Hair / Helmet Color:</label>
+                                <input type="color" id="player-hair-color" value="#D2691E" style="width: 100%; height: 30px;">
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Skin Color:</label>
+                                <input type="color" id="player-skin-color" value="#ffd1b0" style="width: 100%; height: 30px;">
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Clothing Color:</label>
+                                <input type="color" id="player-clothing-color" value="#ff3333" style="width: 100%; height: 30px;">
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Pants Color:</label>
+                                <input type="color" id="player-pants-color" value="#111111" style="width: 100%; height: 30px;">
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Shoes Color:</label>
+                                <input type="color" id="player-shoes-color" value="#8B4513" style="width: 100%; height: 30px;">
+                            </div>
+                        </div>
+                        
+                        <!-- Enemy 1 Character Customization -->
+                        <div class="character-section" style="background-color: #333; padding: 15px; border-radius: 5px;">
+                            <h4 style="color: #3333ff; margin-bottom: 10px;">Enemy 1</h4>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Hair Style:</label>
+                                <select id="enemy1-hair-style" style="width: 100%; padding: 5px;">
+                                    <option value="default">Default</option>
+                                    <option value="short">Short</option>
+                                    <option value="long">Afro</option>
+                                    <option value="spiky">Spiky</option>
+                                    <option value="bald">Cap</option>
+                                    <option value="helmet">Helmet</option>
+                                </select>
+                            </div>
+
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Build:</label>
+                                <select id="enemy1-body-type" style="width: 100%; padding: 5px;">
+                                    <option value="slim">Slim</option>
+                                    <option value="standard">Standard</option>
+                                    <option value="athletic">Athletic</option>
+                                    <option value="heavy">Heavy</option>
+                                    <option value="tall">Tall</option>
+                                    <option value="compact">Compact</option>
+                                </select>
+                            </div>
+
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Face:</label>
+                                <select id="enemy1-face-type" style="width: 100%; padding: 5px;">
+                                    <option value="calm">Calm</option>
+                                    <option value="focused">Focused</option>
+                                    <option value="stern">Stern</option>
+                                    <option value="sharp">Sharp</option>
+                                    <option value="wide">Wide</option>
+                                </select>
+                            </div>
+
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Gear:</label>
+                                <select id="enemy1-gear-type" style="width: 100%; padding: 5px;">
+                                    <option value="none">None</option>
+                                    <option value="vest">Vest</option>
+                                    <option value="camo1">Camo 1</option>
+                                    <option value="camo2">Camo 2</option>
+                                </select>
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Hair / Helmet Color:</label>
+                                <input type="color" id="enemy1-hair-color" value="#D2691E" style="width: 100%; height: 30px;">
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Skin Color:</label>
+                                <input type="color" id="enemy1-skin-color" value="#ffd1b0" style="width: 100%; height: 30px;">
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Clothing Color:</label>
+                                <input type="color" id="enemy1-clothing-color" value="#3333ff" style="width: 100%; height: 30px;">
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Pants Color:</label>
+                                <input type="color" id="enemy1-pants-color" value="#111111" style="width: 100%; height: 30px;">
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Shoes Color:</label>
+                                <input type="color" id="enemy1-shoes-color" value="#8B4513" style="width: 100%; height: 30px;">
+                            </div>
+                        </div>
+                        
+                        <!-- Enemy 2 Character Customization -->
+                        <div class="character-section" style="background-color: #333; padding: 15px; border-radius: 5px;">
+                            <h4 style="color: #00ff00; margin-bottom: 10px;">Enemy 2</h4>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Hair Style:</label>
+                                <select id="enemy2-hair-style" style="width: 100%; padding: 5px;">
+                                    <option value="default">Default</option>
+                                    <option value="short">Short</option>
+                                    <option value="long">Afro</option>
+                                    <option value="spiky">Spiky</option>
+                                    <option value="bald">Cap</option>
+                                    <option value="helmet">Helmet</option>
+                                </select>
+                            </div>
+
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Build:</label>
+                                <select id="enemy2-body-type" style="width: 100%; padding: 5px;">
+                                    <option value="slim">Slim</option>
+                                    <option value="standard">Standard</option>
+                                    <option value="athletic">Athletic</option>
+                                    <option value="heavy">Heavy</option>
+                                    <option value="tall">Tall</option>
+                                    <option value="compact">Compact</option>
+                                </select>
+                            </div>
+
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Face:</label>
+                                <select id="enemy2-face-type" style="width: 100%; padding: 5px;">
+                                    <option value="calm">Calm</option>
+                                    <option value="focused">Focused</option>
+                                    <option value="stern">Stern</option>
+                                    <option value="sharp">Sharp</option>
+                                    <option value="wide">Wide</option>
+                                </select>
+                            </div>
+
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Gear:</label>
+                                <select id="enemy2-gear-type" style="width: 100%; padding: 5px;">
+                                    <option value="none">None</option>
+                                    <option value="vest">Vest</option>
+                                    <option value="camo1">Camo 1</option>
+                                    <option value="camo2">Camo 2</option>
+                                </select>
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Hair / Helmet Color:</label>
+                                <input type="color" id="enemy2-hair-color" value="#D2691E" style="width: 100%; height: 30px;">
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Skin Color:</label>
+                                <input type="color" id="enemy2-skin-color" value="#ffd1b0" style="width: 100%; height: 30px;">
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Clothing Color:</label>
+                                <input type="color" id="enemy2-clothing-color" value="#00ff00" style="width: 100%; height: 30px;">
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Pants Color:</label>
+                                <input type="color" id="enemy2-pants-color" value="#111111" style="width: 100%; height: 30px;">
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Shoes Color:</label>
+                                <input type="color" id="enemy2-shoes-color" value="#8B4513" style="width: 100%; height: 30px;">
+                            </div>
+                        </div>
+                        
+                        <!-- Enemy 3 Character Customization -->
+                        <div class="character-section" style="background-color: #333; padding: 15px; border-radius: 5px;">
+                            <h4 style="color: #ff8800; margin-bottom: 10px;">Enemy 3</h4>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Hair Style:</label>
+                                <select id="enemy3-hair-style" style="width: 100%; padding: 5px;">
+                                    <option value="default">Default</option>
+                                    <option value="short">Short</option>
+                                    <option value="long">Afro</option>
+                                    <option value="spiky">Spiky</option>
+                                    <option value="bald">Cap</option>
+                                    <option value="helmet">Helmet</option>
+                                </select>
+                            </div>
+
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Build:</label>
+                                <select id="enemy3-body-type" style="width: 100%; padding: 5px;">
+                                    <option value="slim">Slim</option>
+                                    <option value="standard">Standard</option>
+                                    <option value="athletic">Athletic</option>
+                                    <option value="heavy">Heavy</option>
+                                    <option value="tall">Tall</option>
+                                    <option value="compact">Compact</option>
+                                </select>
+                            </div>
+
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Face:</label>
+                                <select id="enemy3-face-type" style="width: 100%; padding: 5px;">
+                                    <option value="calm">Calm</option>
+                                    <option value="focused">Focused</option>
+                                    <option value="stern">Stern</option>
+                                    <option value="sharp">Sharp</option>
+                                    <option value="wide">Wide</option>
+                                </select>
+                            </div>
+
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Gear:</label>
+                                <select id="enemy3-gear-type" style="width: 100%; padding: 5px;">
+                                    <option value="none">None</option>
+                                    <option value="vest">Vest</option>
+                                    <option value="camo1">Camo 1</option>
+                                    <option value="camo2">Camo 2</option>
+                                </select>
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Hair / Helmet Color:</label>
+                                <input type="color" id="enemy3-hair-color" value="#D2691E" style="width: 100%; height: 30px;">
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Skin Color:</label>
+                                <input type="color" id="enemy3-skin-color" value="#ffd1b0" style="width: 100%; height: 30px;">
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Clothing Color:</label>
+                                <input type="color" id="enemy3-clothing-color" value="#ff8800" style="width: 100%; height: 30px;">
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Pants Color:</label>
+                                <input type="color" id="enemy3-pants-color" value="#111111" style="width: 100%; height: 30px;">
+                            </div>
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="color: white; display: block; margin-bottom: 5px;">Shoes Color:</label>
+                                <input type="color" id="enemy3-shoes-color" value="#8B4513" style="width: 100%; height: 30px;">
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                    <div class="character-editor-actions">
+                        <button id="character-editor-fullscreen" style="padding: 10px; background-color: #2196F3; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px;">Landscape Fullscreen</button>
+                        <button id="save-character-settings" style="padding: 10px; background-color: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px;"><span class="character-action-label-desktop">Save Settings</span><span class="character-action-label-mobile">Save</span></button>
+                        <button id="export-character-json" style="padding: 10px; background-color: #2196F3; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px;"><span class="character-action-label-desktop">Export All Characters (JSON)</span><span class="character-action-label-mobile">Export</span></button>
+                        <button id="import-character-json" style="padding: 10px; background-color: #FF9800; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px;"><span class="character-action-label-desktop">Import All Characters (JSON)</span><span class="character-action-label-mobile">Import</span></button>
+                        <input type="file" id="json-file-input" accept=".json" style="display: none;">
+                        <button id="close-character-editor" style="padding: 10px; background-color: #f44336; color: white; border: none; border-radius: 5px; cursor: pointer;"><span class="character-action-label-desktop">Close</span><span class="character-action-label-mobile">Close</span></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="gun-editor-screen" style="display:none;position:fixed;inset:0;background:#0d1110;z-index:9999;">
+        <div class="armory-root">
+            <div class="armory-header">
+                <h2>ARMORY</h2>
+                <button id="close-gun-editor" class="armory-close-icon" type="button" aria-label="Close">&times;</button>
+            </div>
+            <div id="armory-character-tabs" class="armory-character-tabs"></div>
+            <div class="armory-shell">
+                <div class="armory-pane armory-preview-pane">
+                    <div id="armory-preview"></div>
+                    <div class="armory-preview-meta"><div><strong id="armory-preview-name"></strong><br><span id="armory-preview-type"></span></div><span id="armory-preview-owner"></span></div>
+                </div>
+                <div class="armory-pane armory-settings-pane">
+                    <div class="armory-section-label">Weapon</div>
+                    <div id="armory-weapon-tabs" class="armory-weapon-tabs"></div>
+                    <div class="armory-section-label" style="margin-top:14px;">Design</div>
+                    <div id="armory-variant-grid" class="armory-variant-grid"></div>
+                </div>
+            </div>
+            <div class="armory-actions">
+                <button id="armory-reset-character" type="button">Reset Character</button>
+                <button id="armory-save-close" type="button">Save &amp; Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="game-over-screen" class="end-screen">
+        YOU LOSE
+        <button class="restart-button">RESTART</button>
+        <a href="#" class="settings-link" data-screen-to-hide="game-over-screen" style="margin-top: 10px; color: white; font-size: 0.8em;">Setting</a>
+        <button class="end-top-button" type="button">TOP</button>
+    </div>
+    
+    <div id="win-screen" class="end-screen">
+        YOU WIN
+        <button class="restart-button">RESTART</button>
+        <a href="#" class="settings-link" data-screen-to-hide="win-screen" style="margin-top: 10px; color: white; font-size: 0.8em;">Setting</a>
+        <button class="end-top-button" type="button">TOP</button>
+    </div>
+
+    <div id="kill-count-display" style="position: fixed; top: 10px; left: 50%; transform: translateX(-50%); color: yellow; font-size: 1.2em; font-weight: bold; background-color: rgba(0, 0, 0, 0.5); padding: 5px; z-index: 20; display: none;">KILLS: 0</div>
+    <div id="game-timer-display" style="position: fixed; top: 10px; left: 10px; color: white; font-size: 1.0em; font-weight: bold; background-color: rgba(0, 0, 0, 0.5); padding: 3px; z-index: 20; display: none;">TIME: 03:00</div>
+    <!-- KILLS表示をまとめるコンテナ -->
+    <div id="team-kills-container" style="position: fixed; top: 10px; left: 50%; transform: translateX(-50%); display: flex; justify-content: center; z-index: 20;">
+        <div id="player-team-kills-display" style="color: cyan; font-weight: bold; background-color: rgba(0, 0, 0, 0.5); padding: 3px; display: none; margin-right: 10px;">PLAYER TEAM KILLS: 0</div>
+        <div id="enemy-team-kills-display" style="color: red; font-weight: bold; background-color: rgba(0, 0, 0, 0.5); padding: 3px; display: none;">ENEMY TEAM KILLS: 0</div>
+    </div>
+    <div id="follow-status-display" style="position: fixed; top: 50px; left: 50%; transform: translateX(-50%); color: limegreen; font-size: 1.0em; font-weight: bold; background-color: rgba(0, 0, 0, 0.5); padding: 5px 10px; border-radius: 5px; z-index: 20; display: none;">FOLLOW</div>
+    <!-- AI HP表示をまとめるコンテナ -->
+    <div id="ai-hp-container" style="position: fixed; top: 50px; left: 10px; z-index: 20;">
+        <div id="ai-hp-display" style="color: limegreen; font-weight: bold; background-color: rgba(0, 0, 0, 0.5); padding: 3px; display: none;">AI 1 HP: 3</div>
+        <div id="ai2-hp-display" style="color: cyan; font-weight: bold; background-color: rgba(0, 0, 0, 0.5); padding: 3px; display: none; margin-top: 5px;">AI 2 HP: 3</div>
+        <div id="ai3-hp-display" style="color: orange; font-weight: bold; background-color: rgba(0, 0, 0, 0.5); padding: 3px; display: none; margin-top: 5px;">AI 3 HP: 3</div>
+    </div>
+    <div id="floor-start-display" style="position: fixed; top: 35%; left: 50%; transform: translateX(-50%); color: white; font-size: 3em; font-weight: bold; background-color: rgba(0, 0, 0, 0.6); padding: 12px 20px; border-radius: 10px; z-index: 1200; display: none; text-shadow: 0 0 10px #fff;"></div>
+    <div id="red-flash-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0); pointer-events: none; opacity: 0;"></div>
+    <div id="fade-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0); pointer-events: none; opacity: 0; z-index: 1190;"></div>
+<div id="weapon-get-display" style="position: fixed; top: 80%; left: 50%; transform: translateX(-50%); color: white; font-size: 2em; font-weight: bold; background-color: rgba(0, 0, 0, 0.5); padding: 10px 20px; border-radius: 10px; z-index: 1100; display: none; text-shadow: 0 0 10px #0ff;"></div>
+    <div id="pause-button" style="position: fixed; top: 10px; left: 180px; color: white; font-size: 2em; z-index: 101; cursor: pointer; display: none; background-color: rgba(0,0,0,0.5); border-radius: 50%; width: 40px; height: 40px; text-align: center; line-height: 40px; -webkit-user-select: none; user-select: none;">★</div>
+
+    <div id="player-hp-display" style="position: fixed; top: 10px; right: 10px; color: white; font-size: 1.0em; font-weight: bold; background-color: rgba(0, 0, 0, 0.5); padding: 3px; z-index: 20; display: none;">HP: </div>
+    <div id="player-weapon-display" style="position: fixed; top: 50px; right: 10px; color: white; font-size: 0.9em; font-weight: bold; background-color: rgba(0, 0, 0, 0.5); padding: 3px; z-index: 20; display: none;">Weapon: <br>Ammo: </div>
+    <div id="pc-combat-state-display" aria-live="polite">
+        <div id="pc-zoom-state">Zoom</div>
+        <div id="pc-crouch-state">Crouch</div>
+    </div>
+
+
+    <script src="./vendor/tween-18.6.4.umd.js"></script>
+    <script src="character-models.js?v=20260924c"></script>
+    <script src="script.js?v=20261012a"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js', { scope: './' })
+              .catch(error => console.warn('Service Worker registration failed:', error));
+          });
+        }
+    </script>
+</body>
+</html>

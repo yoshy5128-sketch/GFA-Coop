@@ -1,0 +1,648 @@
+body {
+    margin: 0;
+    overflow: hidden; 
+    background-color: #000;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none; 
+}
+
+/* In-game bilingual README */
+.readme-screen {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    overflow-y: auto;
+    box-sizing: border-box;
+    padding: 18px 16px 28px;
+    color: #f4f4f4;
+    background: rgba(5, 7, 8, 0.96);
+    align-items: flex-start;
+    justify-content: center;
+}
+
+.readme-shell {
+    width: min(100%, 760px);
+    margin: 0 auto;
+    font-family: Arial, "Noto Sans JP", sans-serif;
+    font-size: 14px;
+    line-height: 1.75;
+}
+
+.readme-language-switch {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    justify-content: center;
+    gap: 2px;
+    padding: 8px 0 12px;
+    background: rgba(5, 7, 8, 0.96);
+}
+
+.readme-language-switch button {
+    min-width: 112px;
+    padding: 7px 12px;
+    border: 1px solid #687078;
+    border-radius: 3px;
+    color: #e7e9eb;
+    background: #292e33;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.readme-language-switch button.active {
+    border-color: #9ee56d;
+    color: #101510;
+    background: #9ee56d;
+}
+
+.readme-language-panel[hidden] {
+    display: none;
+}
+
+.readme-hero {
+    padding: 18px 0 20px;
+    text-align: center;
+    border-bottom: 1px solid #555d63;
+}
+
+.readme-hero h1 {
+    margin: 0 0 12px;
+    color: #a9ef79;
+    font-size: 1.65rem;
+    line-height: 1.35;
+    letter-spacing: 0;
+}
+
+.readme-hero p {
+    max-width: 650px;
+    margin: 0 auto;
+    color: #e1e5e7;
+}
+
+.readme-section {
+    padding: 22px 0;
+    border-bottom: 1px solid #3d4449;
+}
+
+.readme-section h2 {
+    margin: 0 0 12px;
+    color: #ffcf62;
+    font-size: 1.12rem;
+    line-height: 1.4;
+    letter-spacing: 0;
+}
+
+.readme-section h3 {
+    margin: 0 0 8px;
+    color: #a9ef79;
+    font-size: 0.98rem;
+    letter-spacing: 0;
+}
+
+.readme-section p {
+    margin: 0 0 12px;
+}
+
+.readme-section p:last-child {
+    margin-bottom: 0;
+}
+
+.readme-section ul {
+    margin: 0;
+    padding-left: 1.35rem;
+}
+
+.readme-section li {
+    margin: 0 0 9px;
+    padding-left: 3px;
+}
+
+.readme-section li:last-child {
+    margin-bottom: 0;
+}
+
+.readme-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 28px;
+}
+
+.readme-controls > h2 {
+    grid-column: 1 / -1;
+}
+
+.readme-control-group + .readme-control-group {
+    border-left: 1px solid #3d4449;
+    padding-left: 28px;
+}
+
+.readme-control-group p {
+    margin-bottom: 7px;
+}
+
+.readme-control-group strong {
+    color: #f7f8f8;
+}
+
+.readme-footer {
+    position: sticky;
+    bottom: 0;
+    padding: 16px 0 4px;
+    text-align: center;
+    background: rgba(5, 7, 8, 0.96);
+}
+
+#readme-back-button {
+    min-width: 120px;
+    padding: 9px 20px;
+    border: 1px solid #8c949b;
+    border-radius: 3px;
+    color: #fff;
+    background: #505860;
+    font-size: 0.92rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+@media (max-width: 600px) {
+    .readme-screen {
+        padding: 8px 14px 18px;
+    }
+
+    .readme-shell {
+        font-size: 13px;
+        line-height: 1.7;
+    }
+
+    .readme-language-switch button {
+        min-width: 104px;
+        padding: 7px 9px;
+        font-size: 12px;
+    }
+
+    .readme-hero {
+        padding: 14px 0 18px;
+    }
+
+    .readme-hero h1 {
+        font-size: 1.3rem;
+    }
+
+    .readme-section {
+        padding: 18px 0;
+    }
+
+    .readme-section h2 {
+        font-size: 1.02rem;
+    }
+
+    .readme-controls {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+
+    .readme-control-group + .readme-control-group {
+        border-top: 1px solid #3d4449;
+        border-left: 0;
+        padding-top: 18px;
+        padding-left: 0;
+    }
+}
+canvas {
+    display: none; 
+}
+#joystick-move { display: block; }
+#fire-button { display: flex; }
+#crouch-button { display: flex; }
+#follow-button { display: flex; }
+body.settings-screen-active #follow-button {
+    display: none !important;
+    pointer-events: none !important;
+}
+#crosshair, #ai-hp-display { display: none; }
+#title-logo-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 20000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: pan-y;
+    background: #000;
+}
+#title-logo-screen.title-logo-hidden {
+    display: none !important;
+}
+#title-logo-stage {
+    position: relative;
+    width: min(100vw, 179.2vh);
+    width: min(100vw, 179.2dvh);
+    aspect-ratio: 1376 / 768;
+    max-height: 100vh;
+    max-height: 100dvh;
+}
+#title-logo-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    pointer-events: none;
+}
+#title-launch-panel {
+    position: absolute;
+    z-index: 1;
+    top: 53%;
+    left: 50%;
+    width: clamp(300px, 38%, 480px);
+    transform: translateX(-50%);
+    display: grid;
+    gap: 6px;
+}
+.title-launch-field {
+    display: grid;
+    grid-template-columns: minmax(118px, 42%) minmax(0, 1fr);
+    align-items: center;
+    min-height: 34px;
+    color: #f1e3d8;
+    font-size: 12px;
+    font-weight: 800;
+    text-shadow: 0 2px 3px #000;
+}
+.title-launch-field > span {
+    display: flex;
+    align-items: center;
+    align-self: stretch;
+    padding: 0 9px;
+    background: rgba(5, 6, 7, 0.78);
+    border: 1px solid #8e7163;
+    border-right: 0;
+    border-radius: 3px 0 0 3px;
+}
+.title-launch-field select {
+    width: 100%;
+    min-width: 0;
+    height: 34px;
+    padding: 0 28px 0 9px;
+    border: 1px solid #8e7163;
+    border-radius: 0 3px 3px 0;
+    background: rgba(5, 6, 7, 0.88);
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+}
+.title-indoor-size[hidden],
+.title-map-field[hidden] {
+    display: none;
+}
+#title-settings-button,
+#title-deploy-button {
+    width: 100%;
+    min-height: 36px;
+    border: 1px solid #9c7c68;
+    border-radius: 3px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 0;
+    text-shadow: 0 1px 2px #000;
+    cursor: pointer;
+}
+#title-settings-button {
+    background: rgba(35, 38, 40, 0.93);
+}
+#title-deploy-button {
+    border-color: #d78b52;
+    background: rgba(123, 35, 20, 0.96);
+}
+#title-settings-button:hover,
+#title-settings-button:focus-visible {
+    background: rgba(58, 63, 66, 0.98);
+}
+#title-deploy-button:hover,
+#title-deploy-button:focus-visible {
+    background: rgba(164, 48, 24, 0.98);
+}
+#title-deploy-button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+@media (pointer: coarse), (max-height: 600px), (max-width: 980px) {
+    #title-launch-panel {
+        top: 52%;
+        width: clamp(280px, 42%, 410px);
+        gap: 4px;
+    }
+    .title-launch-field {
+        grid-template-columns: minmax(112px, 42%) minmax(0, 1fr);
+        min-height: 29px;
+        font-size: 10px;
+    }
+    .title-launch-field select {
+        height: 29px;
+        font-size: 10px;
+    }
+    #title-settings-button,
+    #title-deploy-button {
+        min-height: 31px;
+        font-size: 11px;
+    }
+}
+.state-button {
+    position: relative;
+    overflow: hidden;
+}
+.state-button-label {
+    position: relative;
+    z-index: 1;
+}
+.state-button-on {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    color: #fff700;
+    font-size: 24px;
+    font-weight: 900;
+    line-height: 1;
+    text-shadow: 0 2px 0 #000, 0 0 8px rgba(0, 0, 0, 0.95), 0 0 14px rgba(255, 247, 0, 0.9);
+    letter-spacing: 0;
+    pointer-events: none;
+}
+.state-button.state-button-active .state-button-label {
+    opacity: 0.28;
+}
+.state-button.state-button-active .state-button-on {
+    display: flex;
+}
+#start-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: transparent !important;
+    background-image: none !important;
+    color: white;
+    overflow-y: auto; 
+    z-index: 10000;
+    padding: 20px 0; 
+    box-sizing: border-box;
+}
+#start-screen > div {
+    margin: 0 auto; 
+    max-width: 500px; 
+    background-color: rgba(0, 0, 0, 0.68) !important;
+    background-image: none !important;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08), 0 12px 36px rgba(0, 0, 0, 0.55);
+}
+@media (pointer: coarse), (max-width: 980px) {
+    #start-screen > div {
+        padding-right: 72px !important;
+        box-sizing: border-box;
+    }
+    #start-screen input[type="range"] {
+        display: block;
+        width: calc(100% - 48px) !important;
+        max-width: calc(100% - 48px);
+        margin-right: 48px !important;
+        box-sizing: border-box;
+    }
+    #ai-shot-slider + div,
+    #ai-shot-slider + div + div {
+        width: calc(100% - 48px) !important;
+        max-width: calc(100% - 48px);
+        margin-right: 48px !important;
+        box-sizing: border-box;
+    }
+}
+#start-button {
+    padding: 15px 30px;
+    font-size: 1.5em;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+#joystick-move {
+    position: fixed;
+    bottom: 50px; 
+    left: 50px; 
+    width: 150px; 
+    height: 150px;
+    z-index: 10;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    overflow: visible;
+}
+#fire-button {
+    position: fixed;
+    right: 50px;
+    bottom: 120px; 
+    width: 80px;
+    height: 80px;
+    z-index: 10;
+    background-color: rgba(255, 100, 100, 0.7);
+    border-radius: 50%;
+    border: 2px solid #fff;
+    color: white;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(255, 100, 100, 0.5);
+}
+#fire-button:active {
+    background-color: rgba(255, 50, 50, 1);
+}
+#crosshair {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 20px;
+    pointer-events: none; 
+    z-index: 100;
+}
+.crosshair-circle {
+    position: absolute;
+    border: 1px solid white;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: none;
+}
+.crosshair-plus-h, .crosshair-plus-v {
+    position: absolute;
+    background-color: white;
+    display: none;
+}
+.crosshair-plus-h { width: 10px; height: 1px; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+.crosshair-plus-v { width: 1px; height: 10px; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+.scope-center-cross-h,
+.scope-center-cross-v {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    background-color: rgba(0, 0, 0, 0.9);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 2;
+}
+.scope-center-cross-h { width: 28px; height: 2px; }
+.scope-center-cross-v { width: 2px; height: 28px; }
+.cross-line {
+    position: absolute;
+    background-color: white;
+}
+#line-h { width: 100%; height: 1px; top: 50%; transform: translateY(-50%); }
+#line-v { width: 1px; height: 100%; left: 50%; transform: translateX(-50%); }
+
+.end-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #000; 
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    font-size: 4em;
+    font-weight: bold;
+    z-index: 200;
+    display: none; 
+}
+#game-over-screen { text-shadow: 0 0 10px red; }
+#win-screen { text-shadow: 0 0 10px blue; }
+.restart-button {
+    margin-top: 20px;
+    padding: 10px 20px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 1em;
+    cursor: pointer;
+}
+.restart-button:hover { background-color: #45a049; }
+.end-top-button {
+    margin-top: 16px;
+    min-width: 150px;
+    min-height: 42px;
+    padding: 8px 20px;
+    border: 1px solid #888;
+    border-radius: 5px;
+    background: #333;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.end-top-button:hover,
+.end-top-button:focus-visible { background: #505050; }
+
+#night-vision-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 255, 0, 0.2); /* 半透明の緑色 */
+    mix-blend-mode: screen; /* 画面とのブレンドモード */
+    pointer-events: none; /* クリックイベントを透過 */
+    display: none; /* 初期状態では非表示 */
+}
+
+.dead-ai-hp {
+    text-decoration: line-through;
+}
+
+/* 死亡時の画面エフェクト用クラス */
+.red-flash {
+    transition: background-color 0.1s ease-out, opacity 0.1s ease-out;
+    background-color: rgba(255, 0, 0, 0.5) !important; /* 強制的に赤にする */
+    opacity: 1 !important; /* 強制的に表示する */
+}
+
+.fade-to-black {
+    transition: background-color 0.5s ease-out;
+    background-color: rgba(0, 0, 0, 1) !important;
+}
+
+.fade-out {
+    transition: opacity 1s ease-out;
+    opacity: 0 !important;
+}
+
+/* UI文字サイズ調整 */
+#team-kills-container,
+#ai-hp-container {
+    font-size: 0.8em; /* KILLS表示とAI HP表示全体を小さく */
+}
+
+#player-team-kills-display,
+#enemy-team-kills-display,
+#ai-hp-display,
+#ai2-hp-display,
+#ai3-hp-display {
+    font-size: 0.8em !important; /* 他のスタイルで上書きされないように!important */
+}
+
+/* FOLLOW表示の点滅アニメーション */
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+}
+
+/* FOLLOW表示のスタイル */
+#follow-status-display.blinking {
+    animation: blink 1s linear infinite;
+}
+
+#pc-combat-state-display {
+    position: fixed;
+    right: 10px;
+    display: none;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    color: white;
+    font-size: 0.9em;
+    font-weight: bold;
+    z-index: 20;
+    pointer-events: none;
+}
+
+#pc-combat-state-display > div {
+    display: none;
+    min-width: 58px;
+    padding: 2px 4px;
+    text-align: center;
+    background-color: rgba(0, 0, 0, 0.5);
+    animation: blink 1s linear infinite;
+}
+
+@media (pointer: coarse), (hover: none) {
+    #pc-combat-state-display {
+        display: none !important;
+    }
+}

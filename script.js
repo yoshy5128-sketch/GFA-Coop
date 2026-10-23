@@ -1,0 +1,21801 @@
+  const PLAYER_INITIAL_POSITION = new THREE.Vector3(0, 2.0, -20);
+  let BGM_TRACKS = [
+      'bgm/0001.mp3',
+      'bgm/0002.mp3',
+      'bgm/0003.mp3',
+      'bgm/0004.mp3'
+  ];
+  const EVENT_VOICE_TRACKS = {
+      dm: 'dm.mp3',
+      en: 'en.mp3',
+      tdm: 'tdm.mp3',
+      win: 'win.mp3',
+      lose: 'lose.mp3',
+      doubleKill: 'dk.mp3',
+      tripleKill: 'tk.mp3',
+      enemySniperArmed: 'ts.mp3',
+      sniperDown: 'sd.mp3',
+      targetDown: 'td.mp3',
+      teamComeback: 'gws.mp3',
+      enemyComeback: 'wlg.mp3',
+      sniperKill: 'ks.mp3',
+      roomClear: 'ac.mp3'
+  };
+  const EVENT_VOICE_GAIN = 2.4;
+  const EVENT_VOICE_GAIN_OVERRIDES = {
+      sniperKill: 3.8
+  };
+  const EVENT_VOICE_DELAY_MS = 1000;
+  const RANDOM_MAP_OPTION_VALUE = '__random_map__';
+  const LAST_RANDOM_MAP_STORAGE_KEY = 'lastRandomMapForEditor';
+  const LAST_REGISTERED_RANDOM_MAP_STORAGE_KEY = 'lastRegisteredRandomMapName';
+  let activeRandomMapData = null;
+  let activeRandomMapName = '';
+  let gameSettings = {
+      playerHP: 20,
+      aiHP: 20,
+    projectileSpeedMultiplier: 1.0,
+    moveSpeedMultiplier: 1.0,
+    mgCount: 1,
+    rrCount: 1,
+    srCount: 1,
+    sgCount: 1,
+    mrCount: 1,
+      defaultWeapon: 'machinegun',
+      defaultWeaponPlayer: 'machinegun',
+      defaultWeaponAI: 'machinegun',
+      defaultWeaponAI1: 'machinegun',
+      defaultWeaponAI2: 'machinegun',
+      defaultWeaponAI3: 'machinegun',
+        medikitCount: 5,
+      voiceVolume: 1.0,
+      settingsVersion: 4,
+      mapType: 'default',
+      aiCount: 3,
+      autoAim: true,
+      aiShotLevel: 'pro',
+      aiAimPrecision: 80,
+      bgmMute: false,
+      bgmVolume: 0.7,
+      bgmMode: 'order',
+      bgmPlayMode: 'continuous',
+      bgmEnabledTracks: BGM_TRACKS.slice(),
+      nightModeEnabled: false,
+    nightModeLightIntensity: 3.0,
+    indoorLightIntensity: 2.0,
+    timeLapseMode: false,
+    customMapName: 'Default Custom Map',
+    gameMode: 'arcade',
+    billBattleSize: '80',
+    billBattleObstacles: 1,
+    billBattleLighting: '12',
+    killCamMode: 'playerOnly',
+    barrelRespawn: false,
+    gameDuration: 180, // 3分間 (180秒)
+    buttonPositions: {
+        fire: { right: '20px', bottom: '120px' },
+        crouch: { right: '20px', bottom: '55px' },
+        zoom: { right: '90px', bottom: '55px' },
+        joystick: { left: '10%', bottom: '10%' },
+        follow: { right: '20px', bottom: '190px' }
+    }
+};
+let originalSettings = {};
+let isPaused = false;
+let forceSettingsLighting = false;
+const DEBUG_LOG = false;
+function debugLog(...args) {
+    if (DEBUG_LOG) console.log(...args);
+}
+
+// キャラクター設定
+const CHARACTER_BASE_DEFAULT = {
+    hairStyle: 'default',
+    hairColor: '#D2691E',
+    skinColor: '#ffd1b0',
+    clothingColor: '#ff3333',
+    pantsColor: '#111111',
+    shoesColor: '#8B4513',
+    bodyType: 'standard',
+    topType: 'jacket',
+    faceType: 'calm',
+    gearType: 'none',
+    headwearType: 'none',
+    armorType: 'none',
+    neckwearType: 'none',
+    armorColor: '#303b42',
+    neckwearColor: '#8b1820',
+    beltColor: '#5a3823'
+};
+
+const CHARACTER_DEFAULTS = {
+    player: {
+        ...CHARACTER_BASE_DEFAULT,
+        clothingColor: '#ff3333',
+        bodyType: 'athletic',
+        faceType: 'focused',
+        gearType: 'vest'
+    },
+    enemy1: {
+        ...CHARACTER_BASE_DEFAULT,
+        clothingColor: '#3333ff',
+        hairStyle: 'short',
+        headwearType: 'helmet',
+        hairColor: '#2f2118',
+        skinColor: '#e2a87f',
+        bodyType: 'heavy',
+        faceType: 'stern',
+        gearType: 'none'
+    },
+    enemy2: {
+        ...CHARACTER_BASE_DEFAULT,
+        clothingColor: '#00ff00',
+        hairStyle: 'spiky',
+        hairColor: '#111111',
+        skinColor: '#c68a62',
+        bodyType: 'slim',
+        faceType: 'sharp',
+        gearType: 'none'
+    },
+    enemy3: {
+        ...CHARACTER_BASE_DEFAULT,
+        clothingColor: '#ff8800',
+        hairStyle: 'long',
+        hairColor: '#4a2813',
+        skinColor: '#f2c09b',
+        bodyType: 'tall',
+        faceType: 'wide',
+        gearType: 'vest'
+    }
+};
+
+let characterCustomization = {
+    player: { ...CHARACTER_DEFAULTS.player },
+    enemy1: { ...CHARACTER_DEFAULTS.enemy1 },
+    enemy2: { ...CHARACTER_DEFAULTS.enemy2 },
+    enemy3: { ...CHARACTER_DEFAULTS.enemy3 }
+};
+
+const CHARACTER_CUSTOM_FIELDS = [
+    { id: 'hair-style', key: 'hairStyle', label: 'Hair Style', options: [['default', 'Crew Cut'], ['short', 'Short'], ['sidepart', 'Side Part'], ['long', 'Afro'], ['spiky', 'Spiky'], ['bald', 'Bald']] },
+    { id: 'headwear-type', key: 'headwearType', label: 'Headwear', options: [['none', 'None'], ['cap', 'Cap'], ['helmet', 'Helmet']] },
+    { id: 'face-type', key: 'faceType', label: 'Expression', options: [['calm', 'Calm'], ['focused', 'Focused'], ['stern', 'Stern'], ['sharp', 'Sharp'], ['wide', 'Friendly']] },
+    { id: 'body-type', key: 'bodyType', label: 'Build', options: [['slim', 'Slim'], ['standard', 'Standard'], ['athletic', 'Athletic'], ['heavy', 'Heavy'], ['tall', 'Tall'], ['compact', 'Compact']] },
+    { id: 'top-type', key: 'topType', label: 'Top', options: [['jacket', 'Jacket'], ['tshirt', 'T-Shirt']] },
+    { id: 'gear-type', key: 'gearType', label: 'Uniform', options: [['none', 'Solid'], ['camo1', 'Camo 1'], ['camo2', 'Camo 2']] },
+    { id: 'armor-type', key: 'armorType', label: 'Armor', options: [['none', 'None'], ['light', 'Light Vest'], ['heavy', 'Tactical Armor']] },
+    { id: 'neckwear-type', key: 'neckwearType', label: 'Neckwear', options: [['none', 'None'], ['tie', 'Tie'], ['scarf', 'Scarf']] },
+    { id: 'skin-color', key: 'skinColor', label: 'Skin Color', type: 'color' },
+    { id: 'hair-color', key: 'hairColor', label: 'Hair / Headwear Color', type: 'color' },
+    { id: 'clothing-color', key: 'clothingColor', label: 'Top Color', type: 'color' },
+    { id: 'pants-color', key: 'pantsColor', label: 'Pants Color', type: 'color' },
+    { id: 'shoes-color', key: 'shoesColor', label: 'Shoes Color', type: 'color' },
+    { id: 'belt-color', key: 'beltColor', label: 'Belt Color', type: 'color' },
+    { id: 'armor-color', key: 'armorColor', label: 'Armor Color', type: 'color' },
+    { id: 'neckwear-color', key: 'neckwearColor', label: 'Tie / Scarf Color', type: 'color' }
+];
+
+function renderCharacterCustomizationForms() {
+    const container = document.getElementById('customization-forms');
+    if (!container || container.dataset.modernEditor === 'true') return;
+    const characters = [
+        ['player', 'Player', '#ff5555'],
+        ['enemy1', 'Enemy 1', '#6f8cff'],
+        ['enemy2', 'Enemy 2', '#63d46b'],
+        ['enemy3', 'Enemy 3', '#ff9d3f']
+    ];
+    container.innerHTML = characters.map(([id, name, accent], index) => {
+        const fields = CHARACTER_CUSTOM_FIELDS.map(field => {
+            if (field.type === 'color') {
+                return `<div class="character-custom-field"><label for="${id}-${field.id}">${field.label}</label><input type="color" id="${id}-${field.id}"></div>`;
+            }
+            const options = field.options.map(([value, label]) => `<option value="${value}">${label}</option>`).join('');
+            return `<div class="character-custom-field"><label for="${id}-${field.id}">${field.label}</label><select id="${id}-${field.id}">${options}</select></div>`;
+        }).join('');
+        return `<section class="character-section${index === 0 ? ' active' : ''}" data-character-section="${id}"><h4 style="color:${accent}">${name}</h4>${fields}</section>`;
+    }).join('');
+    container.dataset.modernEditor = 'true';
+}
+
+function showCharacterEditorSection(character) {
+    document.querySelectorAll('[data-character-section]').forEach(section => {
+        section.classList.toggle('active', section.dataset.characterSection === character);
+    });
+    document.querySelectorAll('.character-preview-buttons button').forEach(button => {
+        button.style.outline = button.id === `preview-${character}` ? '2px solid white' : 'none';
+    });
+    const scroller = document.querySelector('.character-editor-settings-scroll');
+    if (scroller && window.matchMedia('(max-width: 980px)').matches) scroller.scrollTop = 0;
+}
+
+// タイムラプスモード変数
+let timeLapseInterval = null;
+let timeLapseStartTime = null;
+let isTimeLapseMode = false;
+let currentTransitionProgress = 0; // 0=完全に昼、1=完全に夜
+let targetTransitionProgress = 0;
+const TIME_LAPSE_DAY_PHASE_TIME = 20000; // 20秒で昼へ戻る
+const TIME_LAPSE_NIGHT_PHASE_TIME = 240000; // 夜へ向かう時間を240秒へ拡大（以前の3倍）
+const TIME_LAPSE_CYCLE_TIME = TIME_LAPSE_DAY_PHASE_TIME + TIME_LAPSE_NIGHT_PHASE_TIME;
+const TRANSITION_DURATION = 5000; // なめらかな遷移のため5秒
+
+// タイムラプスモード関数
+function startTimeLapseMode() {
+    if (timeLapseInterval) return; // すでに実行中
+    
+    isTimeLapseMode = true;
+    timeLapseStartTime = Date.now();
+    currentTransitionProgress = 0; // 昼モードで開始
+    targetTransitionProgress = 0;
+    
+    // サイクル開始 - スムーズな遷移のために毎秒チェック
+    timeLapseInterval = setInterval(() => {
+        updateTimeLapseCycle();
+    }, 1000); // 毎秒チェック
+    
+    // 初期状態 - 昼モードで開始
+    applyNightMode(false);
+    
+    // UIを更新
+    const nightModeCheckbox = document.getElementById('night-mode');
+    if (nightModeCheckbox) {
+        nightModeCheckbox.checked = false;
+    }
+    
+    // タイムラプスモード開始 - 昼モードから開始
+}
+
+function stopTimeLapseMode() {
+    if (timeLapseInterval) {
+        clearInterval(timeLapseInterval);
+        timeLapseInterval = null;
+    }
+    isTimeLapseMode = false;
+    timeLapseStartTime = null;
+    
+    // タイムラプスモード停止
+}
+
+function updateTimeLapseCycle() {
+    const currentTime = Date.now();
+    const elapsedTime = currentTime - timeLapseStartTime;
+    const cycleTime = parseInt(TIME_LAPSE_CYCLE_TIME);
+    const cycleElapsed = elapsedTime % cycleTime;
+    
+    // サイクル位置に基づいて目標遷移進行度を計算
+    // 0-20秒: 昼モード (1 -> 0)
+    // 20-260秒: 夜モード (0 -> 1)
+    let newTargetProgress;
+    if (cycleElapsed < TIME_LAPSE_DAY_PHASE_TIME) {
+        // 最初の20秒: 昼モード (1 -> 0)
+        newTargetProgress = 1 - (cycleElapsed / TIME_LAPSE_DAY_PHASE_TIME);
+    } else {
+        // 残り240秒: 夜モード (0 -> 1)
+        newTargetProgress = (cycleElapsed - TIME_LAPSE_DAY_PHASE_TIME) / TIME_LAPSE_NIGHT_PHASE_TIME;
+    }
+    
+    targetTransitionProgress = newTargetProgress;
+    
+    // タイムラプスデバッグ: cyclePosition=${cyclePosition.toFixed(3)}, targetProgress=${targetTransitionProgress.toFixed(3)}
+    
+    // スムーズな遷移を適用
+    applySmoothNightMode();
+}
+
+function applySmoothNightMode() {
+    // スムーズな遷移の代わりに目標進行度を直接使用
+    // これにより「ガクッ」とした突然の暗さを防ぐ
+    const nightIntensity = targetTransitionProgress;
+    const dayIntensity = 1 - targetTransitionProgress;
+    
+    // 昼の設定
+    const dayAmbientIntensity = 0.7; // 増加 (0.5 → 0.7)
+    const dayDirectionalIntensity = 1.0; // 増加 (0.8 → 1.0)
+    const dayClearColor = new THREE.Color(0xADD8E6); // 薄い青（より明るく）
+    
+    // 夜の設定 - 通常の夜モードと同じ
+    const nightAmbientIntensity = 0.05; // 通常の夜モードと同じ
+    const nightDirectionalIntensity = 0.05; // 通常の夜モードと同じ
+    const nightClearColor = new THREE.Color(0x111122); // 通常の夜モードと同じ
+    
+    // 昼と夜の間を補間
+    const currentAmbientIntensity = dayAmbientIntensity * dayIntensity + nightAmbientIntensity * nightIntensity;
+    const currentDirectionalIntensity = dayDirectionalIntensity * dayIntensity + nightDirectionalIntensity * nightIntensity;
+    const currentClearColor = dayClearColor.clone().lerp(nightClearColor, nightIntensity);
+    
+    // 補間値を適用
+    if (ambientLight) {
+        ambientLight.intensity = currentAmbientIntensity;
+        // タイムラプス: ambientLight intensity set to ${currentAmbientIntensity.toFixed(3)} (nightIntensity: ${nightIntensity.toFixed(3)})
+    }
+    if (directionalLight) {
+        directionalLight.intensity = currentDirectionalIntensity;
+        directionalLight.position.set(7, 12, 6);
+        directionalLight.target.position.set(0, 0, 0);
+        if (!directionalLight.target.parent) scene.add(directionalLight.target);
+        directionalLight.updateMatrixWorld();
+        directionalLight.target.updateMatrixWorld();
+        // タイムラプス: directionalLight intensity set to ${currentDirectionalIntensity.toFixed(3)} (nightIntensity: ${nightIntensity.toFixed(3)})
+    }
+    if (renderer) {
+        renderer.setClearColor(currentClearColor);
+        // タイムラプス: renderer clear color set to #${currentClearColor.getHexString()} (nightIntensity: ${nightIntensity.toFixed(3)})
+    }
+    
+    // 街灯を処理 - 通常の夜モードの動作に合わせる
+    setStreetLightsIntensity(nightIntensity * gameSettings.nightModeLightIntensity);
+    
+    // UIチェックボックスを更新（最も近い状態にスナップ）
+    const shouldBeNightMode = nightIntensity > 0.5;
+    gameSettings.nightModeEnabled = shouldBeNightMode;
+    const nightModeCheckbox = document.getElementById('night-mode');
+    if (nightModeCheckbox && nightModeCheckbox.checked !== shouldBeNightMode) {
+        nightModeCheckbox.checked = shouldBeNightMode;
+    }
+}
+
+function applyNightMode(isNight) {
+    // applyNightModeが呼び出されました:
+    
+    if (isNight) {
+        // 夜モードを適用
+        // 夜モードを適用中
+        if (ambientLight) {
+            ambientLight.intensity = 0.05;
+            // ambientLight強度を0.05に設定
+        }
+        if (directionalLight) {
+            directionalLight.intensity = 0.05;
+            // directionalLight強度を0.05に設定
+        }
+        if (renderer) {
+            renderer.setClearColor(0x111122);
+            // renderer clear colorを夜の色に設定
+        }
+        setStreetLightsIntensity(gameSettings.nightModeLightIntensity);
+    } else {
+        applyOutdoorDayLighting();
+    }
+}
+
+function applyOutdoorDayLighting() {
+    if (ambientLight) {
+        ambientLight.intensity = 0.58;
+    }
+    if (directionalLight) {
+        directionalLight.intensity = 0.82;
+        directionalLight.position.set(7, 12, 6);
+        directionalLight.target.position.set(0, 0, 0);
+        if (!directionalLight.target.parent) scene.add(directionalLight.target);
+        directionalLight.updateMatrixWorld();
+        directionalLight.target.updateMatrixWorld();
+    }
+    if (renderer) {
+        renderer.setClearColor(0x87CEEB);
+    }
+    setStreetLightsIntensity(0);
+}
+
+function applySettingsScreenLighting(enable) {
+    forceSettingsLighting = enable;
+    if (enable) {
+        if (ambientLight) ambientLight.intensity = 0.5;
+        if (directionalLight) directionalLight.intensity = 0.8;
+        if (renderer) renderer.setClearColor(0x87CEEB);
+        return;
+    }
+    applyNightMode(gameSettings.nightModeEnabled);
+    if (isBillBattleMode()) updateBillBattleGlobalLighting();
+}
+
+// 夜モード変数
+let isNightMode = false;
+
+// キャラクターエディター変数
+let characterEditorScene = null;
+let characterEditorCamera = null;
+let characterEditorRenderer = null;
+let previewCharacter = null;
+let currentPreviewCharacter = 'player';
+let characterEditorAnimationId = null;
+let characterPreviewZoomLevel = 1;
+let characterPreviewPanY = 0;
+let characterPreviewResizeBound = false;
+let activeCharacterSetSlot = null;
+const CHARACTER_SET_STORAGE_PREFIX = 'characterCustomizationSet';
+const CHARACTER_SET_LONG_PRESS_MS = 650;
+
+// Gunエディタの状態
+let weaponCustomization = {};
+let gunEditorScene = null;
+let gunEditorCamera = null;
+let gunEditorRenderer = null;
+let gunEditorAnimationId = null;
+let gunPreviewMesh = null;
+let currentGunEditorWeapon = 'pistol';
+let gunEditorLiveModel = null;
+let gunEditorInputs = {};
+let gunEditorAnimating = false;
+let gunPreviewZoomLevel = 1.0;
+let gunPreviewTouchDistance = 0;
+let gunPreviewResizeBound = false;
+let gunEditorPrevBodyOverflow = '';
+let gunEditorPrevHtmlOverflow = '';
+let weaponCustomizationRevision = 0;
+const runtimeGunModelCache = {};
+
+const GUN_CUSTOMIZATION_STORAGE_KEY = 'weaponCustomization';
+const ARMORY_STORAGE_KEY = 'gfaArmoryLoadoutsV1';
+const ARMORY_CHARACTERS = ['player', 'enemy1', 'enemy2', 'enemy3'];
+const ARMORY_WEAPONS = ['pistol', 'machinegun', 'm1rifle', 'sniperrifle', 'shotgun', 'rocketlauncher'];
+let armoryLoadouts = {};
+let armoryCharacter = 'player';
+let armoryWeapon = 'pistol';
+let armoryScene = null;
+let armoryCamera = null;
+let armoryRenderer = null;
+let armoryPreviewWeapon = null;
+// ユーザーの以前のローカルカスタマイズ状態から取得した復元プリセット。
+const WEAPON_CUSTOMIZATION_RECOVERY_PRESET = {
+    machinegun: {
+        body: { shape: 'box', length: 1.1, thickness: 0.1, color: '#111111', metalness: 0.81, roughness: 0.1 },
+        scope: { enabled: false, radius: 0.04, length: 0.24, color: '#aaaaaa', posX: 0, posY: 0.11, posZ: 0.2 },
+        magazine: { enabled: true, width: 0.08, height: 0.44, depth: 0.11, color: '#222222', posX: 0, posY: -0.26, posZ: 0.05 },
+        barrel: { enabled: true, shape: 'cylinder', width: 0.05, height: 0.05, depth: 1.09, color: '#111111', posX: 0, posY: 0, posZ: 0.25 }
+    },
+    sniperrifle: {
+        body: { shape: 'box', length: 1.29, thickness: 0.09, color: '#1d1b1b', metalness: 0.3, roughness: 0.5 },
+        scope: { enabled: true, radius: 0.03, length: 0.29, color: '#2f2d2d', posX: 0, posY: 0.08, posZ: -0.17 },
+        magazine: { enabled: true, width: 0.04, height: 0.12, depth: 0.2, color: '#222222', posX: 0, posY: -0.11, posZ: 0.05 },
+        barrel: { enabled: true, shape: 'cylinder', width: 0.05, height: 0.05, depth: 1.72, color: '#111111', posX: 0, posY: 0, posZ: 0.35 }
+    },
+    shotgun: {
+        body: { shape: 'box', length: 1.2, thickness: 0.12, color: '#231f1f', metalness: 0.3, roughness: 0.5 },
+        scope: { enabled: false, radius: 0.04, length: 0.24, color: '#aaaaaa', posX: 0, posY: 0.11, posZ: 0.2 },
+        magazine: { enabled: false, width: 0.08, height: 0.22, depth: 0.11, color: '#222222', posX: 0, posY: -0.15, posZ: 0.05 },
+        barrel: { enabled: true, shape: 'cylinder', width: 0.08, height: 0.05, depth: 0.69, color: '#111111', posX: 0, posY: 0, posZ: 0.35 }
+    },
+    m1rifle: {
+        body: { shape: 'box', length: 1.4, thickness: 0.12, color: '#8b4513', metalness: 0.3, roughness: 0.5 },
+        scope: { enabled: false, radius: 0.04, length: 0.24, color: '#aaaaaa', posX: 0, posY: 0.11, posZ: 0.2 },
+        magazine: { enabled: false, width: 0.08, height: 0.22, depth: 0.11, color: '#222222', posX: 0, posY: -0.15, posZ: 0.05 },
+        barrel: { enabled: true, shape: 'cylinder', width: 0.06, height: 0.06, depth: 1.05, color: '#111111', posX: 0, posY: 0, posZ: 0.49 }
+    }
+};
+
+
+
+(function() {
+    document.addEventListener('DOMContentLoaded', function() {
+        // 先にテクスチャを初期化
+        initializeTextures();
+        loadWeaponCustomization();
+        
+        // ここにDOM要素への割り当てを移動
+        playerGunSound = document.getElementById('playerGunSound');
+        mgGunSound = document.getElementById('mgGunSound');
+        rrGunSound = document.getElementById('rrGunSound');
+        rr2GunSound = document.getElementById('rr2GunSound');
+        srGunSound = document.getElementById('srGunSound');
+        m1GunSound = document.getElementById('m1GunSound');
+        pistolReloadSound = document.getElementById('pistol-reload-audio');
+        aiM1GunSound = document.getElementById('aiM1GunSound');
+        aiM1GunSound2 = document.getElementById('aiM1GunSound2');
+        aiM1GunSound3 = document.getElementById('aiM1GunSound3');
+        aimgGunSound = document.getElementById('aimgGunSound');
+        ai1mGunSound = document.getElementById('ai1mGunSound');
+        ai2mGunSound = document.getElementById('ai2mGunSound');
+        aiGunSound = document.getElementById('aiGunSound');
+        explosionSound = document.getElementById('explosionSound');
+        impactSound = document.getElementById('impactSound');
+        bgmAudio = document.getElementById('bgm-opm');
+        gameBgmAudio = document.getElementById('bgm-game');
+        relAudio = document.getElementById('rel-audio');
+        startScreen = document.getElementById('start-screen');
+        gameOverScreen = document.getElementById('game-over-screen');
+        aiSrGunSound = document.getElementById('aiSrGunSound');
+        playerSgSound = document.getElementById('playerSgSound');
+        aiSgSound = document.getElementById('aiSgSound');
+        clipSound = document.getElementById('clipSound');
+        winScreen = document.getElementById('win-screen');
+        playerHPDisplay = document.getElementById('player-hp-display');
+        playerWeaponDisplay = document.getElementById('player-weapon-display'); // 追加
+        aiHPDisplay = document.getElementById('ai-hp-display');
+        ai2HPDisplay = document.getElementById('ai2-hp-display');
+        ai3HPDisplay = document.getElementById('ai3-hp-display');
+        redFlashOverlay = document.getElementById('red-flash-overlay');
+        followStatusDisplay = document.getElementById('follow-status-display'); // 追加
+        followButton = document.getElementById('follow-button'); // 追加
+        // red-flash-overlayをbodyの最後に移動させて常に最前面に表示されるようにする
+        if (redFlashOverlay && redFlashOverlay.parentNode !== document.body) {
+            document.body.appendChild(redFlashOverlay);
+        }
+        scopeOverlay = document.getElementById('scope-overlay');
+        cancelScopeButton = document.getElementById('cancel-scope-button');
+        crosshairElement = document.getElementById('crosshair');
+        crosshairCircle = document.getElementById('crosshair-circle');
+        crosshairPlusH = document.getElementById('crosshair-plus-h');
+        crosshairPlusV = document.getElementById('crosshair-plus-v');
+        killCountDisplay = document.getElementById('kill-count-display');
+        gameTimerDisplay = document.getElementById('game-timer-display');
+        playerTeamKillsDisplay = document.getElementById('player-team-kills-display');
+        enemyTeamKillsDisplay = document.getElementById('enemy-team-kills-display');
+
+        const editorButton = document.getElementById('map-editor-button');
+        if (editorButton) {
+            editorButton.addEventListener('click', () => {
+                window.location.href = 'map_editor_sp.html';
+            });
+        }
+        
+        loadSettings();
+        updateUnifiedMapSelector();
+        setupTitleLogoScreen();
+        updateBillBattleHiScoreDisplay();
+        
+        
+        const playerHpSelect = document.getElementById('player-hp');
+        const aiHpSelect = document.getElementById('ai-hp');
+        const mgCountSelect = document.getElementById('mg-count');
+        const rrCountSelect = document.getElementById('rr-count');
+        const srCountSelect = document.getElementById('sr-count');
+        const sgCountSelect = document.getElementById('sg-count');
+        const mrCountSelect = document.getElementById('mr-count');
+        const aiCountRadios = document.querySelectorAll('input[name="ai-count"]');
+        const autoAimRadios = document.querySelectorAll('input[name="auto-aim"]');
+        const aiShotSlider = document.getElementById('ai-shot-slider');
+        const aiShotValue = document.getElementById('ai-shot-value');
+        const nightModeRadios = document.querySelectorAll('input[name="night-mode"]');
+        const gameModeRadios = document.querySelectorAll('input[name="game-mode"]');
+        const killCamModeRadios = document.querySelectorAll('input[name="killcam-mode"]');
+        const billBattleSizeSelect = document.getElementById('billbattle-size');
+        const billBattleObstaclesSelect = document.getElementById('billbattle-obstacles');
+        const billBattleLightingSelect = document.getElementById('billbattle-lighting');
+        if (gameModeRadios.length > 0) { // gameModeRadiosが存在することを確認
+
+            // ゲームモードラジオボタンの親要素を特定し、その後にプレイ時間設定を追加
+            const teamArcadeRadio = document.querySelector('input[name="game-mode"][value="teamArcade"]');
+            if (teamArcadeRadio) {
+                const teamArcadeParentLabel = teamArcadeRadio.parentNode; // これが<label>要素
+
+                const gameDurationDiv = document.createElement('div');
+                gameDurationDiv.id = 'game-duration-setting';
+                gameDurationDiv.style.marginTop = '10px';
+                gameDurationDiv.innerHTML = `
+                    <label style="display: block;">PlayTime（チームデスマッチのみ有効）</label>
+                    <label style="display: inline-block; margin-right: 10px;">
+                        <input type="radio" name="game-duration" value="180" checked> 3min
+                    </label>
+                    <label style="display: inline-block; margin-right: 10px;">
+                        <input type="radio" name="game-duration" value="300"> 5min
+                    </label>
+                    <label style="display: inline-block;">
+                        <input type="radio" name="game-duration" value="600"> 10min
+                    </label>
+                `;
+                teamArcadeParentLabel.after(gameDurationDiv); // teamArcadeのlabelの直後に挿入
+
+                // game-durationラジオボタンのイベントリスナーを設定
+                const gameDurationRadios = document.querySelectorAll('input[name="game-duration"]');
+                gameDurationRadios.forEach(radio => {
+                    radio.addEventListener('change', () => {
+                        if (radio.checked) {
+                            gameSettings.gameDuration = parseInt(radio.value, 10);
+                            saveSettings();
+                        }
+                    });
+                });
+            }
+        }
+        if (playerHpSelect) playerHpSelect.addEventListener('change', () => { gameSettings.playerHP = playerHpSelect.value; saveSettings(); });
+        if (aiHpSelect) aiHpSelect.addEventListener('change', () => { gameSettings.aiHP = aiHpSelect.value; saveSettings(); });
+        syncMoveSpeedSettingUI();
+        const moveSpeedSlider = document.getElementById('move-speed');
+        if (moveSpeedSlider) {
+            moveSpeedSlider.addEventListener('input', () => {
+                gameSettings.moveSpeedMultiplier = normalizeMoveSpeedMultiplier(moveSpeedSlider.value);
+                syncMoveSpeedSettingUI();
+                saveSettings();
+            });
+        }
+        const projectileSpeedSlider = document.getElementById('projectile-speed');
+        const projectileSpeedValueSpan = document.getElementById('projectile-speed-value');
+        if (projectileSpeedSlider) {
+            projectileSpeedSlider.addEventListener('input', () => {
+                gameSettings.projectileSpeedMultiplier = normalizeProjectileSpeedMultiplier(projectileSpeedSlider.value);
+                if (projectileSpeedValueSpan) {
+                    projectileSpeedValueSpan.textContent = gameSettings.projectileSpeedMultiplier + 'x';
+                }
+                saveSettings();
+            });
+        }
+        if (mgCountSelect) mgCountSelect.addEventListener('change', () => { gameSettings.mgCount = parseInt(mgCountSelect.value, 10); saveSettings(); });
+        if (rrCountSelect) rrCountSelect.addEventListener('change', () => { gameSettings.rrCount = parseInt(rrCountSelect.value, 10); saveSettings(); });
+        if (srCountSelect) srCountSelect.addEventListener('change', () => { gameSettings.srCount = parseInt(srCountSelect.value, 10); saveSettings(); });
+        if (sgCountSelect) sgCountSelect.addEventListener('change', () => { gameSettings.sgCount = parseInt(sgCountSelect.value, 10); saveSettings(); });
+        if (mrCountSelect) mrCountSelect.addEventListener('change', () => { gameSettings.mrCount = parseInt(mrCountSelect.value, 10); saveSettings(); });
+        if (billBattleSizeSelect) billBattleSizeSelect.addEventListener('change', () => { gameSettings.billBattleSize = billBattleSizeSelect.value; saveSettings(); });
+        if (billBattleObstaclesSelect) billBattleObstaclesSelect.addEventListener('change', () => {
+            gameSettings.billBattleObstacles = normalizeBillBattleObstacleLevel(billBattleObstaclesSelect.value);
+            saveSettings();
+        });
+        if (billBattleLightingSelect) billBattleLightingSelect.addEventListener('change', () => { gameSettings.billBattleLighting = normalizeBillBattleLightingCount(billBattleLightingSelect.value); saveSettings(); });
+        const defaultWeaponChecks = document.querySelectorAll('input[name="default-weapon"]');
+        const defaultWeaponTargetSelect = document.getElementById('default-weapon-target');
+        const syncDefaultWeaponChecks = () => {
+            const target = defaultWeaponTargetSelect ? defaultWeaponTargetSelect.value : 'player';
+            const selected = getDefaultWeaponForTarget(target);
+            defaultWeaponChecks.forEach(check => {
+                check.checked = (selected === check.value);
+            });
+        };
+        if (defaultWeaponChecks.length > 0) {
+            defaultWeaponChecks.forEach(check => {
+                check.addEventListener('change', () => {
+                    if (check.checked) {
+                        defaultWeaponChecks.forEach(other => {
+                            if (other !== check) other.checked = false;
+                        });
+                        const target = defaultWeaponTargetSelect ? defaultWeaponTargetSelect.value : 'player';
+                        setDefaultWeaponForTarget(target, check.value);
+                    } else {
+                        const anyChecked = Array.from(defaultWeaponChecks).some(c => c.checked);
+                        const fallback = anyChecked
+                            ? Array.from(defaultWeaponChecks).find(c => c.checked).value
+                            : WEAPON_MG;
+                        const target = defaultWeaponTargetSelect ? defaultWeaponTargetSelect.value : 'player';
+                        setDefaultWeaponForTarget(target, fallback);
+                    }
+                    saveSettings();
+                });
+            });
+            if (defaultWeaponTargetSelect) {
+                defaultWeaponTargetSelect.addEventListener('change', () => {
+                    syncDefaultWeaponChecks();
+                });
+            }
+            syncDefaultWeaponChecks();
+        }
+        const medikitCountSelect = document.getElementById('medikit-count');
+        if (medikitCountSelect) medikitCountSelect.addEventListener('change', () => {
+            gameSettings.medikitCount = parseInt(medikitCountSelect.value, 10);
+            saveSettings();
+        });
+        const indoorLightIntensitySlider = document.getElementById('indoor-light-intensity');
+        const indoorLightIntensityValueSpan = document.getElementById('indoor-light-intensity-value');
+        if (indoorLightIntensitySlider) {
+            indoorLightIntensitySlider.addEventListener('input', () => {
+                gameSettings.indoorLightIntensity = parseFloat(indoorLightIntensitySlider.value);
+                if (indoorLightIntensityValueSpan) {
+                    indoorLightIntensityValueSpan.textContent = gameSettings.indoorLightIntensity.toFixed(1);
+                }
+                saveSettings();
+                applyBillBattleLightIntensityScale();
+                updateBillBattleGlobalLighting();
+            });
+        }
+        const voiceVolumeSlider = document.getElementById('voice-volume');
+        const voiceVolumeValueSpan = document.getElementById('voice-volume-value');
+        if (voiceVolumeSlider) {
+            voiceVolumeSlider.addEventListener('input', () => {
+                gameSettings.voiceVolume = Math.max(0, Math.min(2, parseFloat(voiceVolumeSlider.value) / 100));
+                if (voiceVolumeValueSpan) {
+                    voiceVolumeValueSpan.textContent = `${Math.round(gameSettings.voiceVolume * 100)}%`;
+                }
+                refreshEventVoiceGains();
+                saveSettings();
+            });
+        }
+        aiCountRadios.forEach(radio => {
+            radio.addEventListener('change', () => {
+                if (radio.checked) {
+                    gameSettings.aiCount = parseInt(radio.value, 10);
+                    saveSettings();
+                }
+            });
+        });
+        autoAimRadios.forEach(radio => {
+            radio.addEventListener('change', () => {
+                if (radio.checked) {
+                    gameSettings.autoAim = radio.value === 'true';
+                    saveSettings();
+                }
+            });
+        });
+        if (aiShotSlider) {
+            aiShotSlider.addEventListener('input', () => {
+                gameSettings.aiAimPrecision = normalizeAIAimPrecision(aiShotSlider.value);
+                gameSettings.aiShotLevel = gameSettings.aiAimPrecision >= 75 ? 'pro' : 'ama';
+                if (aiShotValue) aiShotValue.textContent = String(gameSettings.aiAimPrecision);
+                saveSettings();
+            });
+        }
+        nightModeRadios.forEach(radio => {
+            radio.addEventListener('change', () => {
+                if (radio.checked) {
+                    gameSettings.nightModeEnabled = radio.value === 'true';
+                    saveSettings();
+                }
+            });
+        });
+        gameModeRadios.forEach(radio => {
+            radio.addEventListener('change', () => {
+                if (radio.checked) {
+                    const previousMode = gameSettings.gameMode;
+                    saveCurrentModeSpecificSettings(previousMode);
+                    gameSettings.gameMode = normalizeGameMode(radio.value);
+                    applyModeSpecificSettings(gameSettings.gameMode);
+                    applyBillBattleModeConstraints();
+                    updateSettingsAvailabilityForMode();
+                    syncModeSpecificSettingsUI();
+                    saveSettings();
+                }
+            });
+        });
+        killCamModeRadios.forEach(radio => {
+            radio.addEventListener('change', () => {
+                if (radio.checked) {
+                    gameSettings.killCamMode = radio.value;
+                    saveSettings();
+                }
+            });
+        });
+        const barrelRespawnRadios = document.querySelectorAll('input[name="barrel-respawn"]');
+        barrelRespawnRadios.forEach(radio => {
+            radio.addEventListener('change', () => {
+                if (radio.checked) {
+                    gameSettings.barrelRespawn = radio.value === 'true';
+                    saveSettings();
+                }
+            });
+        });
+        const nightModeIntensitySlider = document.getElementById('night-mode-intensity');
+        const nightModeIntensityValueSpan = document.getElementById('night-mode-intensity-value');
+        if (nightModeIntensitySlider) {
+            nightModeIntensitySlider.addEventListener('input', () => {
+                gameSettings.nightModeLightIntensity = parseFloat(nightModeIntensitySlider.value);
+                if (nightModeIntensityValueSpan) {
+                    nightModeIntensityValueSpan.textContent = gameSettings.nightModeLightIntensity;
+                }
+                saveSettings();
+            });
+        }
+        // 統合マップセレクターを初期化
+        const unifiedMapSelector = document.getElementById('unified-map-selector');
+        if (unifiedMapSelector) {
+            unifiedMapSelector.addEventListener('change', () => {
+                const selectedValue = unifiedMapSelector.value;
+                let selectedMapName = '';
+                if (selectedValue && selectedValue !== '---' && isBillBattleMode()) {
+                    const previousMode = gameSettings.gameMode;
+                    saveCurrentModeSpecificSettings(previousMode);
+                    gameSettings.gameMode = 'arcade';
+                    applyModeSpecificSettings(gameSettings.gameMode);
+                    document.querySelectorAll('input[name="game-mode"]').forEach(radio => {
+                        radio.checked = radio.value === gameSettings.gameMode;
+                    });
+                    updateSettingsAvailabilityForMode();
+                    syncModeSpecificSettingsUI();
+                }
+                
+                if (selectedValue === 'default') {
+                    gameSettings.mapType = 'default';
+                    gameSettings.customMapName = '';
+                    activeRandomMapData = null;
+                    selectedMapName = 'DefaultMap';
+                } else if (selectedValue === RANDOM_MAP_OPTION_VALUE) {
+                    gameSettings.mapType = 'random';
+                    gameSettings.customMapName = '';
+                    activeRandomMapData = null;
+                    selectedMapName = '';
+                } else if (selectedValue && selectedValue !== '---') {
+                    // カスタムマップが選択された場合
+                    gameSettings.mapType = 'custom';
+                    gameSettings.customMapName = selectedValue;
+                    activeRandomMapData = null;
+                    selectedMapName = selectedValue;
+                }
+                // マップ切り替え時は、そのマップ専用の保存設定を自動適用
+                if (selectedMapName) {
+                    loadMapSettings(selectedMapName);
+                }
+                
+                saveSettings();
+                
+                // 核のオプション：地面以外のすべてのメッシュを強制削除
+                debugLog('NUCLEAR OPTION: Deleting ALL mesh objects except ground...');
+                const allObjects = [];
+                scene.traverse((child) => {
+                    if (child && child.isMesh) {
+                        allObjects.push(child);
+                    }
+                });
+                
+                let deletedCount = 0;
+                for (const obj of allObjects) {
+                    // 地面だけは保護
+                    if (obj.userData.isGround || (obj.position && obj.position.y <= 0)) {
+                        debugLog('PROTECTING ground object:', obj.name || 'unnamed');
+                        continue;
+                    }
+                    // 街灯はマップ障害物ではないため、マップ切り替え時にも保持する。
+                    if (isStreetLightObject(obj)) {
+                        continue;
+                    }
+                    
+                    debugLog('NUCLEAR DELETING:', obj.name || 'unnamed', 'type:', obj.userData.type, 'isHouseRoof:', obj.userData.isHouseRoof, 'position:', obj.position);
+                    
+                    // 親から削除
+                    if (obj.parent) {
+                        obj.parent.remove(obj);
+                    } else {
+                        scene.remove(obj);
+                    }
+                    
+                    // obstacles配列から削除
+                    const index = obstacles.indexOf(obj);
+                    if (index > -1) {
+                        obstacles.splice(index, 1);
+                    }
+                    
+                    // メモリ解放
+                    if (obj.geometry) obj.geometry.dispose();
+                    if (obj.material) obj.material.dispose();
+                    
+                    deletedCount++;
+                }
+                
+                debugLog(`NUCLEAR OPTION: Deleted ${deletedCount} objects`);
+                
+                // ハードリセット：完全なゲーム再起動
+                debugLog('Performing hard reset for map switching...');
+                if (isGameRunning && !isPaused) {
+                    restartGame();
+                } else {
+                    // ポーズ中や未開始時はバックグラウンドで開始しない
+                    debugLog('Map switch deferred until Start/Resume.');
+                }
+                
+                // ユーザーインタラクション後に音声を初期化
+                initializeAudio();
+            });
+        }
+        const saveMapSettingsBtn = document.getElementById('save-map-settings-btn');
+        if (saveMapSettingsBtn) {
+            saveMapSettingsBtn.addEventListener('click', () => {
+                const unifiedMapSelector = document.getElementById('unified-map-selector');
+                const selectedValue = unifiedMapSelector ? unifiedMapSelector.value : '';
+                let selectedMapName = '';
+                
+                if (selectedValue === 'default' || selectedValue === '---' || selectedValue === RANDOM_MAP_OPTION_VALUE) {
+                    // 内蔵マップの場合は汎用名を使うか保存をスキップする
+                    selectedMapName = selectedValue === 'default' ? 'DefaultMap' : '';
+                } else {
+                    selectedMapName = selectedValue;
+                }
+                
+                if (selectedMapName && selectedMapName !== '---') {
+                    saveMapSettings(selectedMapName);
+                }
+            });
+        }
+        const resumeGameBtn = document.getElementById('resume-game-btn');
+        if (resumeGameBtn) {
+            resumeGameBtn.addEventListener('click', resumeGame);
+        }
+
+        const restartPauseBtn = document.getElementById('restart-pause-btn');
+        if (restartPauseBtn) {
+            restartPauseBtn.addEventListener('click', () => {
+                if (gameSettings.mapType === 'random') {
+                    activeRandomMapData = null;
+                }
+                startGame();
+                restartGame();
+            });
+        }
+
+        // --- cancelScopeButton のイベントリスナーをここに追加 ---
+        if (cancelScopeButton) {
+            cancelScopeButton.addEventListener('click', (event) => {
+                event.stopPropagation();
+                cancelScope();
+            });
+            cancelScopeButton.addEventListener('touchstart', (event) => {
+                event.stopPropagation();
+                cancelScope();
+            });
+        }
+        // --- ここまで ---
+        const startGameBtn = document.getElementById('start-game-btn');
+        if (startGameBtn) {
+            startGameBtn.style.backgroundColor = 'red';
+        }
+    // ReadMeリンクの追加
+    const gunFightSettingsTitle = document.querySelector('#start-screen h1');
+    if (gunFightSettingsTitle) {
+        const readmeLinkDiv = document.createElement('div');
+        readmeLinkDiv.style.textAlign = 'center';
+        readmeLinkDiv.style.marginTop = '10px';
+        const readmeLink = document.createElement('a');
+        readmeLink.href = '#';
+        readmeLink.textContent = 'ReadMe (説明書)';
+        readmeLink.style.color = 'lightblue';
+        readmeLink.style.textDecoration = 'underline';
+        readmeLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('readme-screen').style.display = 'flex';
+            updateMenuBGM();
+        });
+        readmeLinkDiv.appendChild(readmeLink);
+        const bgmMuteDiv = document.createElement('div');
+        bgmMuteDiv.style.marginTop = '8px';
+        bgmMuteDiv.style.textAlign = 'center';
+        const bgmLabel = document.createElement('label');
+        bgmLabel.style.color = 'white';
+        bgmLabel.style.fontSize = '0.9em';
+        const bgmMuteCheckbox = document.createElement('input');
+        bgmMuteCheckbox.type = 'checkbox';
+        bgmMuteCheckbox.id = 'bgm-mute-checkbox';
+        bgmMuteCheckbox.checked = !!gameSettings.bgmMute;
+        bgmMuteCheckbox.addEventListener('change', () => {
+            gameSettings.bgmMute = !!bgmMuteCheckbox.checked;
+            saveSettings();
+            updateMenuBGM();
+        });
+        bgmLabel.appendChild(bgmMuteCheckbox);
+        bgmLabel.appendChild(document.createTextNode(' BGM Mute'));
+        bgmMuteDiv.appendChild(bgmLabel);
+        const bgmSettingsBtn = document.createElement('button');
+        bgmSettingsBtn.id = 'bgm-setting-btn';
+        bgmSettingsBtn.textContent = 'BGM Setting';
+        bgmSettingsBtn.style.marginTop = '8px';
+        bgmSettingsBtn.style.padding = '6px 12px';
+        bgmSettingsBtn.style.fontSize = '0.9em';
+        bgmSettingsBtn.style.backgroundColor = '#444';
+        bgmSettingsBtn.style.color = 'white';
+        bgmSettingsBtn.style.border = 'none';
+        bgmSettingsBtn.style.borderRadius = '4px';
+        bgmSettingsBtn.style.cursor = 'pointer';
+        bgmSettingsBtn.addEventListener('click', () => {
+            const bgmSettingsScreen = document.getElementById('bgm-settings-screen');
+            const startScreenEl = document.getElementById('start-screen');
+            if (bgmSettingsScreen && startScreenEl) {
+                startScreenEl.style.display = 'none';
+                bgmSettingsScreen.style.display = 'flex';
+                if (typeof reloadBgmTracks === 'function') {
+                    reloadBgmTracks();
+                } else if (typeof refreshBgmSettingsUI === 'function') {
+                    refreshBgmSettingsUI();
+                }
+                updateMenuBGM();
+            }
+        });
+        bgmMuteDiv.appendChild(bgmSettingsBtn);
+        gunFightSettingsTitle.after(readmeLinkDiv);
+        readmeLinkDiv.after(bgmMuteDiv);
+    }
+
+    // ReadMeページの追加
+    const readmeScreen = document.createElement('div');
+    readmeScreen.id = 'readme-screen';
+    readmeScreen.className = 'readme-screen';
+    readmeScreen.innerHTML = `
+        <div class="readme-shell">
+            <div class="readme-language-switch" role="group" aria-label="README language">
+                <button type="button" data-readme-language="ja">日本語</button>
+                <button type="button" data-readme-language="en">ENGLISH.Ver</button>
+            </div>
+
+            <article class="readme-language-panel" data-readme-panel="ja" lang="ja">
+                <header class="readme-hero">
+                    <h1>GunFightArenaへようこそ!!</h1>
+                    <p>面倒な準備は一切なし。武器を選び、アリーナへ飛び込み、今すぐ撃ち合いを始めよう。</p>
+                </header>
+                <section class="readme-section">
+                    <h2>このゲームについて</h2>
+                    <p>全員が敵となるFreeForAll、AI軍団に挑むPVAI、味方AIと共闘するTeamDeathmatch、何部屋突破できるかを競うINDOOR COMBAT。シンプルな操作で、展開の異なるGunFightを何度でも楽しめるローポリFPSです。</p>
+                    <p>AIを侮るな。物陰からの攻撃、待ち伏せ、味方との連携、塔からの狙撃など、マップと装備に応じて行動を変えてきます。</p>
+                </section>
+                <section class="readme-section">
+                    <h2>バトル設定</h2>
+                    <ul>
+                        <li>プレイヤーと敵AIのHPを個別に設定可能。プレイヤーは無敵にもできます。</li>
+                        <li>プレイヤーとAIのデフォルト武器を個別に選択可能。デフォルト武器は弾数無制限ですが、Reloadは必要です。</li>
+                        <li>ProjectileSpeedで弾速、AICountで敵AI数、AI射撃精度で難易度を調整できます。</li>
+                        <li>WeaponCountでアリーナに出現する武器数を変更可能。所持できる武器は1種類で、別の武器を拾うと持ち替えます。</li>
+                        <li>Medikitは対応モードでHPを回復します。配置数も変更できます。</li>
+                        <li>NightMode、Time Lapse、屋外・室内それぞれの明るさ設定に対応しています。</li>
+                        <li>爆発するドラム缶は周囲へダメージを与え、ほかのドラム缶にも誘爆します。障害物や建物も爆破で破壊できます。</li>
+                    </ul>
+                </section>
+                <section class="readme-section">
+                    <h2>キャラクターとマップ</h2>
+                    <ul>
+                        <li>Character Editorでプレイヤーと各AIの髪型、表情、体型、服装、色、装備を個別にカスタマイズできます。</li>
+                        <li>3つのSETスロットに全キャラクターの組み合わせを記録し、バトルに合わせて呼び出せます。</li>
+                        <li>Map Editorでオリジナルマップを作成し、JSON形式で保存・読み込みできます。</li>
+                        <li>RANDOM MAPでは、ユーザーが登録したカスタムマップの中からランダムに1つ選択します。</li>
+                        <li>TeamDeathmatchのFollowモードでは、味方AIがプレイヤーを追従して援護します。</li>
+                    </ul>
+                </section>
+                <section class="readme-section readme-controls">
+                    <h2>操作方法</h2>
+                    <div class="readme-control-group">
+                        <h3>スマートフォン</h3>
+                        <p><strong>画面左半分</strong> 前後左右移動</p>
+                        <p><strong>画面右半分</strong> 視点移動</p>
+                        <p><strong>各ボタン</strong> 攻撃、しゃがみ、ズーム、フォロー</p>
+                        <p><strong>★</strong> ポーズ＆設定画面</p>
+                        <p><strong>×</strong> スナイパースコープ解除</p>
+                    </div>
+                    <div class="readme-control-group">
+                        <h3>PC</h3>
+                        <p><strong>W / A / S / D</strong> 前後左右移動</p>
+                        <p><strong>マウス</strong> 視点移動</p>
+                        <p><strong>左クリック</strong> 武器発射</p>
+                        <p><strong>右クリック</strong> スナイパースコープ解除</p>
+                        <p><strong>C</strong> しゃがむ　<strong>F</strong> AIフォロー</p>
+                        <p><strong>P / Esc / ★</strong> ポーズ＆設定画面</p>
+                    </div>
+                </section>
+            </article>
+
+            <article class="readme-language-panel" data-readme-panel="en" lang="en" hidden>
+                <header class="readme-hero">
+                    <h1>Welcome to GunFightArena!</h1>
+                    <p>No lengthy setup. Pick your weapon, enter the arena, and start fighting right away.</p>
+                </header>
+                <section class="readme-section">
+                    <h2>About the Game</h2>
+                    <p>Fight everyone in FreeForAll, take on an AI squad in PVAI, battle beside a teammate in TeamDeathmatch, or see how many rooms you can clear in INDOOR COMBAT. GunFightArena is a fast, replayable low-poly FPS built around simple controls and unpredictable firefights.</p>
+                    <p>Never underestimate the AI. Enemies use cover, set ambushes, coordinate attacks, and climb towers to snipe when the map and their equipment allow it.</p>
+                </section>
+                <section class="readme-section">
+                    <h2>Battle Settings</h2>
+                    <ul>
+                        <li>Set player and enemy HP separately, or make the player invincible.</li>
+                        <li>Choose default weapons for the player and AI. Default weapons have unlimited reserve ammo, but still require reloading.</li>
+                        <li>Adjust projectile speed, enemy count, and AI accuracy to tune the difficulty.</li>
+                        <li>Weapon Count controls weapon pickups in the arena. You can carry one weapon type; picking up another swaps it.</li>
+                        <li>Medikits restore HP in supported modes, and their quantity can be adjusted.</li>
+                        <li>Night Mode, Time Lapse, and separate outdoor and indoor lighting controls are available.</li>
+                        <li>Explosive barrels damage nearby targets and trigger chain explosions. Obstacles and buildings can also be destroyed.</li>
+                    </ul>
+                </section>
+                <section class="readme-section">
+                    <h2>Characters and Maps</h2>
+                    <ul>
+                        <li>Use the Character Editor to customize each fighter's hair, expression, build, clothing, colors, and equipment.</li>
+                        <li>Store complete character lineups in three SET slots and recall them for different battles.</li>
+                        <li>Create original arenas in the Map Editor and save or load them as JSON files.</li>
+                        <li>RANDOM MAP randomly selects one of the custom maps registered by the user.</li>
+                        <li>In TeamDeathmatch, Follow mode keeps your teammate close for support.</li>
+                    </ul>
+                </section>
+                <section class="readme-section readme-controls">
+                    <h2>Controls</h2>
+                    <div class="readme-control-group">
+                        <h3>Mobile</h3>
+                        <p><strong>Left side</strong> Move</p>
+                        <p><strong>Right side</strong> Look</p>
+                        <p><strong>Action buttons</strong> Fire, crouch, zoom, and follow</p>
+                        <p><strong>★</strong> Pause and settings</p>
+                        <p><strong>×</strong> Exit the sniper scope</p>
+                    </div>
+                    <div class="readme-control-group">
+                        <h3>PC</h3>
+                        <p><strong>W / A / S / D</strong> Move</p>
+                        <p><strong>Mouse</strong> Look</p>
+                        <p><strong>Left click</strong> Fire</p>
+                        <p><strong>Right click</strong> Exit the sniper scope</p>
+                        <p><strong>C</strong> Crouch　<strong>F</strong> AI follow</p>
+                        <p><strong>P / Esc / ★</strong> Pause and settings</p>
+                    </div>
+                </section>
+            </article>
+
+            <div class="readme-footer">
+                <button id="readme-back-button" type="button">戻る</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(readmeScreen);
+
+    const readmeBackButton = document.getElementById('readme-back-button');
+    const readmeLanguageButtons = readmeScreen.querySelectorAll('[data-readme-language]');
+    const readmeLanguagePanels = readmeScreen.querySelectorAll('[data-readme-panel]');
+    const setReadmeLanguage = language => {
+        const selectedLanguage = language === 'en' ? 'en' : 'ja';
+        readmeLanguageButtons.forEach(button => {
+            const active = button.dataset.readmeLanguage === selectedLanguage;
+            button.classList.toggle('active', active);
+            button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        readmeLanguagePanels.forEach(panel => {
+            panel.hidden = panel.dataset.readmePanel !== selectedLanguage;
+        });
+        if (readmeBackButton) readmeBackButton.textContent = selectedLanguage === 'en' ? 'Back' : '戻る';
+        try { localStorage.setItem('gfaReadmeLanguage', selectedLanguage); } catch (error) { /* Storage may be unavailable. */ }
+        readmeScreen.scrollTop = 0;
+    };
+    readmeLanguageButtons.forEach(button => {
+        button.addEventListener('click', () => setReadmeLanguage(button.dataset.readmeLanguage));
+    });
+    let savedReadmeLanguage = 'ja';
+    try { savedReadmeLanguage = localStorage.getItem('gfaReadmeLanguage') || 'ja'; } catch (error) { /* Use Japanese by default. */ }
+    setReadmeLanguage(savedReadmeLanguage);
+
+    if (readmeBackButton) {
+        readmeBackButton.addEventListener('click', () => {
+            document.getElementById('readme-screen').style.display = 'none';
+            document.getElementById('start-screen').style.display = 'flex';
+            updateMenuBGM();
+        });
+    }
+    }); // 最初のDOMContentLoadedイベントリスナーを閉じる
+})();
+
+function updateUnifiedMapSelector() {
+    const unifiedMapSelector = document.getElementById('unified-map-selector');
+    if (!unifiedMapSelector) return;
+    unifiedMapSelector.innerHTML = '';
+    
+    // 内蔵マップを先頭に追加
+    const defaultOption = document.createElement('option');
+    defaultOption.value = 'default';
+    defaultOption.textContent = 'DefaultMap';
+    unifiedMapSelector.appendChild(defaultOption);
+
+    const randomOption = document.createElement('option');
+    randomOption.value = RANDOM_MAP_OPTION_VALUE;
+    randomOption.textContent = 'RANDOM MAP';
+    unifiedMapSelector.appendChild(randomOption);
+    
+    // 区切りを追加
+    const separator = document.createElement('option');
+    separator.value = '---';
+    separator.textContent = '--- Custom Maps ---';
+    separator.disabled = true;
+    separator.style.fontWeight = 'bold';
+    separator.style.color = '#666';
+    unifiedMapSelector.appendChild(separator);
+    
+    // カスタムマップを追加
+    const allCustomMaps = JSON.parse(localStorage.getItem('allCustomMaps') || '{}');
+    const mapNames = Object.keys(allCustomMaps);
+    
+    if (mapNames.length === 0) {
+        const noMapsOption = document.createElement('option');
+        noMapsOption.value = '';
+        noMapsOption.textContent = 'No custom maps available';
+        noMapsOption.disabled = true;
+        noMapsOption.style.color = '#999';
+        unifiedMapSelector.appendChild(noMapsOption);
+    } else {
+        mapNames.forEach(mapName => {
+            const option = document.createElement('option');
+            option.value = mapName;
+            option.textContent = mapName;
+            unifiedMapSelector.appendChild(option);
+        });
+    }
+    
+    // 現在の選択を設定
+    let currentValue = 'default'; // 初回起動時は常にDefaultMapを既定にする
+    
+    // 保存済み設定と有効なカスタムマップがあるか確認
+    if (gameSettings.mapType === 'random') {
+        currentValue = RANDOM_MAP_OPTION_VALUE;
+    } else if (gameSettings.mapType === 'custom' && gameSettings.customMapName && allCustomMaps[gameSettings.customMapName]) {
+        currentValue = gameSettings.customMapName;
+    } else {
+        // mapTypeが未設定または無効な場合は'default'にする
+        gameSettings.mapType = 'default';
+        gameSettings.customMapName = '';
+        saveSettings();
+    }
+    
+    // 値の設定を試みる
+    unifiedMapSelector.value = currentValue;
+    
+    // 値を設定できなかった場合（例: カスタムマップが存在しない）は'default'にする
+    if (unifiedMapSelector.value !== currentValue) {
+        unifiedMapSelector.value = 'default';
+        gameSettings.mapType = 'default';
+        gameSettings.customMapName = '';
+        saveSettings();
+    }
+    populateTitleMapSelector();
+}
+
+// テクスチャ変数（初期化前に宣言）
+let brickTexture, concreteTexture, objectSurfaceTexture;
+
+// パフォーマンス向上のため早めにテクスチャを初期化
+function initializeTextures() {
+    if (!brickTexture) {
+        brickTexture = createBrickTexture();
+        concreteTexture = createConcreteTexture();
+        objectSurfaceTexture = createObjectSurfaceTexture();
+    }
+}
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x87CEEB);
+renderer.localClippingEnabled = true;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(ambientLight);
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+directionalLight.position.set(0, 10, 5);
+directionalLight.castShadow = true;
+directionalLight.shadow.mapSize.width = 2048;
+directionalLight.shadow.mapSize.height = 2048;
+directionalLight.shadow.camera.near = 0.5;
+directionalLight.shadow.camera.far = 50;
+directionalLight.shadow.camera.left = -50;
+directionalLight.shadow.camera.right = 50;
+directionalLight.shadow.camera.top = 50;
+directionalLight.shadow.camera.bottom = -50;
+scene.add(directionalLight);
+const clock = new THREE.Clock();
+const player = new THREE.Object3D();
+player.add(camera);
+scene.add(player);
+player.position.copy(PLAYER_INITIAL_POSITION);
+player.rotation.y = Math.PI;
+camera.position.set(0, 0, 0);
+camera.position.z = 5; // カメラを少し後ろに配置
+let isGameRunning = false;
+let playerTargetHeight = 2.0;
+let isCrouchingToggle = false;
+const GRAVITY = 9.8;
+let playerHP = 3;
+let lastPlayerDeathPos = null;
+let screenShakeDuration = 0;
+const SHAKE_DURATION_MAX = 0.4;
+const SHAKE_INTENSITY = 0.2;
+let isAIDeathPlaying = false;
+let aiDeathCamOffset = null;
+const cinematicCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const aiDeathFocusObject = new THREE.Object3D();
+scene.add(aiDeathFocusObject);
+let killCamLight = null;
+let killCamAmbient = null;
+function syncKillCamLighting() {
+    const shouldEnable = isPlayerDeathPlaying || isAIDeathPlaying;
+    if (shouldEnable) {
+        if (!killCamLight) {
+            killCamLight = new THREE.PointLight(0xffffff, 1.1, 40, 2);
+            killCamLight.position.set(0, 2.2, 4);
+        }
+        if (!killCamLight.parent) cinematicCamera.add(killCamLight);
+        if (!killCamAmbient) killCamAmbient = new THREE.AmbientLight(0xffffff, 0.22);
+        if (!killCamAmbient.parent) scene.add(killCamAmbient);
+    } else {
+        if (killCamLight && killCamLight.parent) killCamLight.parent.remove(killCamLight);
+        if (killCamAmbient && killCamAmbient.parent) scene.remove(killCamAmbient);
+    }
+}
+const BODY_HEIGHT = 2;
+const HEAD_RADIUS = 0.5;
+const WEAPON_PISTOL = 'pistol';
+const WEAPON_MG = 'machinegun';
+const WEAPON_RR = 'rocketlauncher';
+const WEAPON_SR = 'sniperrifle';
+const WEAPON_SG = 'shotgun';
+const WEAPON_MR = 'm1rifle';
+let currentWeapon = WEAPON_PISTOL;
+let ammoMG = 0;
+  let ammoRR = 0;
+  let ammoSR = 0;
+  let ammoSG = 0;
+  let ammoMR = 0;
+  let ammoMRClip = 0;
+  let ammoPistolClip = 8;
+  let playerPistolReloadUntil = 0;
+  let playerMGReloadUntil = 0;
+  let playerMRReloadUntil = 0;
+const MAX_AMMO_PISTOL_CLIP = 8;
+const MAX_AMMO_MG = 50;
+const MAX_AMMO_RR = 3;
+  const MAX_AMMO_SR = 5;
+  const MAX_AMMO_SG = 10;
+  const MAX_AMMO_MR = 8;
+  const PICKUP_AMMO_MR = 24;
+const FIRE_RATE_PISTOL = 0.18;
+const FIRE_RATE_MG = 0.1;
+const FIRE_RATE_RR = 0.8;
+const FIRE_RATE_SR = 1.0;
+
+const GAME_MODE_BILLBATTLE = 'billbattle';
+const GAME_MODE_BILLBATTLE_TDM = 'billbattleTdm';
+const BUILD_ID = '2026-09-14-crouched-sniper-auto-aim-v106';
+const KILLCAM_RESPAWN_HIDE_DURATION = 2.2;
+let BILL_BATTLE_SIZE = 80;
+let BILL_BATTLE_HALF = BILL_BATTLE_SIZE / 2;
+const BILL_BATTLE_SIZE_OPTIONS = [50, 60, 70, 80];
+const BILL_BATTLE_CORRIDOR_WIDTH = 8;
+const BILL_BATTLE_CORRIDOR_HALF = BILL_BATTLE_CORRIDOR_WIDTH / 2;
+const BILL_BATTLE_LIGHT_COUNT_MIN = 0;
+const BILL_BATTLE_LIGHT_COUNT_MAX = 12;
+const BILL_BATTLE_LIGHT_COUNT_DEFAULT = 12;
+const BILL_BATTLE_WALL_THICKNESS = 0.5;
+const BILL_BATTLE_WALL_HEIGHT = 6;
+const BILL_BATTLE_CEILING_THICKNESS = 0.4;
+const BILL_BATTLE_WALL_COLOR = 0xcccccc;
+const BILL_BATTLE_CEILING_COLOR = 0xcccccc;
+const BILL_BATTLE_OBSTACLE_COLOR = 0x9e9e9e;
+  const BILL_BATTLE_LIGHT_COLOR = 0xf2f2ff;
+let billBattleRoomStyle = null;
+
+function getBillBattleCeilingClearHeight() {
+    // 見た目上で天井裏まで届く障害物の高さ。
+    return BILL_BATTLE_WALL_HEIGHT - (BILL_BATTLE_CEILING_THICKNESS * 1.5) + FLOOR_HEIGHT;
+}
+
+function createBillBattleRoomStyle() {
+    const rand = (min, max) => min + Math.random() * (max - min);
+    const gray = (minL, maxL) => {
+        const l = rand(minL, maxL);
+        return new THREE.Color(l, l, l);
+    };
+    const wallTop = gray(0.56, 0.72);
+    const floor = gray(0.56, 0.66);
+    const wallBottomColor = 0x5a5a5a; // 濃いグレー固定
+    return {
+        wallTopColor: wallTop.getHex(),
+        floorColor: floor.getHex(),
+        wallBottomColor
+    };
+}
+
+function applyBillBattleWallTwoTone(mesh) {
+    if (!mesh || !mesh.geometry || !mesh.geometry.parameters) return;
+    const style = billBattleRoomStyle || {};
+    const topHex = style.wallTopColor ?? BILL_BATTLE_WALL_COLOR;
+    const bottomHex = style.wallBottomColor ?? 0xf1e6c9;
+    const params = mesh.geometry.parameters;
+    const width = params.width ?? 1;
+    const height = params.height ?? 1;
+    const depth = params.depth ?? 1;
+    const halfH = height / 2;
+
+    // 重複表示を避けるため既存の表示をクリア
+    if (mesh.userData && mesh.userData.twoToneBuilt) {
+        const toRemove = [];
+        for (const child of mesh.children) {
+            if (child && child.userData && child.userData.isBillBattleWallVisual) {
+                toRemove.push(child);
+            }
+        }
+        for (const child of toRemove) {
+            mesh.remove(child);
+            if (child.geometry) child.geometry.dispose();
+            disposeMaterial(child.material);
+        }
+    }
+
+    const bottomGeom = new THREE.BoxGeometry(width, halfH, depth);
+    const topGeom = new THREE.BoxGeometry(width, halfH, depth);
+    const bottomMat = new THREE.MeshLambertMaterial({
+        color: bottomHex,
+        map: createWallPanelTexture(bottomHex, true)
+    });
+    const topMat = new THREE.MeshLambertMaterial({
+        color: topHex,
+        map: createWallPanelTexture(topHex, false)
+    });
+    const bottomMesh = new THREE.Mesh(bottomGeom, bottomMat);
+    const topMesh = new THREE.Mesh(topGeom, topMat);
+    bottomMesh.position.set(0, -halfH / 2, 0);
+    topMesh.position.set(0, halfH / 2, 0);
+    bottomMesh.userData = { isBillBattleWallVisual: true, blocksProjectiles: false };
+    topMesh.userData = { isBillBattleWallVisual: true, blocksProjectiles: false };
+    mesh.add(bottomMesh);
+    mesh.add(topMesh);
+
+    // コライダーメッシュは保持しつつ不可視にする
+    mesh.material = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, depthWrite: false });
+    mesh.material.needsUpdate = true;
+    mesh.userData = mesh.userData || {};
+    mesh.userData.twoToneBuilt = true;
+    mesh.userData.wallTopColor = topHex;
+    mesh.userData.wallBottomColor = bottomHex;
+}
+const BILL_BATTLE_ENTRANCE_WIDTH = 8;
+const BILL_BATTLE_ELEVATOR_WIDTH = 6;
+const BILL_BATTLE_ELEVATOR_DOOR_DEPTH = 0.5;
+const BILL_BATTLE_AI_COUNT = 3;
+const BILL_BATTLE_AI_RESPAWN_DELAY = 15.0;
+const BILL_BATTLE_ALLOW_RESPAWN = false;
+const BILL_BATTLE_USE_FIXED_SPAWNS = false;
+const BILL_BATTLE_USE_ELEVATOR = false;
+const BILL_BATTLE_PLAYER_HEIGHT = 2.35;
+const FIRE_RATE_SG = 0.8;
+const FIRE_RATE_MR = 0.3;
+const FIRE_RATE_MR_PLAYER = 0.18;
+const MR_PROJECTILE_SPEED_MULT = 1.6;
+const SHOTGUN_PELLET_COUNT = 7;
+const SHOTGUN_SPREAD_ANGLE = Math.PI / 16;
+const SHOTGUN_RANGE = 15;
+const SHOTGUN_PELLET_DAMAGE = 2;
+const WEAPON_SG_SOUND = 'sgun.mp3';
+const AI_WEAPON_SG_SOUND = 'aisgun.mp3';
+const ENABLE_EXPERIMENTAL_AI_FLOW = false;
+// AIが梯子を見つけて屋上へ登り、そこで交戦できる屋上ロジックを有効化。
+// 家の屋根には登れないようにする - 完全に無効化
+const ENABLE_AI_ROOFTOP_LOGIC = true; // デフォルトマップでもAIが塔に登れるように有効化
+const FORCE_AI_ROOFTOP_TEST = false; // テスト用: AIを強制的に塔へ向かわせる
+
+function isInfiniteDefaultWeaponActive(weaponType) {
+    return false;
+}
+
+function isDefaultM1Weapon() {
+    const selected = gameSettings.defaultWeaponPlayer || WEAPON_MG;
+    return selected === WEAPON_MR;
+}
+
+function getDefaultWeaponForTarget(target) {
+    if (target === 'all') {
+        const weapons = [
+            gameSettings.defaultWeaponPlayer || WEAPON_MG,
+            gameSettings.defaultWeaponAI1 || gameSettings.defaultWeaponAI || WEAPON_MG,
+            gameSettings.defaultWeaponAI2 || gameSettings.defaultWeaponAI || WEAPON_MG,
+            gameSettings.defaultWeaponAI3 || gameSettings.defaultWeaponAI || WEAPON_MG
+        ];
+        return weapons.every(weapon => weapon === weapons[0]) ? weapons[0] : null;
+    }
+    if (target === 'ai1') return gameSettings.defaultWeaponAI1 || gameSettings.defaultWeaponAI || WEAPON_MG;
+    if (target === 'ai2') return gameSettings.defaultWeaponAI2 || gameSettings.defaultWeaponAI || WEAPON_MG;
+    if (target === 'ai3') return gameSettings.defaultWeaponAI3 || gameSettings.defaultWeaponAI || WEAPON_MG;
+    return gameSettings.defaultWeaponPlayer || WEAPON_MG;
+}
+
+function setDefaultWeaponForTarget(target, weapon) {
+    if (target === 'all') {
+        gameSettings.defaultWeaponPlayer = weapon;
+        gameSettings.defaultWeaponAI = weapon;
+        gameSettings.defaultWeaponAI1 = weapon;
+        gameSettings.defaultWeaponAI2 = weapon;
+        gameSettings.defaultWeaponAI3 = weapon;
+        gameSettings.defaultWeapon = weapon;
+    } else if (target === 'ai1') {
+        gameSettings.defaultWeaponAI1 = weapon;
+    } else if (target === 'ai2') {
+        gameSettings.defaultWeaponAI2 = weapon;
+    } else if (target === 'ai3') {
+        gameSettings.defaultWeaponAI3 = weapon;
+    } else {
+        gameSettings.defaultWeaponPlayer = weapon;
+    }
+}
+
+function getAIDefaultWeaponBySlot(slotIndex) {
+    if (slotIndex === 1) return gameSettings.defaultWeaponAI1 || gameSettings.defaultWeaponAI || WEAPON_MG;
+    if (slotIndex === 2) return gameSettings.defaultWeaponAI2 || gameSettings.defaultWeaponAI || WEAPON_MG;
+    if (slotIndex === 3) return gameSettings.defaultWeaponAI3 || gameSettings.defaultWeaponAI || WEAPON_MG;
+    return gameSettings.defaultWeaponAI1 || gameSettings.defaultWeaponAI || WEAPON_MG;
+}
+
+function getAIDefaultWeapon(ai) {
+    const slotIndex = ai && ai.userData ? ai.userData.slotIndex : null;
+    return getAIDefaultWeaponBySlot(slotIndex);
+}
+
+function isBillBattleMode() {
+    return gameSettings.gameMode === GAME_MODE_BILLBATTLE || gameSettings.gameMode === GAME_MODE_BILLBATTLE_TDM;
+}
+
+function isClassicBillBattleMode() {
+    return gameSettings.gameMode === GAME_MODE_BILLBATTLE;
+}
+
+function isIndoorTeamDeathmatchMode() {
+    return gameSettings.gameMode === GAME_MODE_BILLBATTLE_TDM;
+}
+
+const MODE_PROFILE_FIELDS = [
+    'defaultWeaponPlayer',
+    'defaultWeaponAI',
+    'defaultWeaponAI1',
+    'defaultWeaponAI2',
+    'defaultWeaponAI3',
+    'mgCount',
+    'rrCount',
+    'srCount',
+    'sgCount',
+    'mrCount',
+    'aiCount',
+    'medikitCount'
+];
+
+function isIndoorModeValue(mode) {
+    const normalized = normalizeGameMode(mode);
+    return normalized === GAME_MODE_BILLBATTLE || normalized === GAME_MODE_BILLBATTLE_TDM;
+}
+
+function getModeProfileBucket(mode) {
+    return isIndoorModeValue(mode) ? 'indoor' : 'outdoor';
+}
+
+function createModeProfileFromGameSettings() {
+    const profile = {};
+    MODE_PROFILE_FIELDS.forEach(field => {
+        profile[field] = gameSettings[field];
+    });
+    return profile;
+}
+
+function ensureModeSpecificSettingsProfiles() {
+    if (!gameSettings.modeSpecificSettings || typeof gameSettings.modeSpecificSettings !== 'object') {
+        const currentProfile = createModeProfileFromGameSettings();
+        gameSettings.modeSpecificSettings = {
+            indoor: { ...currentProfile },
+            outdoor: { ...currentProfile }
+        };
+    } else {
+        if (!gameSettings.modeSpecificSettings.indoor || typeof gameSettings.modeSpecificSettings.indoor !== 'object') {
+            gameSettings.modeSpecificSettings.indoor = createModeProfileFromGameSettings();
+        }
+        if (!gameSettings.modeSpecificSettings.outdoor || typeof gameSettings.modeSpecificSettings.outdoor !== 'object') {
+            gameSettings.modeSpecificSettings.outdoor = createModeProfileFromGameSettings();
+        }
+    }
+}
+
+function saveCurrentModeSpecificSettings(mode = gameSettings.gameMode) {
+    ensureModeSpecificSettingsProfiles();
+    const bucket = getModeProfileBucket(mode);
+    gameSettings.modeSpecificSettings[bucket] = createModeProfileFromGameSettings();
+}
+
+function applyModeSpecificSettings(mode = gameSettings.gameMode) {
+    ensureModeSpecificSettingsProfiles();
+    const bucket = getModeProfileBucket(mode);
+    const profile = gameSettings.modeSpecificSettings[bucket];
+    if (!profile) return;
+    MODE_PROFILE_FIELDS.forEach(field => {
+        if (profile[field] !== undefined) {
+            gameSettings[field] = profile[field];
+        }
+    });
+}
+
+function syncModeSpecificSettingsUI() {
+    const setValueIfExists = (id, value) => {
+        const el = document.getElementById(id);
+        if (el && value !== undefined && value !== null) el.value = String(value);
+    };
+    setValueIfExists('mg-count', gameSettings.mgCount);
+    setValueIfExists('rr-count', gameSettings.rrCount);
+    setValueIfExists('sr-count', gameSettings.srCount);
+    setValueIfExists('sg-count', gameSettings.sgCount);
+    setValueIfExists('mr-count', gameSettings.mrCount);
+    setValueIfExists('medikit-count', gameSettings.medikitCount);
+    setValueIfExists('indoor-light-intensity', gameSettings.indoorLightIntensity);
+    setValueIfExists('voice-volume', Math.round(getVoiceVolumeScale() * 100));
+    const indoorLightValue = document.getElementById('indoor-light-intensity-value');
+    if (indoorLightValue) indoorLightValue.textContent = Number(gameSettings.indoorLightIntensity || 2).toFixed(1);
+    const voiceVolumeValue = document.getElementById('voice-volume-value');
+    if (voiceVolumeValue) voiceVolumeValue.textContent = `${Math.round(getVoiceVolumeScale() * 100)}%`;
+
+    const aiCountRadios = document.querySelectorAll('input[name="ai-count"]');
+    aiCountRadios.forEach(radio => {
+        radio.checked = (radio.value === String(gameSettings.aiCount));
+    });
+
+    const defaultWeaponTargetSelect = document.getElementById('default-weapon-target');
+    const target = defaultWeaponTargetSelect ? defaultWeaponTargetSelect.value : 'player';
+    const selected = getDefaultWeaponForTarget(target);
+    const defaultWeaponChecks = document.querySelectorAll('input[name="default-weapon"]');
+    defaultWeaponChecks.forEach(check => {
+        check.checked = (selected === check.value);
+    });
+}
+
+function normalizeGameMode(mode) {
+    const raw = String(mode ?? '').trim();
+    if (raw === 'battle') return 'arcade';
+    if (raw === 'team') return 'teamArcade';
+    if (raw === 'arcade' || raw === 'ffa' || raw === 'teamArcade' || raw === GAME_MODE_BILLBATTLE || raw === GAME_MODE_BILLBATTLE_TDM) {
+        return raw;
+    }
+    return 'arcade';
+}
+
+function isTimedRespawnMode() {
+    return gameSettings.gameMode === 'arcade'
+        || gameSettings.gameMode === 'ffa'
+        || gameSettings.gameMode === 'teamArcade'
+        || isIndoorTeamDeathmatchMode();
+}
+
+function getBillBattleAICount() {
+    const rawCount = parseInt(gameSettings.aiCount, 10);
+    if (!Number.isFinite(rawCount) || rawCount <= 0) return BILL_BATTLE_AI_COUNT;
+    return rawCount;
+}
+
+let billBattleCurrentSize = BILL_BATTLE_SIZE;
+
+function getBillBattleSafeRoomSize(size) {
+    const parsed = parseInt(size, 10);
+    const requested = Number.isFinite(parsed) ? parsed : 80;
+    const arenaFitMax = Math.floor(((ARENA_PLAY_AREA_RADIUS - 1.0) * Math.SQRT2) - BILL_BATTLE_WALL_THICKNESS);
+    const safeOption = BILL_BATTLE_SIZE_OPTIONS
+        .filter(option => option <= arenaFitMax)
+        .reduce((best, option) => Math.max(best, option), BILL_BATTLE_SIZE_OPTIONS[0]);
+    return Math.min(requested, safeOption);
+}
+
+function normalizeBillBattleSizeSetting(value) {
+    const raw = (value || '80').toString();
+    if (raw === 'random') return 'random';
+    return String(getBillBattleSafeRoomSize(raw));
+}
+
+function normalizeAutoAimSetting(value) {
+    if (value === false || value === 'false' || value === 0 || value === '0') return false;
+    return true;
+}
+
+function resolveBillBattleSizeSetting(forNewRoom = false) {
+    const mode = normalizeBillBattleSizeSetting(gameSettings.billBattleSize);
+    if (mode === 'random') {
+        if (forNewRoom || !billBattleCurrentSize) {
+            const safeOptions = BILL_BATTLE_SIZE_OPTIONS.filter(option => option <= getBillBattleSafeRoomSize(option));
+            const idx = Math.floor(Math.random() * safeOptions.length);
+            billBattleCurrentSize = safeOptions[idx] || 80;
+        }
+        return billBattleCurrentSize;
+    }
+    const parsed = parseInt(mode, 10);
+    if (Number.isFinite(parsed)) {
+        billBattleCurrentSize = getBillBattleSafeRoomSize(parsed);
+        return billBattleCurrentSize;
+    }
+    billBattleCurrentSize = 80;
+    return billBattleCurrentSize;
+}
+
+function applyBillBattleSizeSettings(forNewRoom = false) {
+    const size = resolveBillBattleSizeSetting(forNewRoom);
+    BILL_BATTLE_SIZE = size;
+    BILL_BATTLE_HALF = BILL_BATTLE_SIZE / 2;
+}
+
+function normalizeBillBattleLightingCount(value) {
+    const raw = String(value ?? '').trim().toLowerCase();
+    if (raw === 'all') return String(BILL_BATTLE_LIGHT_COUNT_MAX);
+    if (raw === 'random') return '6';
+    const parsed = parseInt(raw, 10);
+    if (!Number.isFinite(parsed)) return String(BILL_BATTLE_LIGHT_COUNT_DEFAULT);
+    const clamped = Math.max(BILL_BATTLE_LIGHT_COUNT_MIN, Math.min(BILL_BATTLE_LIGHT_COUNT_MAX, parsed));
+    return String(clamped);
+}
+
+function getBillBattleLightingCount() {
+    return parseInt(normalizeBillBattleLightingCount(gameSettings.billBattleLighting), 10);
+}
+
+function normalizeBillBattleObstacleLevel(value) {
+    const level = Number(value);
+    return Number.isFinite(level) ? Math.max(1, Math.min(3, Math.round(level))) : 1;
+}
+
+function getMedikitHealAmount() {
+    return isBillBattleMode() ? 20 : 1;
+}
+
+  function applyBillBattleModeConstraints() {
+    if (!isBillBattleMode()) return;
+    gameSettings.billBattleLighting = normalizeBillBattleLightingCount(gameSettings.billBattleLighting);
+    gameSettings.billBattleObstacles = normalizeBillBattleObstacleLevel(gameSettings.billBattleObstacles);
+    if (gameSettings.playerHP !== 'Infinity') {
+        gameSettings.playerHP = 20;
+    }
+      gameSettings.mapType = 'default';
+      gameSettings.nightModeEnabled = false;
+      gameSettings.timeLapseMode = false;
+      stopTimeLapseMode();
+      applyNightMode(false);
+      const nightModeCheckbox = document.getElementById('night-mode');
+      if (nightModeCheckbox) nightModeCheckbox.checked = false;
+      const timeLapseCheckbox = document.getElementById('time-lapse-mode');
+      if (timeLapseCheckbox) timeLapseCheckbox.checked = false;
+  }
+
+  function updateSettingsAvailabilityForMode() {
+      const isBill = isBillBattleMode();
+      const setDisabled = (el, disabled) => {
+          if (!el) return;
+          el.disabled = disabled;
+          const container = el.closest && el.closest('label') ? el.closest('label') : el;
+          if (container && container.style) {
+              container.style.opacity = disabled ? 0.5 : 1.0;
+          }
+      };
+    const playerHpSelect = document.getElementById('player-hp');
+    const aiHpSelect = document.getElementById('ai-hp');
+    const aiCountRadios = document.querySelectorAll('input[name="ai-count"]');
+    const unifiedMapSelector = document.getElementById('unified-map-selector');
+    const nightModeCheckbox = document.getElementById('night-mode');
+    const timeLapseCheckbox = document.getElementById('time-lapse-mode');
+    const billBattleSizeSelect = document.getElementById('billbattle-size');
+    const billBattleObstaclesSelect = document.getElementById('billbattle-obstacles');
+    const billBattleLightingSelect = document.getElementById('billbattle-lighting');
+    const indoorLightIntensitySlider = document.getElementById('indoor-light-intensity');
+    const indoorLightIntensitySetting = document.getElementById('indoor-light-intensity-setting');
+    const medikitCountSelect = document.getElementById('medikit-count');
+    const medikitSetting = document.getElementById('medikit-setting');
+    const gameDurationRadios = document.querySelectorAll('input[name="game-duration"]');
+
+    if (playerHpSelect) {
+        for (const opt of playerHpSelect.options) {
+            opt.disabled = isBill && !(opt.value === '20' || opt.value === 'Infinity');
+        }
+    }
+    setDisabled(aiHpSelect, false);
+    aiCountRadios.forEach(radio => {
+        radio.disabled = false;
+    });
+    // Map selection remains available in Indoor mode; choosing a map switches to Outdoor PvAI.
+    setDisabled(unifiedMapSelector, false);
+    setDisabled(nightModeCheckbox, isBill);
+    setDisabled(timeLapseCheckbox, isBill);
+    setDisabled(billBattleSizeSelect, !isBill);
+    setDisabled(billBattleObstaclesSelect, !isBill);
+    setDisabled(billBattleLightingSelect, !isBill);
+    setDisabled(indoorLightIntensitySlider, !isBill);
+    if (indoorLightIntensitySetting && indoorLightIntensitySetting.style) {
+        indoorLightIntensitySetting.style.opacity = isBill ? 1.0 : 0.5;
+    }
+    const disableGameDuration = isBill && !isIndoorTeamDeathmatchMode();
+    gameDurationRadios.forEach(radio => {
+        radio.disabled = disableGameDuration;
+        const container = radio.closest && radio.closest('label') ? radio.closest('label') : radio;
+        if (container && container.style) {
+            container.style.opacity = disableGameDuration ? 0.5 : 1.0;
+        }
+    });
+    const medikitEnabled = gameSettings.gameMode === 'arcade' || isBill;
+    setDisabled(medikitCountSelect, !medikitEnabled);
+    if (medikitSetting && medikitSetting.style) {
+        medikitSetting.style.opacity = medikitEnabled ? 1.0 : 0.5;
+    }
+      if (!isBill) {
+          hideBillBattleKillDisplay();
+      }
+  }
+
+function getPlayerMRClipAmmo() {
+    return isDefaultM1Weapon() ? ammoMR : ammoMRClip;
+}
+
+function getPlayerMRDisplayAmmo() {
+    return isDefaultM1Weapon() ? getPlayerMRClipAmmo() : ammoMR;
+}
+
+function setPlayerMRClipAmmo(value) {
+    const clamped = Math.max(0, value);
+    if (isDefaultM1Weapon()) {
+        ammoMR = clamped;
+    } else {
+        ammoMRClip = clamped;
+    }
+}
+
+function isAIDefaultM1Weapon(ai) {
+    if (!ai) return false;
+    const selected = getAIDefaultWeapon(ai);
+    return selected === WEAPON_MR;
+}
+
+function getAIClipAmmo(ai) {
+    if (!ai) return 0;
+    if (isAIDefaultM1Weapon(ai)) return ai.ammoMR;
+    return (ai.userData && ai.userData.mrClipAmmo) ? ai.userData.mrClipAmmo : 0;
+}
+
+function setAIClipAmmo(ai, value) {
+    if (!ai) return;
+    const clamped = Math.max(0, value);
+    if (isAIDefaultM1Weapon(ai)) {
+        ai.ammoMR = clamped;
+        return;
+    }
+    if (!ai.userData) ai.userData = {};
+    ai.userData.mrClipAmmo = clamped;
+}
+
+function applyPlayerDefaultWeaponLoadout() {
+    const selected = gameSettings.defaultWeaponPlayer || WEAPON_MG;
+    currentWeapon = selected;
+    ammoMG = selected === WEAPON_MG ? MAX_AMMO_MG : 0;
+    ammoRR = selected === WEAPON_RR ? MAX_AMMO_RR : 0;
+    ammoSR = selected === WEAPON_SR ? MAX_AMMO_SR : 0;
+    ammoSG = selected === WEAPON_SG ? MAX_AMMO_SG : 0;
+    const isDefaultM1 = selected === WEAPON_MR;
+    ammoMR = isDefaultM1 ? MAX_AMMO_MR : 0;
+    ammoMRClip = isDefaultM1 ? MAX_AMMO_MR : 0;
+}
+
+function isInfiniteDefaultWeaponActiveForAI(ai, weaponType) {
+    if (!ai) return false;
+    return false;
+}
+
+function applyAIDefaultWeaponLoadout(ai, options = {}) {
+    const selected = getAIDefaultWeapon(ai);
+    if (!ai.userData) ai.userData = {};
+    ai.currentWeapon = selected;
+    ai.userData.spawnedWithSniperRifle = selected === WEAPON_SR;
+    ai.ammoMG = selected === WEAPON_MG ? MAX_AMMO_MG : 0;
+    ai.ammoRR = selected === WEAPON_RR ? MAX_AMMO_RR : 0;
+    ai.ammoSR = selected === WEAPON_SR ? MAX_AMMO_SR : 0;
+    ai.ammoSG = selected === WEAPON_SG ? MAX_AMMO_SG : 0;
+    const isDefaultM1 = selected === WEAPON_MR;
+    ai.ammoMR = isDefaultM1 ? MAX_AMMO_MR : 0;
+    ai.userData.mrClipAmmo = isDefaultM1 ? MAX_AMMO_MR : 0;
+    ai.userData.enemyDefeatVoicePlayed = false;
+    // A default sniper restored during spawn/respawn is not a newly acquired
+    // sniper, so keep its armed warning marked as already handled.
+    ai.userData.enemySniperArmedVoicePlayed = !!options.suppressEventVoices && selected === WEAPON_SR;
+    if (!options.suppressEventVoices) {
+        updateEnemySniperArmedVoice(ai);
+    }
+}
+
+function getPlayerFallbackWeapon() {
+    return gameSettings.defaultWeaponPlayer && gameSettings.defaultWeaponPlayer !== WEAPON_PISTOL
+        ? gameSettings.defaultWeaponPlayer
+        : WEAPON_PISTOL;
+}
+
+function switchPlayerToFallbackWeapon() {
+    const fallback = getPlayerFallbackWeapon();
+    currentWeapon = fallback;
+    if (fallback === WEAPON_MG && ammoMG <= 0) ammoMG = MAX_AMMO_MG;
+    if (fallback === WEAPON_RR && ammoRR <= 0) ammoRR = MAX_AMMO_RR;
+    if (fallback === WEAPON_SR && ammoSR <= 0) ammoSR = MAX_AMMO_SR;
+    if (fallback === WEAPON_SG && ammoSG <= 0) ammoSG = MAX_AMMO_SG;
+    if (fallback === WEAPON_MR && getPlayerMRClipAmmo() <= 0 && playerMRReloadUntil <= 0) {
+        setPlayerMRClipAmmo(MAX_AMMO_MR);
+    }
+    updateMobileWeaponButtonVisibility();
+}
+
+function switchAIToFallbackWeapon(ai) {
+    if (!ai) return;
+    if (!ai.userData) ai.userData = {};
+    const defaultWeapon = getAIDefaultWeapon(ai);
+    const fallback = defaultWeapon && defaultWeapon !== WEAPON_PISTOL
+        ? defaultWeapon
+        : WEAPON_PISTOL;
+    ai.currentWeapon = fallback;
+    if (fallback === WEAPON_MG && ai.ammoMG <= 0) ai.ammoMG = MAX_AMMO_MG;
+    if (fallback === WEAPON_RR && ai.ammoRR <= 0) ai.ammoRR = MAX_AMMO_RR;
+    if (fallback === WEAPON_SR && ai.ammoSR <= 0) ai.ammoSR = MAX_AMMO_SR;
+    if (fallback === WEAPON_SG && ai.ammoSG <= 0) ai.ammoSG = MAX_AMMO_SG;
+    if (fallback === WEAPON_MR && ai.ammoMR <= 0) ai.ammoMR = MAX_AMMO_MR;
+    updateEnemySniperArmedVoice(ai);
+}
+
+function showReloadingText(reloadSound = relAudio) {
+    let el = document.getElementById('reloading-text');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'reloading-text';
+        document.body.appendChild(el);
+    }
+    el.style.position = 'fixed';
+    el.style.top = '20%';
+    el.style.left = '50%';
+    el.style.transform = 'translate(-50%, -50%)';
+    el.style.color = '#FFD700';
+    el.style.fontSize = '24px';
+    el.style.fontWeight = 'bold';
+    el.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
+    el.style.display = 'block';
+    el.style.zIndex = '1000';
+    el.textContent = 'RELOADING'; // テキスト内容を追加
+    
+    // 0.5秒遅らせてリロード音を鳴らす
+    setTimeout(() => {
+        if (reloadSound) {
+            reloadSound.cloneNode(true).play().catch(e => {
+                // リロード音の再生に失敗:
+            });
+        }
+    }, 500);
+}
+
+function hideReloadingText() {
+    const el = document.getElementById('reloading-text');
+    if (el) el.style.display = 'none';
+}
+
+function playSound(sound, options = {}) {
+    const id = getSoundId(sound);
+    if (!id) return;
+    if (audioMetaById.size === 0) registerAudioElements();
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+    }
+    let buffer = audioBufferCache.get(id);
+    if (!buffer) {
+        ensureSoundBuffer(id);
+        return;
+    }
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const gain = ctx.createGain();
+    const gainBoost = options.gainBoost || 1.0;
+    gain.gain.value = getSoundBaseGain(id) * gainBoost;
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    source.start(0);
+}
+
+
+let audioCtx;
+const audioBufferCache = new Map(); // ID -> オーディオバッファ
+const audioMetaById = new Map(); // ID -> { URL, 基本ゲイン }
+const audioLoadPromises = new Map(); // ID -> Promise<AudioBuffer>（非同期ロード）
+let audioListenerPos = new THREE.Vector3();
+let audioListenerForward = new THREE.Vector3();
+let audioListenerRight = new THREE.Vector3();
+let audioListenerUp = new THREE.Vector3();
+
+function getAudioContext() {
+    if (!audioCtx) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return null;
+        audioCtx = new Ctx();
+    }
+    return audioCtx;
+}
+
+function updateAudioListenerFromCamera(camera) {
+    const ctx = getAudioContext();
+    if (!ctx || !camera) return;
+
+    const listener = ctx.listener;
+    const position = new THREE.Vector3();
+    const forward = new THREE.Vector3();
+    const right = new THREE.Vector3();
+    const up = new THREE.Vector3();
+
+    camera.updateWorldMatrix(true, false);
+    camera.getWorldPosition(position);
+    camera.getWorldDirection(forward);
+    right.setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+    up.setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+
+    audioListenerPos.copy(position);
+    audioListenerForward.copy(forward);
+    audioListenerUp.copy(up);
+    audioListenerRight.copy(right);
+
+    if (listener.positionX) {
+        listener.positionX.value = position.x;
+        listener.positionY.value = position.y;
+        listener.positionZ.value = position.z;
+        listener.forwardX.value = forward.x;
+        listener.forwardY.value = forward.y;
+        listener.forwardZ.value = forward.z;
+        listener.upX.value = up.x;
+        listener.upY.value = up.y;
+        listener.upZ.value = up.z;
+    } else if (listener.setPosition && listener.setOrientation) {
+        listener.setPosition(position.x, position.y, position.z);
+        listener.setOrientation(forward.x, forward.y, forward.z, up.x, up.y, up.z);
+    }
+}
+
+function mulberry32(seed) {
+    let t = seed >>> 0;
+    return function () {
+        t += 0x6D2B79F5;
+        let r = Math.imul(t ^ (t >>> 15), 1 | t);
+        r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+        return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+function applyRagdollPose(parts, seed = Math.random()) {
+    if (!parts) return;
+    const rand = mulberry32(Math.floor(seed * 1e9));
+    const r = (min, max) => min + (max - min) * rand();
+
+    if (parts.body) parts.body.rotation.set(r(-0.5, 0.5), r(-0.6, 0.6), r(-0.7, 0.7));
+    if (parts.head) parts.head.rotation.set(r(-0.4, 0.4), r(-0.5, 0.5), r(-0.4, 0.4));
+    if (parts.leftArm) parts.leftArm.rotation.set(r(-1.2, 0.3), r(-0.6, 0.6), r(-1.2, 1.2));
+    if (parts.rightArm) parts.rightArm.rotation.set(r(-1.2, 0.3), r(-0.6, 0.6), r(-1.2, 1.2));
+    if (parts.leftElbow) parts.leftElbow.rotation.set(r(0.2, 1.4), 0, 0);
+    if (parts.rightElbow) parts.rightElbow.rotation.set(r(0.2, 1.4), 0, 0);
+    if (parts.leftHip) parts.leftHip.rotation.set(r(-0.6, 0.6), r(-0.4, 0.4), r(-0.6, 0.6));
+    if (parts.rightHip) parts.rightHip.rotation.set(r(-0.6, 0.6), r(-0.4, 0.4), r(-0.6, 0.6));
+    if (parts.leftKnee) parts.leftKnee.rotation.set(r(0.1, 1.5), 0, 0);
+    if (parts.rightKnee) parts.rightKnee.rotation.set(r(0.1, 1.5), 0, 0);
+}
+
+function applyDeathLoosePose(parts, seed = Math.random(), impactVelocity = null, hitPoint = null) {
+    if (parts && parts.modernRig) return GFACharacterModels.beginRagdoll(parts, impactVelocity, hitPoint, seed);
+    if (!parts) return;
+    applyRagdollPose(parts, seed);
+    if (parts.gun) parts.gun.visible = true;
+    alignGunGripToRightHand(parts);
+}
+
+function getRooftopObstacleUnder(position, objectBodyHeight) {
+    let best = null;
+    let bestTop = -Infinity;
+    const horizontalBox = new THREE.Box2(
+        new THREE.Vector2(position.x - 0.2, position.z - 0.2),
+        new THREE.Vector2(position.x + 0.2, position.z + 0.2)
+    );
+    const feetY = position.y - objectBodyHeight / 2;
+    for (const obs of obstacles) {
+        if (!obs.userData || !obs.userData.isRooftop || obs.userData.isHouseRoof) continue;
+        const box = new THREE.Box3().setFromObject(obs);
+        const geom = obs.geometry || (obs.children && obs.children[0] ? obs.children[0].geometry : null);
+        const h = geom ? geom.parameters.height : 4;
+        const top = obs.position.y + h / 2;
+        const obstacleHorizontalBox = new THREE.Box2(
+            new THREE.Vector2(box.min.x, box.min.z),
+            new THREE.Vector2(box.max.x, box.max.z)
+        );
+        if (horizontalBox.intersectsBox(obstacleHorizontalBox) && feetY >= top - 0.1) {
+            if (top > bestTop) {
+                bestTop = top;
+                best = obs;
+            }
+        }
+    }
+    return best;
+}
+
+function getTowerObstacleUnder(position, objectBodyHeight, footBased = false) {
+    let best = null;
+    let bestTop = -Infinity;
+    const feetY = footBased ? position.y : position.y - objectBodyHeight / 2;
+    for (const obs of obstacles) {
+        if (!obs || !obs.userData || !obs.userData.isTower) continue;
+        const geometry = obs.geometry || (obs.children && obs.children[0] ? obs.children[0].geometry : null);
+        const height = geometry && geometry.parameters && geometry.parameters.height ? geometry.parameters.height : DEFAULT_OBSTACLE_HEIGHT * 3;
+        const width = geometry && geometry.parameters && geometry.parameters.width ? geometry.parameters.width : 6;
+        const depth = geometry && geometry.parameters && geometry.parameters.depth ? geometry.parameters.depth : 6;
+        const top = obs.position.y + height / 2;
+        const localX = position.x - obs.position.x;
+        const localZ = position.z - obs.position.z;
+        const isWithinTowerBody = Math.abs(localX) <= (width / 2 + 0.35)
+            && Math.abs(localZ) <= (depth / 2 + 0.35);
+        if (isWithinTowerBody && feetY >= top - 0.35 && feetY <= top + 1.2) {
+            if (top > bestTop) {
+                bestTop = top;
+                best = obs;
+            }
+        }
+    }
+    return best;
+}
+
+function isActorActuallyOnTowerTop(actor, tower, bodyHeight, footBased = false) {
+    if (!actor || !tower || !tower.position) return false;
+    const geometry = tower.geometry || (tower.children && tower.children[0] ? tower.children[0].geometry : null);
+    const width = geometry && geometry.parameters && geometry.parameters.width ? geometry.parameters.width : 6;
+    const depth = geometry && geometry.parameters && geometry.parameters.depth ? geometry.parameters.depth : 6;
+    const height = geometry && geometry.parameters && geometry.parameters.height ? geometry.parameters.height : DEFAULT_OBSTACLE_HEIGHT * 3;
+    const top = tower.position.y + height / 2;
+    const feetY = footBased ? actor.position.y : actor.position.y - bodyHeight / 2;
+    const localX = actor.position.x - tower.position.x;
+    const localZ = actor.position.z - tower.position.z;
+    const horizontalMargin = 0.35;
+    const isWithinTop = Math.abs(localX) <= (width / 2 + horizontalMargin)
+        && Math.abs(localZ) <= (depth / 2 + horizontalMargin);
+    return isWithinTop && feetY >= top - 0.35 && feetY <= top + 1.2;
+}
+
+function getDeathTowerObstacle(actor, bodyHeight, footBased = false) {
+    if (!actor) return null;
+    if (actor.userData
+        && actor.userData.rooftopObstacle
+        && isTowerObstacle(actor.userData.rooftopObstacle)
+        && isActorActuallyOnTowerTop(actor, actor.userData.rooftopObstacle, bodyHeight, footBased)) {
+        return actor.userData.rooftopObstacle;
+    }
+    if (actor === player && player.userData) {
+        if (player.userData.lastClimbedTower
+            && isTowerObstacle(player.userData.lastClimbedTower)
+            && isActorActuallyOnTowerTop(actor, player.userData.lastClimbedTower, bodyHeight, footBased)) {
+            return player.userData.lastClimbedTower;
+        }
+        if (currentGroundObstacle
+            && isTowerObstacle(currentGroundObstacle)
+            && isActorActuallyOnTowerTop(actor, currentGroundObstacle, bodyHeight, footBased)) {
+            return currentGroundObstacle;
+        }
+    }
+    return getTowerObstacleUnder(actor.position, bodyHeight, footBased);
+}
+
+function getTowerEdgeFallInfo(actor, bodyHeight, footBased = false, centerRatioOverride = null) {
+    const tower = getDeathTowerObstacle(actor, bodyHeight, footBased);
+    if (!tower) return null;
+    const geometry = tower.geometry || (tower.children && tower.children[0] ? tower.children[0].geometry : null);
+    const width = geometry && geometry.parameters && geometry.parameters.width ? geometry.parameters.width : 6;
+    const depth = geometry && geometry.parameters && geometry.parameters.depth ? geometry.parameters.depth : 6;
+    const localX = actor.position.x - tower.position.x;
+    const localZ = actor.position.z - tower.position.z;
+    const centerRatio = Number.isFinite(centerRatioOverride) ? centerRatioOverride : 0.34;
+    const isNearCenter = Math.abs(localX) <= (width * 0.5 * centerRatio)
+        && Math.abs(localZ) <= (depth * 0.5 * centerRatio);
+    if (isNearCenter) return null;
+
+    const outward = new THREE.Vector3(localX, 0, localZ);
+    if (outward.lengthSq() < 0.01) {
+        outward.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+    }
+    outward.normalize();
+    return { tower, outward };
+}
+
+  function getDeathTargetPosition(basePos, objectBodyHeight, forAI, rooftopObstacle = null) {
+      let target = basePos.clone();
+    if (rooftopObstacle) {
+        const geometry = rooftopObstacle.geometry || (rooftopObstacle.children && rooftopObstacle.children[0] ? rooftopObstacle.children[0].geometry : null);
+        const width = geometry && geometry.parameters && geometry.parameters.width ? geometry.parameters.width : 6;
+        const depth = geometry && geometry.parameters && geometry.parameters.depth ? geometry.parameters.depth : 6;
+        const halfW = width / 2;
+        const halfD = depth / 2;
+        const center = rooftopObstacle.position.clone();
+        const dir = new THREE.Vector3(target.x - center.x, 0, target.z - center.z);
+        if (dir.lengthSq() < 0.01) {
+            const angle = Math.random() * Math.PI * 2;
+            dir.set(Math.cos(angle), 0, Math.sin(angle));
+        }
+        dir.normalize();
+        const dropDistance = Math.max(halfW, halfD) + 1.5;
+        target.x = center.x + dir.x * dropDistance;
+        target.z = center.z + dir.z * dropDistance;
+    }
+
+    const safe = findSafePositionNear(target, 6, 1, 1.2, objectBodyHeight, 1.2);
+      const groundY = forAI ? getGroundSurfaceY(safe) : getGroundY(safe, objectBodyHeight);
+      const clearance = forAI ? 0.4 : 0.25; // キルカメラ中に倒れた体が地面へ沈み込まないようにする
+      safe.y = groundY + clearance;
+      if (isBillBattleMode() && billBattleCeiling) {
+          const ceilingGeom = billBattleCeiling.geometry;
+          const ceilingH = ceilingGeom && ceilingGeom.parameters && ceilingGeom.parameters.height
+              ? ceilingGeom.parameters.height
+              : BILL_BATTLE_CEILING_THICKNESS;
+          const ceilingMaxY = billBattleCeiling.position.y - (ceilingH / 2) - 0.3;
+          if (safe.y > ceilingMaxY) safe.y = ceilingMaxY;
+      }
+      return safe;
+  }
+
+function isProbablyMobileDevice() {
+    if (navigator.userAgentData && typeof navigator.userAgentData.mobile === 'boolean') {
+        return navigator.userAgentData.mobile;
+    }
+    const ua = navigator.userAgent || '';
+    return /Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini/i.test(ua);
+}
+
+function shouldShowTouchControls() {
+    // タッチ操作UIはモバイル端末のみ表示
+    if (!isProbablyMobileDevice()) return false;
+    if (window.matchMedia) {
+        return window.matchMedia('(pointer: coarse)').matches && window.matchMedia('(hover: none)').matches;
+    }
+    return 'ontouchstart' in window || (navigator.maxTouchPoints || 0) > 0;
+}
+
+function triggerCharacterHitReaction(actor, impactVelocity = null) {
+    if (!window.GFACharacterModels || !GFACharacterModels.hitReaction) return;
+    const model = actor === player ? playerModel : actor;
+    const parts = model && model.userData ? model.userData.parts : null;
+    if (parts && parts.modernRig) GFACharacterModels.hitReaction(parts, impactVelocity, 1);
+}
+
+function syncPCCombatStateDisplay() {
+    const display = document.getElementById('pc-combat-state-display');
+    const zoomState = document.getElementById('pc-zoom-state');
+    const crouchState = document.getElementById('pc-crouch-state');
+    if (!display || !zoomState || !crouchState) return;
+
+    const zoomActive = !!(isRifleZoomed || isScoping);
+    const crouchActive = !!isCrouchingToggle;
+    const canShow = !shouldShowTouchControls()
+        && isGameRunning
+        && !isPaused
+        && !isPlayerDeathPlaying
+        && !isAIDeathPlaying
+        && !document.body.classList.contains('settings-screen-active')
+        && (zoomActive || crouchActive);
+
+    zoomState.style.display = zoomActive ? 'block' : 'none';
+    crouchState.style.display = crouchActive ? 'block' : 'none';
+    display.style.display = canShow ? 'flex' : 'none';
+
+    if (canShow) {
+        const weaponDisplay = document.getElementById('player-weapon-display');
+        const weaponRect = weaponDisplay ? weaponDisplay.getBoundingClientRect() : null;
+        display.style.top = `${Math.ceil(weaponRect && weaponRect.height > 0 ? weaponRect.bottom + 4 : 96)}px`;
+    }
+}
+
+function enforceTouchUIVisibility() {
+    syncPCCombatStateDisplay();
+    if (shouldShowTouchControls()) return;
+    const ids = ['joystick-move', 'fire-button', 'crouch-button', 'zoom-button', 'follow-button'];
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.style.display = 'none';
+            el.style.pointerEvents = 'none';
+        }
+    });
+}
+
+function registerAudioElements() {
+    const allAudio = document.querySelectorAll('audio');
+    allAudio.forEach(el => {
+        if (!el.id) return;
+        if (el.id === 'bgm-opm' || el.id === 'bgm-game') return;
+        const url = el.currentSrc || el.src;
+        if (!url) return;
+        const volumeAttr = el.getAttribute('volume');
+        let baseGain = volumeAttr ? parseFloat(volumeAttr) : el.volume;
+        if (!Number.isFinite(baseGain)) baseGain = 1.0;
+        audioMetaById.set(el.id, { url, baseGain });
+    });
+    const voiceVolume = getVoiceVolumeScale();
+    Object.entries(EVENT_VOICE_TRACKS).forEach(([key, url]) => {
+        audioMetaById.set(`eventVoice:${key}`, { url, baseGain: (EVENT_VOICE_GAIN_OVERRIDES[key] || EVENT_VOICE_GAIN) * voiceVolume });
+    });
+}
+
+function getVoiceVolumeScale() {
+    const value = Number(gameSettings && gameSettings.voiceVolume);
+    return Number.isFinite(value) ? Math.max(0, Math.min(2, value)) : 1.0;
+}
+
+function refreshEventVoiceGains() {
+    const voiceVolume = getVoiceVolumeScale();
+    Object.keys(EVENT_VOICE_TRACKS).forEach(key => {
+        const meta = audioMetaById.get(`eventVoice:${key}`);
+        if (meta) meta.baseGain = (EVENT_VOICE_GAIN_OVERRIDES[key] || EVENT_VOICE_GAIN) * voiceVolume;
+    });
+}
+
+function getSoundId(sound) {
+    if (!sound) return null;
+    if (typeof sound === 'string') return sound;
+    if (sound.id) return sound.id;
+    return null;
+}
+
+function normalizeProjectileSpeedMultiplier(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return 1.0;
+    return Math.max(0.5, Math.min(2.0, num));
+}
+
+function normalizeMoveSpeedMultiplier(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return 1.0;
+    return Math.max(1.0, Math.min(1.5, Math.round(num * 20) / 20));
+}
+
+function getMoveSpeedMultiplier() {
+    return normalizeMoveSpeedMultiplier(gameSettings.moveSpeedMultiplier);
+}
+
+function formatMoveSpeedMultiplier(value) {
+    return normalizeMoveSpeedMultiplier(value).toFixed(2).replace(/0$/, '') + 'x';
+}
+
+function syncMoveSpeedSettingUI() {
+    gameSettings.moveSpeedMultiplier = normalizeMoveSpeedMultiplier(gameSettings.moveSpeedMultiplier);
+    const slider = document.getElementById('move-speed');
+    const valueSpan = document.getElementById('move-speed-value');
+    if (slider) slider.value = String(gameSettings.moveSpeedMultiplier);
+    if (valueSpan) valueSpan.textContent = formatMoveSpeedMultiplier(gameSettings.moveSpeedMultiplier);
+}
+
+function getEffectiveProjectileSpeedMultiplier() {
+    return normalizeProjectileSpeedMultiplier(gameSettings.projectileSpeedMultiplier) * 2.0;
+}
+
+function getSoundBaseGain(id) {
+    const meta = audioMetaById.get(id);
+    return meta ? meta.baseGain : 1.0;
+}
+
+const AUDIO_FETCH_TIMEOUT_MS = 8000;
+const AUDIO_PRELOAD_CONCURRENCY = 6;
+
+function ensureSoundBuffer(id) {
+    if (!id) return null;
+    if (audioBufferCache.has(id)) return audioBufferCache.get(id);
+    const meta = audioMetaById.get(id);
+    if (!meta || !meta.url) return null;
+    if (audioLoadPromises.has(id)) return audioLoadPromises.get(id);
+    const ctx = getAudioContext();
+    if (!ctx) return null;
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = setTimeout(() => {
+        if (controller) controller.abort();
+    }, AUDIO_FETCH_TIMEOUT_MS);
+    const p = fetch(meta.url, controller ? { signal: controller.signal } : undefined)
+        .then(resp => {
+            if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${meta.url}`);
+            return resp.arrayBuffer();
+        })
+        .then(buf => ctx.decodeAudioData(buf))
+        .then(decoded => {
+            audioBufferCache.set(id, decoded);
+            return decoded;
+        })
+        .catch(err => {
+            debugLog('Audio buffer load failed:', id, err);
+            return null;
+        })
+        .finally(() => {
+            clearTimeout(timeoutId);
+            if (audioLoadPromises.get(id) === p) audioLoadPromises.delete(id);
+        });
+    audioLoadPromises.set(id, p);
+    return p;
+}
+
+function waitForNextFrame() {
+    return new Promise(resolve => requestAnimationFrame(() => resolve()));
+}
+
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function setLoadingStatus(text) {
+    const el = document.getElementById('loading-status');
+    if (el) el.textContent = text;
+}
+
+function showLoadingScreen(text = 'Preparing arena...') {
+    const el = document.getElementById('loading-screen');
+    if (!el) return;
+    setLoadingStatus(text);
+    el.style.display = 'flex';
+}
+
+function hideLoadingScreen() {
+    const el = document.getElementById('loading-screen');
+    if (el) el.style.display = 'none';
+}
+
+async function unlockAudioForStart() {
+    const mediaUnlocks = [bgmAudio, gameBgmAudio].filter(audio => audio && audio.paused).map(audio => {
+        const wasMuted = audio.muted;
+        audio.muted = true;
+        let playPromise;
+        try {
+            playPromise = audio.play();
+        } catch (error) {
+            audio.muted = wasMuted;
+            return Promise.resolve();
+        }
+        return Promise.resolve(playPromise).then(() => {
+            audio.pause();
+            audio.currentTime = 0;
+            audio.muted = wasMuted;
+        }).catch(error => {
+            audio.muted = wasMuted;
+            debugLog('BGM unlock failed:', error);
+        });
+    });
+    const ctx = getAudioContext();
+    let contextUnlock = Promise.resolve();
+    if (ctx && ctx.state === 'suspended') {
+        contextUnlock = ctx.resume().catch(error => {
+            debugLog('AudioContext resume failed:', error);
+        });
+    }
+    await Promise.allSettled([...mediaUnlocks, contextUnlock]);
+}
+
+async function preloadRegisteredAudioBuffers() {
+    registerAudioElements();
+    const ids = Array.from(audioMetaById.keys()).filter(id => !audioBufferCache.has(id));
+    if (ids.length === 0) return;
+
+    let nextIndex = 0;
+    let completed = 0;
+    const worker = async () => {
+        while (nextIndex < ids.length) {
+            const id = ids[nextIndex++];
+            const result = ensureSoundBuffer(id);
+            if (result && typeof result.then === 'function') await result;
+            completed++;
+            setLoadingStatus(`Preparing audio... ${completed}/${ids.length}`);
+            if (completed % AUDIO_PRELOAD_CONCURRENCY === 0) await waitForNextFrame();
+        }
+    };
+    const workerCount = Math.min(AUDIO_PRELOAD_CONCURRENCY, ids.length);
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+}
+
+function preloadImageAsset(src, timeoutMs = 6000) {
+    return new Promise(resolve => {
+        const image = new Image();
+        let settled = false;
+        const finish = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeoutId);
+            resolve();
+        };
+        const timeoutId = setTimeout(finish, timeoutMs);
+        image.onload = async () => {
+            if (typeof image.decode === 'function') {
+                try {
+                    await image.decode();
+                } catch (error) {
+                    debugLog('Image decode failed:', src, error);
+                }
+            }
+            finish();
+        };
+        image.onerror = finish;
+        image.src = src;
+    });
+}
+
+async function preloadStageImages() {
+    const images = ['door.png', 'window.png', 'barrel_hazard.png'];
+    let completed = 0;
+    await Promise.all(images.map(async src => {
+        await preloadImageAsset(src);
+        completed++;
+        setLoadingStatus(`Preparing textures... ${completed}/${images.length}`);
+    }));
+}
+
+let gameplayShaderWarmupGroupCache = null;
+
+function createGameplayShaderWarmupGroup() {
+    if (gameplayShaderWarmupGroupCache) {
+        scene.add(gameplayShaderWarmupGroupCache);
+        return gameplayShaderWarmupGroupCache;
+    }
+    const group = new THREE.Group();
+    group.name = 'gameplay-shader-warmup';
+    group.position.set(0, -10000, 0);
+
+    const addMesh = (geometry, material, options = {}) => {
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.frustumCulled = false;
+        mesh.castShadow = !!options.castShadow;
+        mesh.receiveShadow = !!options.receiveShadow;
+        group.add(mesh);
+        return mesh;
+    };
+
+    addMesh(
+        new THREE.CylinderGeometry(0.05, 0.05, 0.5, 8),
+        new THREE.MeshBasicMaterial({ color: 0xffff66 })
+    );
+    addMesh(
+        new THREE.SphereGeometry(0.12, 8, 6),
+        new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.9,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        })
+    );
+    addMesh(
+        new THREE.BoxGeometry(0.04, 0.04, 0.3),
+        new THREE.MeshBasicMaterial({
+            color: 0xffdd88,
+            transparent: true,
+            opacity: 0.9,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        })
+    );
+    addMesh(
+        new THREE.SphereGeometry(0.12, 8, 8),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 })
+    );
+    // Upload reusable combat-effect buffers before the first shot or explosion.
+    if (typeof RUNTIME_EFFECT_GEOMETRIES !== 'undefined') {
+        addMesh(
+            RUNTIME_EFFECT_GEOMETRIES.projectile,
+            new THREE.MeshBasicMaterial({ color: 0xffff66 })
+        );
+        addMesh(
+            RUNTIME_EFFECT_GEOMETRIES.muzzleCone,
+            new THREE.MeshBasicMaterial({
+                color: 0xffdd88,
+                transparent: true,
+                opacity: 0.9,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            })
+        );
+        addMesh(
+            RUNTIME_EFFECT_GEOMETRIES.groundFlash,
+            new THREE.MeshBasicMaterial({
+                map: RUNTIME_GROUND_FLASH_TEXTURE,
+                transparent: true,
+                opacity: 0.8,
+                depthWrite: false,
+                side: THREE.DoubleSide
+            })
+        );
+        addMesh(
+            RUNTIME_EFFECT_GEOMETRIES.explosion,
+            new THREE.MeshBasicMaterial({ color: 0xff8800, transparent: true, opacity: 0.8 })
+        );
+        addMesh(
+            RUNTIME_EFFECT_GEOMETRIES.smoke,
+            new THREE.MeshBasicMaterial({ color: 0x555555, transparent: true, opacity: 0.7 })
+        );
+        addMesh(
+            RUNTIME_EFFECT_GEOMETRIES.rocketTrail,
+            new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 })
+        );
+    }
+    addMesh(
+        new THREE.BoxGeometry(0.5, 0.5, 0.5),
+        new THREE.MeshLambertMaterial({ color: 0x777777 }),
+        { castShadow: true, receiveShadow: true }
+    );
+    for (let planeCount = 1; planeCount <= 3; planeCount++) {
+        const clippingPlanes = Array.from({ length: planeCount }, (_, index) => (
+            new THREE.Plane(new THREE.Vector3(index === 0 ? 1 : 0, index === 1 ? 1 : 0, index === 2 ? 1 : 0), 0)
+        ));
+        addMesh(
+            new THREE.BoxGeometry(0.5, 0.5, 0.5),
+            new THREE.MeshLambertMaterial({
+                color: 0x888888,
+                clippingPlanes,
+                clipShadows: true
+            }),
+            { castShadow: true, receiveShadow: true }
+        );
+    }
+
+    scene.add(group);
+    gameplayShaderWarmupGroupCache = group;
+    return group;
+}
+
+function detachGameplayShaderWarmupGroup(group) {
+    if (!group) return;
+    if (group.parent) group.parent.remove(group);
+}
+
+function warmCharacterRigsForGameStart() {
+    if (!window.GFACharacterModels || typeof GFACharacterModels.pose !== 'function') return;
+    const characters = [...ais];
+    if (playerModel) characters.push(playerModel);
+    const modernCharacters = characters.filter(character => (
+        character && character.userData && character.userData.parts && character.userData.parts.modernRig
+    ));
+    if (modernCharacters.length === 0) return;
+
+    for (let step = 0; step < 12; step++) {
+        const moving = step % 3 !== 0;
+        const crouching = step % 4 === 3;
+        const lowerBodyYaw = moving ? Math.sin(step * 0.7) * 0.45 : 0;
+        for (const character of modernCharacters) {
+            GFACharacterModels.pose(
+                character.userData.parts,
+                crouching,
+                step * 0.075,
+                moving,
+                lowerBodyYaw
+            );
+            character.updateMatrixWorld(true);
+        }
+    }
+
+    for (const character of modernCharacters) {
+        const parts = character.userData.parts;
+        const isAICharacter = character !== playerModel;
+        GFACharacterModels.pose(parts, isAICharacter && !!character.isCrouching, 0, false, 0);
+        if (parts.gun) parts.gun.visible = isAICharacter;
+        character.updateMatrixWorld(true);
+    }
+}
+
+async function warmRendererForGameStart() {
+    const shaderWarmupGroup = createGameplayShaderWarmupGroup();
+    const meshCullStates = [];
+    try {
+        warmCharacterRigsForGameStart();
+        scene.traverse(object => {
+            if (!object || !object.isMesh) return;
+            meshCullStates.push({ object, frustumCulled: object.frustumCulled });
+            object.frustumCulled = false;
+        });
+        scene.updateMatrixWorld(true);
+        camera.updateMatrixWorld(true);
+        if (typeof renderer.compileAsync === 'function') {
+            await Promise.race([renderer.compileAsync(scene, camera), delay(6000)]);
+        } else {
+            renderer.compile(scene, camera);
+        }
+        renderer.render(scene, camera);
+        await waitForNextFrame();
+        renderer.render(scene, camera);
+        await waitForNextFrame();
+    } finally {
+        for (const state of meshCullStates) state.object.frustumCulled = state.frustumCulled;
+        detachGameplayShaderWarmupGroup(shaderWarmupGroup);
+    }
+}
+
+async function prepareGameStartAssets() {
+    const audioUnlock = unlockAudioForStart();
+    showLoadingScreen('Preparing audio...');
+    await waitForNextFrame();
+    await audioUnlock;
+    await preloadRegisteredAudioBuffers();
+    if (!gameSettings.bgmMute) {
+        currentBgmTrack = pickNextBgmTrack();
+        if (currentBgmTrack) {
+            const soundId = `gameBgm:${currentBgmTrack}`;
+            audioMetaById.set(soundId, { url: currentBgmTrack, baseGain: 1.0 });
+            await ensureSoundBuffer(soundId);
+        }
+    }
+    setLoadingStatus('Preparing textures...');
+    await Promise.all([preloadStageImages(), Promise.race([fontLoadPromise, delay(6000)])]);
+    initializeTextures();
+    await waitForNextFrame();
+}
+
+function playEventVoice(key, options = {}) {
+    const id = `eventVoice:${key}`;
+    if (audioMetaById.size === 0) registerAudioElements();
+    if (!audioMetaById.has(id)) return;
+    if (!audioBufferCache.has(id)) {
+        ensureSoundBuffer(id);
+        const pending = audioLoadPromises.get(id);
+        if (pending) {
+            pending.then(() => playSound(id, options));
+        }
+        return;
+    }
+    playSound(id, options);
+}
+
+const eventVoiceTimers = new Set();
+const EVENT_VOICE_QUEUE_GAP_MS = 180;
+let eventVoiceQueueAvailableAt = 0;
+
+function getEventVoiceDurationMs(key) {
+    const buffer = audioBufferCache.get(`eventVoice:${key}`);
+    return buffer && Number.isFinite(buffer.duration)
+        ? Math.ceil(buffer.duration * 1000)
+        : 1500;
+}
+
+function enqueueEventVoice(key, options = {}) {
+    const now = performance.now();
+    const startDelay = Math.max(0, eventVoiceQueueAvailableAt - now);
+    const playAt = now + startDelay;
+    eventVoiceQueueAvailableAt = playAt + getEventVoiceDurationMs(key) + EVENT_VOICE_QUEUE_GAP_MS;
+    const timer = setTimeout(() => {
+        eventVoiceTimers.delete(timer);
+        playEventVoice(key, options);
+    }, startDelay);
+    eventVoiceTimers.add(timer);
+    return timer;
+}
+
+function scheduleEventVoice(key, delayMs = EVENT_VOICE_DELAY_MS, options = {}) {
+    const timer = setTimeout(() => {
+        eventVoiceTimers.delete(timer);
+        if (options.allowOverlap) {
+            playEventVoice(key, options);
+        } else {
+            enqueueEventVoice(key, options);
+        }
+    }, delayMs);
+    eventVoiceTimers.add(timer);
+    return timer;
+}
+
+function clearScheduledEventVoices() {
+    eventVoiceTimers.forEach(timer => clearTimeout(timer));
+    eventVoiceTimers.clear();
+    eventVoiceQueueAvailableAt = 0;
+}
+
+function playSpatialSound(sound, position, options = {}) {
+    if (!sound || !position) return;
+
+    const id = getSoundId(sound);
+    if (!id) return;
+    if (audioMetaById.size === 0) registerAudioElements();
+
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+    }
+
+    let buffer = audioBufferCache.get(id);
+    if (!buffer) {
+        ensureSoundBuffer(id);
+        return;
+    }
+
+    const toSound = position.clone().sub(audioListenerPos);
+    const distance = Math.max(0.001, toSound.length());
+    const dir = toSound.clone().normalize();
+    const panRaw = audioListenerRight.dot(dir);
+    const frontDot = audioListenerForward.dot(dir);
+    const panScale = options.panScale || 1.2;
+    const pan = Math.max(-1, Math.min(1, panRaw * panScale));
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+
+    // Positional effects must start from mono; stereo source balance can otherwise oppose the calculated pan.
+    const mono = ctx.createGain();
+    mono.channelCount = 1;
+    mono.channelCountMode = 'explicit';
+    mono.channelInterpretation = 'speakers';
+
+    const panner = ctx.createStereoPanner();
+    panner.pan.value = pan;
+
+    const lowpass = ctx.createBiquadFilter();
+    lowpass.type = 'lowpass';
+    lowpass.frequency.value = frontDot < 0 ? (options.behindCutoff || 9000) : (options.frontCutoff || 14000);
+
+    const distanceGain = 1 / (1 + (distance / (options.distanceScale || 25)));
+    const behindGain = frontDot < 0 ? (options.behindGain || 0.97) : 1.0;
+    const gainBoost = options.gainBoost || 1.0;
+    const gain = ctx.createGain();
+    gain.gain.value = getSoundBaseGain(id) * distanceGain * behindGain * gainBoost;
+
+    source.connect(mono);
+    mono.connect(panner);
+    panner.connect(lowpass);
+    lowpass.connect(gain);
+    gain.connect(ctx.destination);
+
+    source.start(0);
+}
+
+function playReloadSound() {
+    if (relAudio) {
+        setTimeout(() => {
+            playSound(relAudio);
+        }, 500);
+    }
+}
+
+let lastFloatingCleanupTime = 0;
+const FLOATING_CLEANUP_INTERVAL = 5.0; // 5秒ごとにクリーンアップ
+let lastFireTime = -FIRE_RATE_PISTOL;
+let isMouseButtonDown = false;
+let isScoping = false;
+let isRifleZoomed = false;
+let zoomedWeaponType = null;
+const SNIPER_SCOPE_FOV = 26;
+const WEAPON_ZOOM_FOV = {
+    [WEAPON_PISTOL]: 46,
+    [WEAPON_MG]: 44,
+    [WEAPON_RR]: 46,
+    [WEAPON_SG]: 46,
+    [WEAPON_MR]: 42
+};
+let isElevating = false;
+let elevatingTargetY = 0;
+let elevatingTargetObstacle = null;
+let elevatingLandingPosition = null;
+let playerVelocityY = 0;
+
+function resetPlayerLadderState() {
+    isElevating = false;
+    elevatingTargetY = 0;
+    elevatingTargetObstacle = null;
+    elevatingLandingPosition = null;
+    isIgnoringTowerCollision = false;
+    ignoreTowerTimer = 0;
+    lastClimbedTower = null;
+    playerVelocityY = 0;
+    if (player && player.userData) {
+        player.userData.onRooftop = false;
+        player.userData.lastClimbedTower = null;
+        player.userData.ladderReentryBlockedUntil = 0;
+    }
+}
+const PLAYER_LADDER_VIEW_OFFSET = 0.7;
+const PLAYER_ROOFTOP_LANDING_INSET = 0.9;
+let currentGroundObstacle = null;
+  let billBattleFloor = 1;
+const BILL_BATTLE_HI_SCORE_STORAGE_KEY = 'billBattleHiScoreRoom';
+  let billBattleElevatorDoors = [];
+  let billBattleElevatorOpen = false;
+  let billBattleTransitioning = false;
+let billBattleAIRespawnQueue = [];
+let billBattleCeiling = null;
+let billBattleLights = [];
+let billBattleAISpawnPoints = [];
+let billBattleAISpawnIndex = 0;
+let billBattlePlayerEntered = false;
+let billBattleTotalKills = 0;
+let billBattleKillsRemaining = 0;
+let billBattleRemainingSpawns = 0;
+let billBattleLastPlayerSpawn = null;
+let billBattleRoomClearVoicePlayed = false;
+const BILL_BATTLE_ATTACK_DELAY = 2.0;
+let billBattleAttackDelayUntil = null;
+let billBattleAttackActivated = false;
+  let billBattleTotalLightCount = 0;
+  let billBattleBaseAmbient = null;
+  let billBattleBaseDirectional = null;
+
+function getBillBattleHiScoreRoom() {
+    const raw = localStorage.getItem(BILL_BATTLE_HI_SCORE_STORAGE_KEY);
+    const value = parseInt(raw, 10);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function updateBillBattleHiScoreDisplay() {
+    const el = document.getElementById('billbattle-hi-score-display');
+    if (!el) return;
+    el.textContent = `Hi-Sc ${getBillBattleHiScoreRoom()}ROOM`;
+}
+
+function recordBillBattleRoomScore() {
+    if (!isClassicBillBattleMode()) return;
+    const clearedRoom = Math.max(0, billBattleFloor - 1);
+    if (clearedRoom <= getBillBattleHiScoreRoom()) return;
+    localStorage.setItem(BILL_BATTLE_HI_SCORE_STORAGE_KEY, String(clearedRoom));
+    updateBillBattleHiScoreDisplay();
+}
+
+  function ensureBuildStamp() {
+      const el = document.getElementById('build-stamp');
+      if (el && el.parentNode) {
+          el.parentNode.removeChild(el);
+      }
+  }
+let isIgnoringTowerCollision = false;
+let ignoreTowerTimer = 0;
+let lastClimbedTower = null;
+let isFollowingPlayerMode = false; // AI追従モードフラグ
+let playerBreadcrumbs = [];
+let timeSinceLastBreadcrumb = 0;
+const AUTO_AIM_RANGE = 160;
+const AUTO_AIM_ANGLE = Math.PI / 8;
+const AUTO_AIM_STRENGTH = 0.28;
+const AUTO_AIM_SCOPE_ACQUIRE_RADIUS_NDC = 0.42;
+const AUTO_AIM_SCOPE_KEEP_RADIUS_NDC = 0.55;
+const AUTO_AIM_SCOPE_SHOT_RADIUS_NDC = 0.12;
+const CROUCH_AUTO_AIM_ACQUIRE_RADIUS_NDC = 0.48;
+const CROUCH_AUTO_AIM_KEEP_RADIUS_NDC = 0.60;
+let sniperAutoAimLockedAI = null;
+let sniperAutoAimSmoothedPoint = null;
+
+function getPlayerSniperAutoAimTuning() {
+    const crouched = !!isCrouchingToggle;
+    return {
+        acquireRadius: crouched ? CROUCH_AUTO_AIM_ACQUIRE_RADIUS_NDC : AUTO_AIM_SCOPE_ACQUIRE_RADIUS_NDC,
+        keepRadius: crouched ? CROUCH_AUTO_AIM_KEEP_RADIUS_NDC : AUTO_AIM_SCOPE_KEEP_RADIUS_NDC,
+        followRate: crouched ? 22.0 : 14.0,
+        strengthMultiplier: crouched ? 1.5 : 1.0,
+        maxYawSpeed: crouched ? 2.55 : 1.8,
+        maxPitchSpeed: crouched ? 2.1 : 1.45
+    };
+}
+
+function getPlayerAutoAimCandidateForAI(ai, maxScreenRadius) {
+    if (!ai || ai.hp <= 0) return null;
+    const isTeamModeOrTeamArcade = isTeamBasedAIMode();
+    if (isTeamModeOrTeamArcade && ai.team === 'player') return null;
+
+    const origin = new THREE.Vector3();
+    camera.getWorldPosition(origin);
+    const evaluateAimPoint = (point, headPriority = 0) => {
+        if (!point || !checkLineOfSight(origin, point, obstacles)) return null;
+        const toTarget = new THREE.Vector3().subVectors(point, origin);
+        const dist = toTarget.length();
+        if (dist > AUTO_AIM_RANGE || dist < 0.001) return null;
+
+        const ndc = point.clone().project(camera);
+        if (ndc.z <= 0 || ndc.z >= 1) return null;
+        const screenR = Math.sqrt(ndc.x * ndc.x + ndc.y * ndc.y);
+        if (screenR > maxScreenRadius) return null;
+
+        return { ai, point: point.clone(), score: screenR + dist * 0.002 + headPriority };
+    };
+
+    const headCandidate = evaluateAimPoint(getAIHeadPos(ai), -0.04);
+    if (headCandidate) return headCandidate;
+
+    let best = null;
+    let bestScore = Infinity;
+    const aimPoints = [getAIUpperTorsoPos(ai), getAILowerTorsoPos(ai)];
+    for (const p of aimPoints) {
+        const cand = evaluateAimPoint(p, 0.08);
+        if (cand && cand.score < bestScore) {
+            bestScore = cand.score;
+            best = cand;
+        }
+    }
+    return best;
+}
+function getPlayerAutoAimTargetPoint() {
+    const tuning = getPlayerSniperAutoAimTuning();
+    // 1) ロック中はその敵だけ追従（別の敵へ飛ばない）
+    if (sniperAutoAimLockedAI) {
+        const locked = getPlayerAutoAimCandidateForAI(sniperAutoAimLockedAI, tuning.keepRadius);
+        if (locked) return locked.point;
+        sniperAutoAimLockedAI = null;
+        return null; // このフレームは再取得しない（急な飛び防止）
+    }
+
+    // 2) 未ロック時は中央付近に入った敵だけ取得
+    let best = null;
+    let bestScore = Infinity;
+    for (const ai of ais) {
+        const cand = getPlayerAutoAimCandidateForAI(ai, tuning.acquireRadius);
+        if (!cand) continue;
+        if (cand.score < bestScore) {
+            bestScore = cand.score;
+            best = cand;
+        }
+    }
+    if (best) {
+        sniperAutoAimLockedAI = best.ai;
+        return best.point;
+    }
+    return null;
+}
+
+function getPlayerSniperShotTargetPoint() {
+    if (currentWeapon !== WEAPON_SR || !normalizeAutoAimSetting(gameSettings.autoAim)) return null;
+    if (sniperAutoAimLockedAI) {
+        const locked = getPlayerAutoAimCandidateForAI(sniperAutoAimLockedAI, AUTO_AIM_SCOPE_SHOT_RADIUS_NDC);
+        if (locked) return locked.point;
+    }
+    if (sniperAutoAimSmoothedPoint) {
+        const origin = new THREE.Vector3();
+        camera.getWorldPosition(origin);
+        const ndc = sniperAutoAimSmoothedPoint.clone().project(camera);
+        const screenR = Math.sqrt(ndc.x * ndc.x + ndc.y * ndc.y);
+        if (ndc.z > 0 && ndc.z < 1 && screenR <= AUTO_AIM_SCOPE_SHOT_RADIUS_NDC && checkLineOfSight(origin, sniperAutoAimSmoothedPoint, obstacles)) {
+            return sniperAutoAimSmoothedPoint.clone();
+        }
+    }
+    let best = null;
+    let bestScore = Infinity;
+    for (const ai of ais) {
+        const cand = getPlayerAutoAimCandidateForAI(ai, AUTO_AIM_SCOPE_SHOT_RADIUS_NDC);
+        if (!cand) continue;
+        if (cand.score < bestScore) {
+            bestScore = cand.score;
+            best = cand;
+        }
+    }
+    return best ? best.point.clone() : null;
+}
+
+function projectPointToScopeNDC(point, yaw, pitch) {
+    const oldYaw = player.rotation.y;
+    const oldPitch = camera.rotation.x;
+    player.rotation.y = yaw;
+    camera.rotation.x = THREE.MathUtils.clamp(pitch, -Math.PI / 2 + 0.1, Math.PI / 2 - 0.1);
+    player.updateMatrixWorld(true);
+    camera.updateMatrixWorld(true);
+    const ndc = point.clone().project(camera);
+    player.rotation.y = oldYaw;
+    camera.rotation.x = oldPitch;
+    player.updateMatrixWorld(true);
+    camera.updateMatrixWorld(true);
+    return ndc;
+}
+
+function updateSniperScopeAutoAim(delta) {
+    if (!isScoping || currentWeapon !== WEAPON_SR || !normalizeAutoAimSetting(gameSettings.autoAim)) {
+        sniperAutoAimLockedAI = null;
+        sniperAutoAimSmoothedPoint = null;
+        return;
+    }
+    const targetPoint = getPlayerAutoAimTargetPoint();
+    if (!targetPoint) {
+        sniperAutoAimSmoothedPoint = null;
+        return;
+    }
+
+    const tuning = getPlayerSniperAutoAimTuning();
+    if (!sniperAutoAimSmoothedPoint) sniperAutoAimSmoothedPoint = targetPoint.clone();
+    const followAlpha = 1.0 - Math.exp(-tuning.followRate * delta);
+    sniperAutoAimSmoothedPoint.lerp(targetPoint, followAlpha);
+
+    const ndcNow = sniperAutoAimSmoothedPoint.clone().project(camera);
+    if (ndcNow.z <= 0 || ndcNow.z >= 1) {
+        sniperAutoAimLockedAI = null;
+        sniperAutoAimSmoothedPoint = null;
+        return;
+    }
+    const currentRadius = Math.hypot(ndcNow.x, ndcNow.y);
+    if (currentRadius > tuning.keepRadius) {
+        // スコープ外へ引っ張らない
+        sniperAutoAimLockedAI = null;
+        sniperAutoAimSmoothedPoint = null;
+        return;
+    }
+
+    // 画面誤差ベースで吸い付ける（敵を中心へ寄せる）
+    const yawGain = 8.5 * AUTO_AIM_STRENGTH * tuning.strengthMultiplier;
+    const pitchGain = 7.0 * AUTO_AIM_STRENGTH * tuning.strengthMultiplier;
+    const yawStep = THREE.MathUtils.clamp(Math.abs(ndcNow.x) * yawGain * delta, 0, tuning.maxYawSpeed * delta);
+    const pitchStep = THREE.MathUtils.clamp(Math.abs(ndcNow.y) * pitchGain * delta, 0, tuning.maxPitchSpeed * delta);
+
+    if (yawStep > 0.00001) {
+        const yaw = player.rotation.y;
+        const pitch = camera.rotation.x;
+        const plus = projectPointToScopeNDC(sniperAutoAimSmoothedPoint, yaw + yawStep, pitch);
+        const minus = projectPointToScopeNDC(sniperAutoAimSmoothedPoint, yaw - yawStep, pitch);
+        if (Math.abs(plus.x) < Math.abs(ndcNow.x) || Math.abs(minus.x) < Math.abs(ndcNow.x)) {
+            player.rotation.y = (Math.abs(plus.x) <= Math.abs(minus.x)) ? yaw + yawStep : yaw - yawStep;
+        }
+    }
+
+    if (pitchStep > 0.00001) {
+        const yaw = player.rotation.y;
+        const pitch = camera.rotation.x;
+        const now = projectPointToScopeNDC(sniperAutoAimSmoothedPoint, yaw, pitch);
+        const plus = projectPointToScopeNDC(sniperAutoAimSmoothedPoint, yaw, pitch + pitchStep);
+        const minus = projectPointToScopeNDC(sniperAutoAimSmoothedPoint, yaw, pitch - pitchStep);
+        if (Math.abs(plus.y) < Math.abs(now.y) || Math.abs(minus.y) < Math.abs(now.y)) {
+            camera.rotation.x = (Math.abs(plus.y) <= Math.abs(minus.y)) ? pitch + pitchStep : pitch - pitchStep;
+        }
+    }
+}
+
+// カメラ回転の制限を追加
+camera.rotation.x = THREE.MathUtils.clamp(camera.rotation.x, -Math.PI / 2 + 0.1, Math.PI / 2 - 0.1);
+let font;
+const fontLoader = new THREE.FontLoader();
+const fontLoadPromise = new Promise(resolve => {
+    fontLoader.load('./vendor/helvetiker_regular.typeface.json', function (loadedFont) {
+        font = loadedFont;
+        resolve();
+    }, undefined, function (error) {
+        console.error('Error loading font:', error);
+        resolve();
+    });
+});
+
+function saveSettings() {
+    const autoAimRadio = document.querySelector('input[name="auto-aim"]:checked');
+    gameSettings.autoAim = autoAimRadio ? (autoAimRadio.value === 'true') : normalizeAutoAimSetting(gameSettings.autoAim);
+    gameSettings.killCamMode = document.querySelector('input[name="killcam-mode"]:checked').value;
+    if (gameSettings.killCamMode === 'all') gameSettings.killCamMode = 'playerOnly';
+    const aiShotSlider = document.getElementById('ai-shot-slider');
+    if (aiShotSlider) {
+        gameSettings.aiAimPrecision = normalizeAIAimPrecision(aiShotSlider.value);
+        gameSettings.aiShotLevel = gameSettings.aiAimPrecision >= 75 ? 'pro' : 'ama';
+    }
+    const moveSpeedSlider = document.getElementById('move-speed');
+    if (moveSpeedSlider) {
+        gameSettings.moveSpeedMultiplier = normalizeMoveSpeedMultiplier(moveSpeedSlider.value);
+    }
+    const barrelRespawnRadio = document.querySelector('input[name="barrel-respawn"]:checked');
+    if (barrelRespawnRadio) {
+        gameSettings.barrelRespawn = barrelRespawnRadio.value === 'true';
+    }
+    gameSettings.nightModeEnabled = document.getElementById('night-mode').checked;
+    gameSettings.nightModeIntensity = document.getElementById('night-mode-intensity').value;
+    gameSettings.timeLapseMode = document.getElementById('time-lapse-mode').checked;
+    const indoorLightSlider = document.getElementById('indoor-light-intensity');
+    if (indoorLightSlider) {
+        gameSettings.indoorLightIntensity = parseFloat(indoorLightSlider.value);
+    }
+    const voiceVolumeSlider = document.getElementById('voice-volume');
+    if (voiceVolumeSlider) {
+        gameSettings.voiceVolume = Math.max(0, Math.min(2, parseFloat(voiceVolumeSlider.value) / 100));
+        refreshEventVoiceGains();
+    }
+    const billBattleSizeSelect = document.getElementById('billbattle-size');
+    if (billBattleSizeSelect) {
+        gameSettings.billBattleSize = billBattleSizeSelect.value;
+    }
+    const billBattleObstaclesSelect = document.getElementById('billbattle-obstacles');
+    if (billBattleObstaclesSelect) {
+        gameSettings.billBattleObstacles = normalizeBillBattleObstacleLevel(billBattleObstaclesSelect.value);
+    }
+    const billBattleLightingSelect = document.getElementById('billbattle-lighting');
+    if (billBattleLightingSelect) {
+        gameSettings.billBattleLighting = normalizeBillBattleLightingCount(billBattleLightingSelect.value);
+    }
+    // 旧フィールドとの整合性を維持
+    gameSettings.defaultWeapon = gameSettings.defaultWeaponPlayer || WEAPON_MG;
+    gameSettings.defaultWeaponAI = gameSettings.defaultWeaponAI1 || WEAPON_MG;
+    saveCurrentModeSpecificSettings(gameSettings.gameMode);
+    applyBillBattleModeConstraints();
+    updateSettingsAvailabilityForMode();
+    localStorage.setItem('gameSettings', JSON.stringify(gameSettings));
+}
+
+function normalizeAIShotLevel(level) {
+    const raw = String(level ?? '').trim().toLowerCase();
+    if (raw === 'pro' || raw === 'professional') return 'pro';
+    if (raw === 'ama' || raw === 'amature' || raw === 'amateur') return 'ama';
+    return 'pro';
+}
+
+function normalizeAIAimPrecision(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 80;
+    return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function getAIAimPrecision01() {
+    return normalizeAIAimPrecision(gameSettings.aiAimPrecision) / 100;
+}
+
+function isAIAimAmatureLevel() {
+    return getAIAimPrecision01() < 0.72;
+}
+
+function loadSettings() {
+    // loadSettings() が呼び出された
+    const savedSettings = localStorage.getItem('gameSettings');
+    if (savedSettings) {
+        const parsedSavedSettings = JSON.parse(savedSettings);
+        if (parsedSavedSettings.gameMode === undefined) {
+            parsedSavedSettings.gameMode = 'arcade';
+        }
+        parsedSavedSettings.gameMode = normalizeGameMode(parsedSavedSettings.gameMode);
+        if (parsedSavedSettings.killCamMode === undefined) {
+            parsedSavedSettings.killCamMode = 'playerOnly';
+        }
+        if (parsedSavedSettings.killCamMode === 'all') {
+            parsedSavedSettings.killCamMode = 'playerOnly';
+        }
+        if (parsedSavedSettings.aiShotLevel === undefined) {
+            parsedSavedSettings.aiShotLevel = 'pro';
+        }
+        parsedSavedSettings.aiShotLevel = normalizeAIShotLevel(parsedSavedSettings.aiShotLevel);
+        if (parsedSavedSettings.aiAimPrecision === undefined) {
+            parsedSavedSettings.aiAimPrecision = 80;
+        }
+        parsedSavedSettings.aiAimPrecision = normalizeAIAimPrecision(parsedSavedSettings.aiAimPrecision);
+        if (parsedSavedSettings.bgmMute === undefined) {
+            parsedSavedSettings.bgmMute = false;
+        }
+        if (parsedSavedSettings.bgmMute === undefined) {
+            parsedSavedSettings.bgmMute = false;
+        }
+        if (parsedSavedSettings.nightModeLightIntensity === undefined) {
+            parsedSavedSettings.nightModeLightIntensity = 2.0;
+        }
+        if (parsedSavedSettings.indoorLightIntensity === undefined) {
+            parsedSavedSettings.indoorLightIntensity = 2.0;
+        }
+        if (parsedSavedSettings.voiceVolume === undefined) {
+            parsedSavedSettings.voiceVolume = 1.0;
+        }
+        if (parsedSavedSettings.medikitCount === undefined) {
+            parsedSavedSettings.medikitCount = 5;
+        }
+        const savedVersionRaw = Number(parsedSavedSettings.settingsVersion);
+        const savedVersion = Number.isFinite(savedVersionRaw) ? savedVersionRaw : 0;
+        if (savedVersion < SETTINGS_VERSION && parsedSavedSettings.medikitCount === 0) {
+            parsedSavedSettings.medikitCount = 5;
+        }
+        if (savedVersion < 4) {
+            parsedSavedSettings.projectileSpeedMultiplier = normalizeProjectileSpeedMultiplier((parsedSavedSettings.projectileSpeedMultiplier ?? 2.0) / 2.0);
+        } else {
+            parsedSavedSettings.projectileSpeedMultiplier = normalizeProjectileSpeedMultiplier(parsedSavedSettings.projectileSpeedMultiplier);
+        }
+        parsedSavedSettings.moveSpeedMultiplier = normalizeMoveSpeedMultiplier(
+            parsedSavedSettings.moveSpeedMultiplier ?? gameSettings.moveSpeedMultiplier
+        );
+        if (parsedSavedSettings.bgmVolume === undefined) {
+            parsedSavedSettings.bgmVolume = 0.7;
+        }
+        parsedSavedSettings.bgmVolume = normalizeBgmVolume(parsedSavedSettings.bgmVolume);
+        if (parsedSavedSettings.bgmMode === undefined) {
+            parsedSavedSettings.bgmMode = 'order';
+        }
+        if (parsedSavedSettings.bgmMode !== 'order' && parsedSavedSettings.bgmMode !== 'random') {
+            parsedSavedSettings.bgmMode = 'order';
+        }
+        if (parsedSavedSettings.bgmPlayMode === undefined) {
+            parsedSavedSettings.bgmPlayMode = 'stage';
+        }
+        if (parsedSavedSettings.bgmPlayMode !== 'stage' && parsedSavedSettings.bgmPlayMode !== 'continuous') {
+            parsedSavedSettings.bgmPlayMode = 'stage';
+        }
+        if (!Array.isArray(parsedSavedSettings.bgmEnabledTracks)) {
+            parsedSavedSettings.bgmEnabledTracks = BGM_TRACKS.slice();
+        } else {
+            const enabledSet = new Set(parsedSavedSettings.bgmEnabledTracks);
+            const filteredTracks = BGM_TRACKS.filter(track => enabledSet.has(track));
+            if (parsedSavedSettings.bgmEnabledTracks.length === 0) {
+                parsedSavedSettings.bgmEnabledTracks = [];
+            } else if (filteredTracks.length === 0) {
+                parsedSavedSettings.bgmEnabledTracks = BGM_TRACKS.slice();
+            } else {
+                parsedSavedSettings.bgmEnabledTracks = filteredTracks;
+            }
+        }
+        parsedSavedSettings.settingsVersion = SETTINGS_VERSION;
+        parsedSavedSettings.autoAim = normalizeAutoAimSetting(parsedSavedSettings.autoAim);
+        if (parsedSavedSettings.billBattleSize === undefined) {
+            parsedSavedSettings.billBattleSize = '80';
+        }
+        parsedSavedSettings.billBattleSize = normalizeBillBattleSizeSetting(parsedSavedSettings.billBattleSize);
+        parsedSavedSettings.billBattleObstacles = normalizeBillBattleObstacleLevel(parsedSavedSettings.billBattleObstacles);
+        if (parsedSavedSettings.billBattleLighting === undefined) {
+            parsedSavedSettings.billBattleLighting = String(BILL_BATTLE_LIGHT_COUNT_DEFAULT);
+        }
+        parsedSavedSettings.billBattleLighting = normalizeBillBattleLightingCount(parsedSavedSettings.billBattleLighting);
+        if (parsedSavedSettings.defaultWeaponPlayer === undefined) {
+            parsedSavedSettings.defaultWeaponPlayer = parsedSavedSettings.defaultWeapon || WEAPON_MG;
+        }
+        if (parsedSavedSettings.defaultWeaponAI === undefined) {
+            parsedSavedSettings.defaultWeaponAI = parsedSavedSettings.defaultWeapon || WEAPON_MG;
+        }
+        if (parsedSavedSettings.defaultWeaponAI1 === undefined) {
+            parsedSavedSettings.defaultWeaponAI1 = parsedSavedSettings.defaultWeaponAI || parsedSavedSettings.defaultWeapon || WEAPON_MG;
+        }
+        if (parsedSavedSettings.defaultWeaponAI2 === undefined) {
+            parsedSavedSettings.defaultWeaponAI2 = parsedSavedSettings.defaultWeaponAI || parsedSavedSettings.defaultWeapon || WEAPON_MG;
+        }
+        if (parsedSavedSettings.defaultWeaponAI3 === undefined) {
+            parsedSavedSettings.defaultWeaponAI3 = parsedSavedSettings.defaultWeaponAI || parsedSavedSettings.defaultWeapon || WEAPON_MG;
+        }
+        if (parsedSavedSettings.mrCount === undefined) {
+            parsedSavedSettings.mrCount = gameSettings.mrCount;
+        }
+        if (!parsedSavedSettings.modeSpecificSettings || typeof parsedSavedSettings.modeSpecificSettings !== 'object') {
+            const currentProfile = {
+                defaultWeaponPlayer: parsedSavedSettings.defaultWeaponPlayer,
+                defaultWeaponAI: parsedSavedSettings.defaultWeaponAI,
+                defaultWeaponAI1: parsedSavedSettings.defaultWeaponAI1,
+                defaultWeaponAI2: parsedSavedSettings.defaultWeaponAI2,
+                defaultWeaponAI3: parsedSavedSettings.defaultWeaponAI3,
+                mgCount: parsedSavedSettings.mgCount,
+                rrCount: parsedSavedSettings.rrCount,
+                srCount: parsedSavedSettings.srCount,
+                sgCount: parsedSavedSettings.sgCount,
+                mrCount: parsedSavedSettings.mrCount,
+                aiCount: parsedSavedSettings.aiCount,
+                medikitCount: parsedSavedSettings.medikitCount
+            };
+            parsedSavedSettings.modeSpecificSettings = {
+                indoor: { ...currentProfile },
+                outdoor: { ...currentProfile }
+            };
+        }
+        Object.assign(gameSettings, parsedSavedSettings);
+        gameSettings.moveSpeedMultiplier = normalizeMoveSpeedMultiplier(gameSettings.moveSpeedMultiplier);
+        gameSettings.aiShotLevel = normalizeAIShotLevel(gameSettings.aiShotLevel);
+        gameSettings.gameMode = normalizeGameMode(gameSettings.gameMode);
+        gameSettings.aiAimPrecision = normalizeAIAimPrecision(gameSettings.aiAimPrecision);
+        gameSettings.billBattleLighting = normalizeBillBattleLightingCount(gameSettings.billBattleLighting);
+        ensureModeSpecificSettingsProfiles();
+        applyModeSpecificSettings(gameSettings.gameMode);
+        // buttonPositionsが存在しない場合の既定値を追加
+        if (parsedSavedSettings.buttonPositions === undefined) {
+            parsedSavedSettings.buttonPositions = {
+                fire: { right: '20px', bottom: '120px' },
+                crouch: { right: '20px', bottom: '55px' },
+                zoom: { right: '90px', bottom: '55px' },
+                joystick: { left: '10%', bottom: '10%' }
+            };
+        } else if (parsedSavedSettings.buttonPositions.joystick === undefined) {
+            parsedSavedSettings.buttonPositions.joystick = { left: '10%', bottom: '10%' };
+        } else if (parsedSavedSettings.buttonPositions.zoom === undefined) {
+            parsedSavedSettings.buttonPositions.zoom = { right: '90px', bottom: '55px' };
+        }
+
+        Object.assign(gameSettings, parsedSavedSettings);
+        gameSettings.moveSpeedMultiplier = normalizeMoveSpeedMultiplier(gameSettings.moveSpeedMultiplier);
+        gameSettings.aiShotLevel = normalizeAIShotLevel(gameSettings.aiShotLevel);
+        // buttonPositionsが存在しない場合の既定値を追加
+        document.querySelectorAll('input[name="game-mode"]').forEach(radio => {
+            radio.checked = (radio.value === gameSettings.gameMode);
+        });
+        applyBillBattleModeConstraints();
+        updateSettingsAvailabilityForMode();
+        document.querySelectorAll('input[name="killcam-mode"]').forEach(radio => {
+            radio.checked = (radio.value === gameSettings.killCamMode);
+        });
+        const aiShotSlider = document.getElementById('ai-shot-slider');
+        const aiShotValue = document.getElementById('ai-shot-value');
+        if (aiShotSlider) aiShotSlider.value = String(gameSettings.aiAimPrecision);
+        if (aiShotValue) aiShotValue.textContent = String(gameSettings.aiAimPrecision);
+        document.querySelectorAll('input[name="barrel-respawn"]').forEach(radio => {
+            radio.checked = (radio.value === String(gameSettings.barrelRespawn));
+        });
+        const defaultWeaponTargetSelect = document.getElementById('default-weapon-target');
+        if (defaultWeaponTargetSelect) {
+            defaultWeaponTargetSelect.value = 'player';
+        }
+        const defaultWeaponChecks = document.querySelectorAll('input[name="default-weapon"]');
+        const syncWeaponUI = () => {
+            const target = defaultWeaponTargetSelect ? defaultWeaponTargetSelect.value : 'player';
+            const selected = getDefaultWeaponForTarget(target);
+            defaultWeaponChecks.forEach(check => {
+                check.checked = (selected === check.value);
+            });
+        };
+        syncWeaponUI();
+        defaultWeaponTargetSelect.addEventListener('change', syncWeaponUI);
+        syncModeSpecificSettingsUI();
+        const nightModeIntensitySlider = document.getElementById('night-mode-intensity');
+        const nightModeIntensityValueSpan = document.getElementById('night-mode-intensity-value');
+        if (nightModeIntensitySlider) {
+            nightModeIntensitySlider.value = gameSettings.nightModeLightIntensity;
+        }
+        if (nightModeIntensityValueSpan) {
+            nightModeIntensityValueSpan.textContent = gameSettings.nightModeLightIntensity;
+        }
+        const indoorLightIntensitySlider = document.getElementById('indoor-light-intensity');
+        const indoorLightIntensityValueSpan = document.getElementById('indoor-light-intensity-value');
+        if (indoorLightIntensitySlider) indoorLightIntensitySlider.value = gameSettings.indoorLightIntensity;
+        if (indoorLightIntensityValueSpan) indoorLightIntensityValueSpan.textContent = Number(gameSettings.indoorLightIntensity || 2).toFixed(1);
+        const voiceVolumeSlider = document.getElementById('voice-volume');
+        const voiceVolumeValueSpan = document.getElementById('voice-volume-value');
+        if (voiceVolumeSlider) voiceVolumeSlider.value = Math.round(getVoiceVolumeScale() * 100);
+        if (voiceVolumeValueSpan) voiceVolumeValueSpan.textContent = `${Math.round(getVoiceVolumeScale() * 100)}%`;
+        const billBattleSizeSelect = document.getElementById('billbattle-size');
+        if (billBattleSizeSelect) billBattleSizeSelect.value = gameSettings.billBattleSize || '80';
+        const billBattleObstaclesSelect = document.getElementById('billbattle-obstacles');
+        if (billBattleObstaclesSelect) billBattleObstaclesSelect.value = String(normalizeBillBattleObstacleLevel(gameSettings.billBattleObstacles));
+        const billBattleLightingSelect = document.getElementById('billbattle-lighting');
+        if (billBattleLightingSelect) billBattleLightingSelect.value = normalizeBillBattleLightingCount(gameSettings.billBattleLighting);
+        
+        // タイムラプスモード
+        const timeLapseCheckbox = document.getElementById('time-lapse-mode');
+        if (timeLapseCheckbox) {
+            timeLapseCheckbox.checked = gameSettings.timeLapseMode || false;
+            
+            // 有効化されている場合はタイムラプスモードを開始
+            if (gameSettings.timeLapseMode) {
+                setTimeout(() => {
+                    startTimeLapseMode();
+                }, 1000); // すべての読込完了を待つための遅延
+            }
+        }
+        
+        // ナイトモードのチェックボックス初期化
+        const nightModeCheckbox = document.getElementById('night-mode');
+        if (nightModeCheckbox) {
+            nightModeCheckbox.checked = gameSettings.nightModeEnabled || false;
+            applyNightMode(gameSettings.nightModeEnabled);
+        }
+
+        // ボタン位置を適用
+        if (gameSettings.buttonPositions) {
+            const fireButton = document.getElementById('fire-button');
+            const crouchButton = document.getElementById('crouch-button');
+            const zoomButton = document.getElementById('zoom-button');
+            const joystickZone = document.getElementById('joystick-move');
+            const followButton = document.getElementById('follow-button');
+            const previewFireButton = document.getElementById('preview-fire-button');
+            const previewCrouchButton = document.getElementById('preview-crouch-button');
+            const previewZoomButton = document.getElementById('preview-zoom-button');
+            const previewJoystickZone = document.getElementById('preview-joystick-zone');
+            const previewFollowButton = document.getElementById('preview-follow-button');
+
+            const setupButton = (btn, position, displayType = 'flex') => {
+                if (!btn) return;
+                if (shouldShowTouchControls()) {
+                    if (position) {
+                        btn.style.right = position.right || '';
+                        btn.style.bottom = position.bottom || '';
+                        btn.style.left = position.left || '';
+                        btn.style.top = position.top || '';
+                        // startGameで表示制御するため、ここではdisplayを設定しない
+                    }
+                } else {
+                    btn.style.display = 'none'; // PCなら非表示
+                }
+            };
+            
+            setupButton(fireButton, gameSettings.buttonPositions.fire, 'flex');
+            setupButton(crouchButton, gameSettings.buttonPositions.crouch, 'flex');
+            setupButton(zoomButton, gameSettings.buttonPositions.zoom, 'flex');
+            setupButton(joystickZone, gameSettings.buttonPositions.joystick, 'block');
+            setupButton(followButton, gameSettings.buttonPositions.follow, 'flex');
+
+            if (previewFireButton && gameSettings.buttonPositions.fire) {
+                previewFireButton.style.right = gameSettings.buttonPositions.fire.right;
+                previewFireButton.style.bottom = gameSettings.buttonPositions.fire.bottom;
+                previewFireButton.style.left = '';
+                previewFireButton.style.top = '';
+            }
+            if (previewCrouchButton && gameSettings.buttonPositions.crouch) {
+                previewCrouchButton.style.right = gameSettings.buttonPositions.crouch.right;
+                previewCrouchButton.style.bottom = gameSettings.buttonPositions.crouch.bottom;
+                previewCrouchButton.style.left = '';
+                previewCrouchButton.style.top = '';
+            }
+            if (previewZoomButton && gameSettings.buttonPositions.zoom) {
+                previewZoomButton.style.right = gameSettings.buttonPositions.zoom.right;
+                previewZoomButton.style.bottom = gameSettings.buttonPositions.zoom.bottom;
+                previewZoomButton.style.left = '';
+                previewZoomButton.style.top = '';
+            }
+            if (previewJoystickZone && gameSettings.buttonPositions.joystick) {
+                previewJoystickZone.style.left = gameSettings.buttonPositions.joystick.left;
+                previewJoystickZone.style.bottom = gameSettings.buttonPositions.joystick.bottom;
+                previewJoystickZone.style.right = '';
+                previewJoystickZone.style.top = '';
+            }
+            if (previewFollowButton && gameSettings.buttonPositions.follow) {
+                previewFollowButton.style.right = gameSettings.buttonPositions.follow.right;
+                previewFollowButton.style.bottom = gameSettings.buttonPositions.follow.bottom;
+                previewFollowButton.style.left = '';
+                previewFollowButton.style.top = '';
+            }
+        }
+    }
+}
+
+// マップごとの設定を保存する関数
+function getMapSaveDisplayName(mapName) {
+    if (mapName !== 'DefaultMap') return mapName;
+    const mode = normalizeGameMode(gameSettings.gameMode);
+    if (mode === GAME_MODE_BILLBATTLE) return 'Indoor 1V3';
+    if (mode === GAME_MODE_BILLBATTLE_TDM) return 'Indoor TDM';
+    return mapName;
+}
+
+function saveMapSettings(mapName) {
+    if (!mapName || mapName === '') {
+        alert('マップが選択されていません。');
+        return;
+    }
+    // UI上の最新値をgameSettingsへ反映してから保存
+    saveSettings();
+    
+    // 現在の設定をコピーして保存（マップ識別情報は除外）
+    const settingsToSave = { ...gameSettings };
+    delete settingsToSave.customMapName;
+    delete settingsToSave.mapType;
+    
+    const key = `mapSettings_${mapName}`;
+    localStorage.setItem(key, JSON.stringify(settingsToSave));
+    alert(`設定を保存しました: ${getMapSaveDisplayName(mapName)}`);
+}
+
+// マップごとの設定を読み込む関数
+function loadMapSettings(mapName) {
+    if (!mapName || mapName === '') {
+        return;
+    }
+    
+    const key = `mapSettings_${mapName}`;
+    const savedSettings = localStorage.getItem(key);
+    if (!savedSettings) {
+        return; // 保存された設定がない場合は何もしない
+    }
+    
+    try {
+        const parsedSavedSettings = JSON.parse(savedSettings);
+        // 現在選択中のマップ情報は保持（マップ設定ロードで上書きしない）
+        const currentMapType = gameSettings.mapType;
+        const currentCustomMapName = gameSettings.customMapName;
+        const currentGameMode = gameSettings.gameMode;
+        
+        // デフォルト値の設定
+        if (parsedSavedSettings.gameMode === undefined) {
+            parsedSavedSettings.gameMode = 'arcade';
+        }
+        parsedSavedSettings.gameMode = normalizeGameMode(parsedSavedSettings.gameMode);
+        if (parsedSavedSettings.killCamMode === undefined) {
+            parsedSavedSettings.killCamMode = 'playerOnly';
+        }
+        if (parsedSavedSettings.killCamMode === 'all') {
+            parsedSavedSettings.killCamMode = 'playerOnly';
+        }
+        if (parsedSavedSettings.aiShotLevel === undefined) {
+            parsedSavedSettings.aiShotLevel = 'pro';
+        }
+        parsedSavedSettings.aiShotLevel = normalizeAIShotLevel(parsedSavedSettings.aiShotLevel);
+        if (parsedSavedSettings.aiAimPrecision === undefined) {
+            parsedSavedSettings.aiAimPrecision = 80;
+        }
+        parsedSavedSettings.aiAimPrecision = normalizeAIAimPrecision(parsedSavedSettings.aiAimPrecision);
+        if (parsedSavedSettings.nightModeLightIntensity === undefined) {
+            parsedSavedSettings.nightModeLightIntensity = 0.8;
+        }
+        if (parsedSavedSettings.indoorLightIntensity === undefined) {
+            parsedSavedSettings.indoorLightIntensity = 2.0;
+        }
+        if (parsedSavedSettings.voiceVolume === undefined) {
+            parsedSavedSettings.voiceVolume = 1.0;
+        }
+        if (parsedSavedSettings.medikitCount === undefined) {
+            parsedSavedSettings.medikitCount = 5;
+        }
+        const savedVersionRaw = Number(parsedSavedSettings.settingsVersion);
+        const savedVersion = Number.isFinite(savedVersionRaw) ? savedVersionRaw : 0;
+        if (savedVersion < SETTINGS_VERSION && parsedSavedSettings.medikitCount === 0) {
+            parsedSavedSettings.medikitCount = 5;
+        }
+        if (savedVersion < 4) {
+            parsedSavedSettings.projectileSpeedMultiplier = normalizeProjectileSpeedMultiplier((parsedSavedSettings.projectileSpeedMultiplier ?? 2.0) / 2.0);
+        } else {
+            parsedSavedSettings.projectileSpeedMultiplier = normalizeProjectileSpeedMultiplier(parsedSavedSettings.projectileSpeedMultiplier);
+        }
+        parsedSavedSettings.moveSpeedMultiplier = normalizeMoveSpeedMultiplier(
+            parsedSavedSettings.moveSpeedMultiplier ?? gameSettings.moveSpeedMultiplier
+        );
+        if (parsedSavedSettings.bgmVolume === undefined) {
+            parsedSavedSettings.bgmVolume = 0.7;
+        }
+        parsedSavedSettings.bgmVolume = normalizeBgmVolume(parsedSavedSettings.bgmVolume);
+        if (parsedSavedSettings.bgmMode === undefined) {
+            parsedSavedSettings.bgmMode = 'order';
+        }
+        if (parsedSavedSettings.bgmMode !== 'order' && parsedSavedSettings.bgmMode !== 'random') {
+            parsedSavedSettings.bgmMode = 'order';
+        }
+        if (parsedSavedSettings.bgmPlayMode === undefined) {
+            parsedSavedSettings.bgmPlayMode = 'stage';
+        }
+        if (parsedSavedSettings.bgmPlayMode !== 'stage' && parsedSavedSettings.bgmPlayMode !== 'continuous') {
+            parsedSavedSettings.bgmPlayMode = 'stage';
+        }
+        if (!Array.isArray(parsedSavedSettings.bgmEnabledTracks)) {
+            parsedSavedSettings.bgmEnabledTracks = BGM_TRACKS.slice();
+        } else {
+            const enabledSet = new Set(parsedSavedSettings.bgmEnabledTracks);
+            const filteredTracks = BGM_TRACKS.filter(track => enabledSet.has(track));
+            if (parsedSavedSettings.bgmEnabledTracks.length === 0) {
+                parsedSavedSettings.bgmEnabledTracks = [];
+            } else if (filteredTracks.length === 0) {
+                parsedSavedSettings.bgmEnabledTracks = BGM_TRACKS.slice();
+            } else {
+                parsedSavedSettings.bgmEnabledTracks = filteredTracks;
+            }
+        }
+        parsedSavedSettings.settingsVersion = SETTINGS_VERSION;
+        parsedSavedSettings.autoAim = normalizeAutoAimSetting(parsedSavedSettings.autoAim);
+        if (parsedSavedSettings.billBattleSize === undefined) {
+            parsedSavedSettings.billBattleSize = '80';
+        }
+        parsedSavedSettings.billBattleSize = normalizeBillBattleSizeSetting(parsedSavedSettings.billBattleSize);
+        parsedSavedSettings.billBattleObstacles = normalizeBillBattleObstacleLevel(
+            parsedSavedSettings.billBattleObstacles === undefined ? gameSettings.billBattleObstacles : parsedSavedSettings.billBattleObstacles
+        );
+        if (parsedSavedSettings.defaultWeaponPlayer === undefined) {
+            parsedSavedSettings.defaultWeaponPlayer = parsedSavedSettings.defaultWeapon || WEAPON_MG;
+        }
+        if (parsedSavedSettings.defaultWeaponAI === undefined) {
+            parsedSavedSettings.defaultWeaponAI = parsedSavedSettings.defaultWeapon || WEAPON_MG;
+        }
+        if (parsedSavedSettings.defaultWeaponAI1 === undefined) {
+            parsedSavedSettings.defaultWeaponAI1 = parsedSavedSettings.defaultWeaponAI || parsedSavedSettings.defaultWeapon || WEAPON_MG;
+        }
+        if (parsedSavedSettings.defaultWeaponAI2 === undefined) {
+            parsedSavedSettings.defaultWeaponAI2 = parsedSavedSettings.defaultWeaponAI || parsedSavedSettings.defaultWeapon || WEAPON_MG;
+        }
+        if (parsedSavedSettings.defaultWeaponAI3 === undefined) {
+            parsedSavedSettings.defaultWeaponAI3 = parsedSavedSettings.defaultWeaponAI || parsedSavedSettings.defaultWeapon || WEAPON_MG;
+        }
+                if (parsedSavedSettings.billBattleLighting === undefined) {
+                    parsedSavedSettings.billBattleLighting = String(BILL_BATTLE_LIGHT_COUNT_DEFAULT);
+                }
+                parsedSavedSettings.billBattleLighting = normalizeBillBattleLightingCount(parsedSavedSettings.billBattleLighting);
+                if (parsedSavedSettings.buttonPositions === undefined) {
+                    parsedSavedSettings.buttonPositions = {
+                        fire: { right: '20px', bottom: '120px' },
+                        crouch: { right: '20px', bottom: '55px' },
+                        joystick: { left: '10%', bottom: '10%' },
+                        zoom: { right: '90px', bottom: '55px' },
+                        follow: { right: '20px', bottom: '190px' } // 追加
+                    };
+                } else if (parsedSavedSettings.buttonPositions.joystick === undefined) {
+                    parsedSavedSettings.buttonPositions.joystick = { left: '10%', bottom: '10%' };
+                } else if (parsedSavedSettings.buttonPositions.follow === undefined) { // 追加
+                    parsedSavedSettings.buttonPositions.follow = { right: '20px', bottom: '190px' }; // 追加
+                } else if (parsedSavedSettings.buttonPositions.zoom === undefined) {
+                    parsedSavedSettings.buttonPositions.zoom = { right: '90px', bottom: '55px' };
+                }
+                
+                // gameSettingsに適用
+                Object.assign(gameSettings, parsedSavedSettings);
+                gameSettings.moveSpeedMultiplier = normalizeMoveSpeedMultiplier(gameSettings.moveSpeedMultiplier);
+                gameSettings.mapType = currentMapType;
+                gameSettings.customMapName = currentCustomMapName;
+                gameSettings.gameMode = currentGameMode;
+                gameSettings.aiShotLevel = normalizeAIShotLevel(gameSettings.aiShotLevel);
+                gameSettings.gameMode = normalizeGameMode(gameSettings.gameMode);
+                gameSettings.aiAimPrecision = normalizeAIAimPrecision(gameSettings.aiAimPrecision);
+                gameSettings.billBattleLighting = normalizeBillBattleLightingCount(gameSettings.billBattleLighting);
+                
+                // UIに反映
+                document.getElementById('player-hp').value = gameSettings.playerHP;
+                document.getElementById('ai-hp').value = gameSettings.aiHP;
+                syncMoveSpeedSettingUI();
+                const projectileSpeedSlider = document.getElementById('projectile-speed');
+                const projectileSpeedValueSpan = document.getElementById('projectile-speed-value');
+                if (projectileSpeedSlider) {
+                    projectileSpeedSlider.value = gameSettings.projectileSpeedMultiplier;
+                }
+                if (projectileSpeedValueSpan) {
+                    projectileSpeedValueSpan.textContent = gameSettings.projectileSpeedMultiplier + 'x';
+                }
+                document.getElementById('mg-count').value = gameSettings.mgCount;
+                document.getElementById('rr-count').value = gameSettings.rrCount;
+                document.getElementById('sr-count').value = gameSettings.srCount;
+                if (document.getElementById('sg-count')) document.getElementById('sg-count').value = gameSettings.sgCount;
+                if (document.getElementById('mr-count')) document.getElementById('mr-count').value = gameSettings.mrCount;
+                const defaultWeaponTargetSelect = document.getElementById('default-weapon-target');
+                if (defaultWeaponTargetSelect) {
+                    defaultWeaponTargetSelect.value = 'player';
+                }
+                const defaultWeaponChecks = document.querySelectorAll('input[name="default-weapon"]');
+                const syncWeaponUI = () => {
+                    const target = defaultWeaponTargetSelect ? defaultWeaponTargetSelect.value : 'player';
+                    const selected = getDefaultWeaponForTarget(target);
+                    defaultWeaponChecks.forEach(check => {
+                        check.checked = (selected === check.value);
+                    });
+                };
+                syncWeaponUI();
+                defaultWeaponTargetSelect.addEventListener('change', syncWeaponUI);
+                if (document.getElementById('medikit-count')) document.getElementById('medikit-count').value = gameSettings.medikitCount;
+                document.querySelectorAll('input[name="ai-count"]').forEach(radio => {
+                    radio.checked = (radio.value === String(gameSettings.aiCount));
+                });
+                const billBattleSizeSelect = document.getElementById('billbattle-size');
+                if (billBattleSizeSelect) billBattleSizeSelect.value = gameSettings.billBattleSize || '80';
+                const billBattleObstaclesSelect = document.getElementById('billbattle-obstacles');
+                if (billBattleObstaclesSelect) billBattleObstaclesSelect.value = String(normalizeBillBattleObstacleLevel(gameSettings.billBattleObstacles));
+                const billBattleLightingSelect = document.getElementById('billbattle-lighting');
+                if (billBattleLightingSelect) billBattleLightingSelect.value = normalizeBillBattleLightingCount(gameSettings.billBattleLighting);
+                // 統合マップセレクターを更新
+                updateUnifiedMapSelector();
+                document.querySelectorAll('input[name="auto-aim"]').forEach(radio => {
+                    radio.checked = (radio.value === String(gameSettings.autoAim));
+                });
+                const aiShotSlider = document.getElementById('ai-shot-slider');
+                const aiShotValue = document.getElementById('ai-shot-value');
+                if (aiShotSlider) aiShotSlider.value = String(gameSettings.aiAimPrecision);
+                if (aiShotValue) aiShotValue.textContent = String(gameSettings.aiAimPrecision);
+                document.querySelectorAll('input[name="night-mode"]').forEach(radio => {
+                    radio.checked = (radio.value === String(gameSettings.nightModeEnabled));
+                });
+                document.querySelectorAll('input[name="game-mode"]').forEach(radio => {
+                    radio.checked = (radio.value === gameSettings.gameMode);
+                });
+                applyBillBattleModeConstraints();
+                updateSettingsAvailabilityForMode();
+                document.querySelectorAll('input[name="killcam-mode"]').forEach(radio => {
+                    radio.checked = (radio.value === gameSettings.killCamMode);
+                });
+                document.querySelectorAll('input[name="barrel-respawn"]').forEach(radio => {
+                    radio.checked = (radio.value === String(gameSettings.barrelRespawn));
+                });
+                const nightModeIntensitySlider = document.getElementById('night-mode-intensity');
+                const nightModeIntensityValueSpan = document.getElementById('night-mode-intensity-value');
+                if (nightModeIntensitySlider) {
+                    nightModeIntensitySlider.value = gameSettings.nightModeLightIntensity;
+                }
+                if (nightModeIntensityValueSpan) {
+                    nightModeIntensityValueSpan.textContent = gameSettings.nightModeLightIntensity;
+                }
+                const indoorLightIntensitySlider = document.getElementById('indoor-light-intensity');
+                const indoorLightIntensityValueSpan = document.getElementById('indoor-light-intensity-value');
+                if (indoorLightIntensitySlider) indoorLightIntensitySlider.value = gameSettings.indoorLightIntensity;
+                if (indoorLightIntensityValueSpan) indoorLightIntensityValueSpan.textContent = Number(gameSettings.indoorLightIntensity || 2).toFixed(1);
+                const voiceVolumeSlider = document.getElementById('voice-volume');
+                const voiceVolumeValueSpan = document.getElementById('voice-volume-value');
+                if (voiceVolumeSlider) voiceVolumeSlider.value = Math.round(getVoiceVolumeScale() * 100);
+                if (voiceVolumeValueSpan) voiceVolumeValueSpan.textContent = `${Math.round(getVoiceVolumeScale() * 100)}%`;
+                
+                // ボタン位置を適用
+                if (gameSettings.buttonPositions) {
+                    const fireButton = document.getElementById('fire-button');
+                    const crouchButton = document.getElementById('crouch-button');
+                    const zoomButton = document.getElementById('zoom-button');
+                    const joystickZone = document.getElementById('joystick-move');
+                    const followButton = document.getElementById('follow-button'); // 追加
+                    const previewFireButton = document.getElementById('preview-fire-button');
+                    const previewCrouchButton = document.getElementById('preview-crouch-button');
+                    const previewZoomButton = document.getElementById('preview-zoom-button');
+                    const previewJoystickZone = document.getElementById('preview-joystick-zone');
+                    const previewFollowButton = document.getElementById('preview-follow-button'); // 追加
+        
+
+
+                    if (fireButton) {
+                        if (shouldShowTouchControls()) {
+                            if (gameSettings.buttonPositions.fire) {
+                                fireButton.style.right = gameSettings.buttonPositions.fire.right;
+                                fireButton.style.bottom = gameSettings.buttonPositions.fire.bottom;
+                                fireButton.style.left = '';
+                                fireButton.style.top = '';
+                                fireButton.style.display = 'flex'; // モバイルなら表示
+                                // loadSettings(): fireButtonをflex表示（モバイル）
+                            }
+                        } else {
+                            fireButton.style.display = 'none'; // PCなら非表示
+                            // loadSettings(): fireButtonを非表示（PC）
+                        }
+                    }
+                    if (crouchButton) {
+                        if (shouldShowTouchControls()) {
+                            if (gameSettings.buttonPositions.crouch) {
+                                crouchButton.style.right = gameSettings.buttonPositions.crouch.right;
+                                crouchButton.style.bottom = gameSettings.buttonPositions.crouch.bottom;
+                                crouchButton.style.left = '';
+                                crouchButton.style.top = '';
+                                crouchButton.style.display = 'flex'; // モバイルなら表示
+                                // loadSettings(): crouchButtonをflex表示（モバイル）
+                            }
+                        } else {
+                            crouchButton.style.display = 'none'; // PCなら非表示
+                            // loadSettings(): crouchButtonを非表示（PC）
+                        }
+                    }
+                    if (zoomButton) {
+                        if (shouldShowTouchControls()) {
+                            if (gameSettings.buttonPositions.zoom) {
+                                zoomButton.style.right = gameSettings.buttonPositions.zoom.right;
+                                zoomButton.style.bottom = gameSettings.buttonPositions.zoom.bottom;
+                                zoomButton.style.left = '';
+                                zoomButton.style.top = '';
+                                zoomButton.style.display = 'flex';
+                            }
+                        } else {
+                            zoomButton.style.display = 'none';
+                        }
+                    }
+                    if (joystickZone) {
+                        if (shouldShowTouchControls()) {
+                            if (gameSettings.buttonPositions.joystick) {
+                                joystickZone.style.left = gameSettings.buttonPositions.joystick.left;
+                                joystickZone.style.bottom = gameSettings.buttonPositions.joystick.bottom;
+                                joystickZone.style.right = '';
+                                joystickZone.style.top = '';
+                                joystickZone.style.display = 'block'; // モバイルなら表示
+                                // loadSettings(): joystickZoneをblock表示（モバイル）
+                            }
+                        } else {
+                            joystickZone.style.display = 'none'; // PCなら非表示
+                            // loadSettings(): joystickZoneを非表示（PC）
+                        }
+                    }
+                    if (followButton) { // 追加
+                        if (shouldShowTouchControls()) {
+                            if (gameSettings.buttonPositions.follow) {
+                                followButton.style.right = gameSettings.buttonPositions.follow.right;
+                                followButton.style.bottom = gameSettings.buttonPositions.follow.bottom;
+                                followButton.style.left = '';
+                                followButton.style.top = '';
+                                // loadSettings(): followButton表示を更新（モバイル）
+                                // followButtonの表示/非表示はstartGame()内のゲームモード判定に任せる
+                            }
+                        } else {
+                            followButton.style.display = 'none'; // PCなら非表示
+                            // loadSettings(): followButtonを非表示（PC）
+                        }
+                    }
+        
+                    // プレビューボタンも同様に処理
+                    if (previewFireButton && gameSettings.buttonPositions.fire) {
+                        previewFireButton.style.right = gameSettings.buttonPositions.fire.right;
+                        previewFireButton.style.bottom = gameSettings.buttonPositions.fire.bottom;
+                        previewFireButton.style.left = '';
+                        previewFireButton.style.top = '';
+                    }
+                    if (previewCrouchButton && gameSettings.buttonPositions.crouch) {
+                        previewCrouchButton.style.right = gameSettings.buttonPositions.crouch.right;
+                        previewCrouchButton.style.bottom = gameSettings.buttonPositions.crouch.bottom;
+                        previewCrouchButton.style.left = '';
+                        previewCrouchButton.style.top = '';
+                    }
+                    if (previewZoomButton && gameSettings.buttonPositions.zoom) {
+                        previewZoomButton.style.right = gameSettings.buttonPositions.zoom.right;
+                        previewZoomButton.style.bottom = gameSettings.buttonPositions.zoom.bottom;
+                        previewZoomButton.style.left = '';
+                        previewZoomButton.style.top = '';
+                    }
+                    if (previewJoystickZone && gameSettings.buttonPositions.joystick) {
+                        previewJoystickZone.style.left = gameSettings.buttonPositions.joystick.left;
+                        previewJoystickZone.style.bottom = gameSettings.buttonPositions.joystick.bottom;
+                        previewJoystickZone.style.right = '';
+                        previewJoystickZone.style.top = '';
+                    }
+                    if (previewFollowButton && gameSettings.buttonPositions.follow) { // 追加
+                        previewFollowButton.style.right = gameSettings.buttonPositions.follow.right;
+                        previewFollowButton.style.bottom = gameSettings.buttonPositions.follow.bottom;
+                        previewFollowButton.style.left = '';
+                        previewFollowButton.style.top = '';
+                    }
+                }
+                
+                // gameDurationのラジオボタンをロードする
+                const gameDurationRadios = document.querySelectorAll('input[name="game-duration"]');
+                gameDurationRadios.forEach(radio => {
+                    radio.checked = (parseInt(radio.value, 10) === gameSettings.gameDuration);
+                });
+                
+                // グローバル設定も更新
+                saveSettings();
+            } catch (e) {
+                console.error('設定の読み込みに失敗しました:', e);
+            }
+        }
+let playerGunSound;
+let mgGunSound;
+let rrGunSound;
+let rr2GunSound;
+let srGunSound;
+let m1GunSound;
+let pistolReloadSound;
+let aiM1GunSound;
+let aiM1GunSound2;
+let aiM1GunSound3;
+let aimgGunSound;
+let ai1mGunSound;
+let ai2mGunSound;
+let aiGunSound;
+let explosionSound;
+let impactSound;
+let bgmAudio;
+let gameBgmAudio;
+let startScreen;
+let relAudio;
+let gameOverScreen;
+let aiSrGunSound;
+let playerSgSound;
+let aiSgSound;
+let clipSound;
+let winScreen;
+let playerHPDisplay;
+let playerWeaponDisplay; // 追加
+let aiHPDisplay;
+let ai2HPDisplay; // 追加
+let ai3HPDisplay; // 追加
+let redFlashOverlay;
+let followStatusDisplay; // 追加
+let followButton; // 追加
+let scopeOverlay;
+let cancelScopeButton;
+let crosshairCircle;
+let crosshairPlusH;
+let crosshairPlusV;
+let killCountDisplay;
+let crosshairElement = null;
+let lastCrosshairVisible = null;
+let lastPlayerWeaponDisplayHTML = '';
+let lastCrosshairWeaponType = null;
+let playerKills = 0;
+let playerTeamKills = 0;
+let enemyTeamKills = 0;
+let lastNonTieTeamScoreLeader = 0;
+let matchStartVoicePlayed = false;
+let matchEndVoicePlayed = false;
+let playerMultiKillWindowStart = 0;
+let playerMultiKillWindowCount = 0;
+let playerMultiKillBestAnnounced = 1;
+let playerMultiKillDoubleTimer = null;
+let gameTimer = 0;
+let gameTimerInterval = null;
+let gameTimerDisplay;
+let playerTeamKillsDisplay;
+let enemyTeamKillsDisplay;
+
+function resetMatchEventVoices() {
+    clearScheduledEventVoices();
+    matchStartVoicePlayed = false;
+    matchEndVoicePlayed = false;
+    lastNonTieTeamScoreLeader = 0;
+    playerMultiKillWindowStart = 0;
+    playerMultiKillWindowCount = 0;
+    playerMultiKillBestAnnounced = 1;
+    if (playerMultiKillDoubleTimer) {
+        clearTimeout(playerMultiKillDoubleTimer);
+        playerMultiKillDoubleTimer = null;
+    }
+}
+
+function playMatchStartVoice() {
+    if (matchStartVoicePlayed) return;
+    matchStartVoicePlayed = true;
+    if (isOutdoorPvAIMode() || isClassicBillBattleMode()) {
+        scheduleEventVoice('en');
+    } else if (isTeamBasedAIMode()) {
+        scheduleEventVoice('tdm');
+    } else {
+        scheduleEventVoice('dm');
+    }
+}
+
+function playMatchEndVoice(playerWon) {
+    if (matchEndVoicePlayed) return;
+    matchEndVoicePlayed = true;
+    scheduleEventVoice(playerWon ? 'win' : 'lose');
+}
+
+function playBillBattleRoomClearVoice() {
+    if (!isClassicBillBattleMode()) return;
+    if (billBattleRoomClearVoicePlayed) return;
+    billBattleRoomClearVoicePlayed = true;
+    scheduleEventVoice('roomClear');
+}
+
+function registerPlayerEnemyKillForCombo(victimAI = null) {
+    if (victimAI && victimAI.team === 'player') return;
+    const now = clock && clock.getElapsedTime ? clock.getElapsedTime() : performance.now() / 1000;
+    if (now - playerMultiKillWindowStart > 0.55) {
+        if (playerMultiKillDoubleTimer) {
+            clearTimeout(playerMultiKillDoubleTimer);
+            playerMultiKillDoubleTimer = null;
+        }
+        playerMultiKillWindowStart = now;
+        playerMultiKillWindowCount = 0;
+        playerMultiKillBestAnnounced = 1;
+    }
+    playerMultiKillWindowCount++;
+    if (playerMultiKillWindowCount >= 3 && playerMultiKillBestAnnounced < 3) {
+        if (playerMultiKillDoubleTimer) {
+            clearTimeout(playerMultiKillDoubleTimer);
+            playerMultiKillDoubleTimer = null;
+        }
+        playerMultiKillBestAnnounced = 3;
+        scheduleEventVoice('tripleKill');
+    } else if (playerMultiKillWindowCount === 2 && playerMultiKillBestAnnounced < 2) {
+        if (playerMultiKillDoubleTimer) clearTimeout(playerMultiKillDoubleTimer);
+        playerMultiKillDoubleTimer = setTimeout(() => {
+            playerMultiKillDoubleTimer = null;
+            if (playerMultiKillWindowCount === 2 && playerMultiKillBestAnnounced < 2) {
+                playerMultiKillBestAnnounced = 2;
+                scheduleEventVoice('doubleKill', Math.max(0, EVENT_VOICE_DELAY_MS - 140));
+            }
+        }, 140);
+    }
+}
+
+function isEnemyAIForPlayerEvent(ai) {
+    if (!ai) return false;
+    return isTeamBasedAIMode() ? ai.team === 'enemy' : true;
+}
+
+function isPlayerSideAIKiller(killerSource, killerProjectile = null, killerActor = null) {
+    if (killerSource === 'player') return true;
+    const shooter = killerActor || (killerProjectile && killerProjectile.shooter);
+    return !!(shooter && shooter.team === 'player');
+}
+
+function shouldPlayDefeatVoiceForKiller(killerSource, killerProjectile = null, killerActor = null) {
+    if (killerSource === 'player') return true;
+    if (!isTeamBasedAIMode()) return false;
+    return isPlayerSideAIKiller(killerSource, killerProjectile, killerActor);
+}
+
+function getTeamScoreLeadState() {
+    if (playerTeamKills > enemyTeamKills) return 1;
+    if (enemyTeamKills > playerTeamKills) return -1;
+    return 0;
+}
+
+function announceTeamScoreLeadChange() {
+    if (!isTeamBasedAIMode()) return;
+    const leadState = getTeamScoreLeadState();
+    if (leadState === 0) return;
+    if (lastNonTieTeamScoreLeader === -1 && leadState === 1) {
+        scheduleEventVoice('teamComeback');
+    } else if (lastNonTieTeamScoreLeader === 1 && leadState === -1) {
+        scheduleEventVoice('enemyComeback');
+    }
+    lastNonTieTeamScoreLeader = leadState;
+}
+
+function addPlayerTeamKillScore() {
+    playerTeamKills++;
+    announceTeamScoreLeadChange();
+}
+
+function addEnemyTeamKillScore() {
+    enemyTeamKills++;
+    announceTeamScoreLeadChange();
+}
+
+function getKillerWeaponType(killerSource, killerProjectile = null, killerActor = null) {
+    if (killerProjectile && killerProjectile.weaponType) return killerProjectile.weaponType;
+    if (killerProjectile && killerProjectile.isSniper) return WEAPON_SR;
+    if (killerActor && killerActor.currentWeapon) return killerActor.currentWeapon;
+    if (killerSource === 'player') return currentWeapon;
+    return null;
+}
+
+function updateEnemySniperArmedVoice(ai) {
+    if (!ai || !ai.userData) return;
+    if (!isEnemyAIForPlayerEvent(ai) || !aiHasUsableSniperRifle(ai)) {
+        ai.userData.enemySniperArmedVoicePlayed = false;
+        return;
+    }
+    if (ai.userData.enemySniperArmedVoicePlayed) return;
+    ai.userData.enemySniperArmedVoicePlayed = true;
+    scheduleEventVoice('enemySniperArmed');
+}
+
+function playEnemyAIDefeatVoice(ai, killerSource, killerProjectile = null, killerActor = null) {
+    if (!ai || !ai.userData) return;
+    if (!isEnemyAIForPlayerEvent(ai)) return;
+    if (!shouldPlayDefeatVoiceForKiller(killerSource, killerProjectile, killerActor)) return;
+    if (ai.userData.enemyDefeatVoicePlayed) return;
+    ai.userData.enemyDefeatVoicePlayed = true;
+    const killerWeaponType = getKillerWeaponType(killerSource, killerProjectile, killerActor);
+    if (isEnemySniperDefeatTarget(ai)) {
+        scheduleEventVoice('sniperDown');
+    } else if (killerWeaponType === WEAPON_SR) {
+        scheduleEventVoice('sniperKill');
+    } else {
+        scheduleEventVoice('targetDown');
+    }
+}
+
+// --- タイマー関連関数 ---
+function updateTimerDisplay() {
+    if (gameTimerDisplay) {
+        const minutes = Math.floor(gameTimer / 60);
+        const seconds = gameTimer % 60;
+        gameTimerDisplay.textContent = `TIME: ${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+}
+
+function startTimer() {
+    if (gameTimerInterval) {
+        clearInterval(gameTimerInterval);
+    }
+    gameTimerInterval = setInterval(() => {
+        if (!isGameRunning || isPaused) {
+            return;
+        }
+        gameTimer--;
+        updateTimerDisplay();
+        if (gameTimer <= 0) {
+            clearInterval(gameTimerInterval);
+            gameTimerInterval = null;
+            // ゲーム終了処理と勝敗判定
+            isGameRunning = false;
+            document.exitPointerLock();
+
+            // UI要素を非表示にする
+            const uiToHide = ['joystick-move', 'fire-button', 'crosshair', 'crouch-button', 'zoom-button', 'player-hp-display', 'ai-hp-display', 'ai2-hp-display', 'ai3-hp-display', 'player-weapon-display', 'pause-button', 'game-timer-display', 'player-team-kills-display', 'enemy-team-kills-display'];
+            uiToHide.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+            
+            if (gameSettings.gameMode === 'ffa') {
+                let maxKills = playerKills;
+                let playerIsWinner = true;
+                for (const ai of ais) {
+                    if (ai.kills > maxKills) {
+                        maxKills = ai.kills;
+                        playerIsWinner = false;
+                    }
+                }
+                // プレイヤー単独勝利でない同点を確認
+                if(playerIsWinner) {
+                    for (const ai of ais) {
+                        if (ai.kills === maxKills) {
+                            playerIsWinner = false;
+                            break;
+                        }
+                    }
+                }
+
+                if (playerIsWinner) {
+                    showWinScreen();
+                } else {
+                    showGameOver();
+                }
+
+            } else if (gameSettings.gameMode === 'arcade') {
+                if (playerKills > enemyTeamKills) {
+                    showWinScreen();
+                } else {
+                    showGameOver();
+                }
+            } else if (playerTeamKills > enemyTeamKills) {
+                showWinScreen();
+            } else if (enemyTeamKills > playerTeamKills) {
+                showGameOver();
+            } else {
+                // 引き分けの場合
+                // 専用の引き分け画面を作成するか、ゲームオーバー画面を再利用
+                // 今はshowGameOver()で代用
+                showGameOver(); 
+            }
+        }
+    }, 1000);
+}
+
+function stopTimer() {
+    if (gameTimerInterval) {
+        clearInterval(gameTimerInterval);
+        gameTimerInterval = null;
+    }
+}
+// --- ここまで ---
+
+let crosshairMuzzleFlashElement = null;
+let crosshairMuzzleFlashTimer = null;
+
+function createCrosshairMuzzleFlash(lightColor = 0xffff00, scale = 1.0, duration = 65) {
+    if (!crosshairMuzzleFlashElement) {
+        crosshairMuzzleFlashElement = document.createElement('div');
+        document.body.appendChild(crosshairMuzzleFlashElement);
+    }
+    const flash = crosshairMuzzleFlashElement;
+    const size = Math.max(18, Math.round(62 * scale));
+    const color = `#${new THREE.Color(lightColor).getHexString()}`;
+    const rotation = Math.random() * 360;
+    Object.assign(flash.style, {
+        display: 'block',
+        position: 'fixed',
+        left: '50%',
+        top: '50%',
+        width: `${size}px`,
+        height: `${size}px`,
+        marginLeft: `${-size / 2}px`,
+        marginTop: `${-size / 2}px`,
+        borderRadius: '50%',
+        pointerEvents: 'none',
+        zIndex: '155',
+        opacity: '0.95',
+        mixBlendMode: 'screen',
+        background: `radial-gradient(circle, rgba(255,255,255,0.95) 0%, ${color} 30%, rgba(255,140,0,0.55) 58%, rgba(255,120,0,0) 74%)`,
+        transform: `scale(0.8) rotate(${rotation}deg)`,
+        transition: 'none'
+    });
+    void flash.offsetWidth;
+    flash.style.transition = `opacity ${duration}ms ease-out, transform ${duration}ms ease-out`;
+    requestAnimationFrame(() => {
+        flash.style.opacity = '0';
+        flash.style.transform = `scale(1.55) rotate(${rotation + 20}deg)`;
+    });
+    if (crosshairMuzzleFlashTimer) clearTimeout(crosshairMuzzleFlashTimer);
+    crosshairMuzzleFlashTimer = setTimeout(() => {
+        flash.style.display = 'none';
+    }, duration + 35);
+}
+
+let activeTransientPointLights = 0;
+function createTransientPointLight(position, color, intensity, distance, duration) {
+    const maxLights = shouldShowTouchControls() ? 2 : 5;
+    if (activeTransientPointLights >= maxLights) return;
+    const light = new THREE.PointLight(color, intensity, distance);
+    light.position.copy(position);
+    scene.add(light);
+    activeTransientPointLights++;
+    new TWEEN.Tween(light)
+        .to({ intensity: 0 }, duration)
+        .easing(TWEEN.Easing.Quadratic.Out)
+        .onComplete(() => {
+            scene.remove(light);
+            activeTransientPointLights = Math.max(0, activeTransientPointLights - 1);
+        })
+        .start();
+}
+
+function createMuzzleFlash(position, intensity, distance, duration = 150, lightColor = 0xffffff, direction = null, scale = 1.0) {
+    const lightPosition = position.clone();
+    lightPosition.y += 0.25 * scale;
+    createTransientPointLight(lightPosition, lightColor, intensity, distance, duration);
+
+    const flashGroup = new THREE.Group();
+    flashGroup.position.copy(position);
+    const flashDir = direction && direction.lengthSq && direction.lengthSq() > 0.0001
+        ? direction.clone().normalize()
+        : new THREE.Vector3(0, 0, -1);
+    flashGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), flashDir);
+
+    const coreGeometry = RUNTIME_EFFECT_GEOMETRIES.muzzleCore;
+    const coreMaterial = new THREE.MeshBasicMaterial({
+        color: lightColor,
+        transparent: true,
+        opacity: 0.95,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    });
+    const core = new THREE.Mesh(coreGeometry, coreMaterial);
+    core.scale.setScalar(scale);
+    flashGroup.add(core);
+
+    const coneGeometry = RUNTIME_EFFECT_GEOMETRIES.muzzleCone;
+    const coneMaterial = new THREE.MeshBasicMaterial({
+        color: lightColor,
+        transparent: true,
+        opacity: 0.7,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide
+    });
+    const cone = new THREE.Mesh(coneGeometry, coneMaterial);
+    cone.scale.setScalar(scale);
+    cone.rotation.x = Math.PI / 2;
+    cone.position.z = 0.32 * scale;
+    cone.scale.x = 0.65 + Math.random() * 0.35;
+    cone.scale.y = 0.8 + Math.random() * 0.4;
+    flashGroup.add(cone);
+
+    scene.add(flashGroup);
+    flashGroup.scale.set(0.5, 0.5, 0.5);
+    new TWEEN.Tween(flashGroup.scale)
+        .to({ x: 1.25, y: 1.25, z: 1.25 }, Math.max(35, duration * 0.45))
+        .easing(TWEEN.Easing.Quadratic.Out)
+        .start();
+    new TWEEN.Tween(coreMaterial)
+        .to({ opacity: 0 }, duration)
+        .easing(TWEEN.Easing.Quadratic.Out)
+        .start();
+    new TWEEN.Tween(coneMaterial)
+        .to({ opacity: 0 }, duration)
+        .easing(TWEEN.Easing.Quadratic.Out)
+        .onComplete(() => {
+            scene.remove(flashGroup);
+            disposeMaterial(coreMaterial);
+            disposeMaterial(coneMaterial);
+        })
+        .start();
+}
+
+function createGroundFlash(position, color, radius = 1.0, duration = 150) {
+    const geometry = RUNTIME_EFFECT_GEOMETRIES.groundFlash;
+    const material = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 1.0,
+        map: RUNTIME_GROUND_FLASH_TEXTURE,
+        side: THREE.FrontSide,
+        blending: THREE.AdditiveBlending
+    });
+    const groundFlash = new THREE.Mesh(geometry, material);
+    groundFlash.scale.set(radius, radius, 1);
+    groundFlash.position.copy(position);
+    groundFlash.position.y = -FLOOR_HEIGHT + 0.01;
+    groundFlash.rotation.x = -Math.PI / 2;
+    scene.add(groundFlash);
+    new TWEEN.Tween(material)
+        .to({ opacity: 0 }, duration)
+        .easing(TWEEN.Easing.Quadratic.Out)
+        .onComplete(() => {
+            scene.remove(groundFlash);
+            groundFlash.material.dispose();
+        })
+        .start();
+}
+
+const ARENA_RADIUS = 60;
+const ARENA_EDGE_THICKNESS = 1;
+const FLOOR_HEIGHT = ARENA_EDGE_THICKNESS / 2;
+const ARENA_PLAY_AREA_RADIUS = ARENA_RADIUS - ARENA_EDGE_THICKNESS - 0.5;
+const ARENA_FLOOR_DEFAULT_COLOR = 0x555555;
+
+function colorToCss(hex) {
+    return `#${hex.toString(16).padStart(6, '0')}`;
+}
+
+function makeNoiseTexture(size, baseHex, lineHex, options = {}) {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = colorToCss(baseHex);
+    ctx.fillRect(0, 0, size, size);
+
+    const speckles = options.speckles ?? 180;
+    for (let i = 0; i < speckles; i++) {
+        const alpha = 0.035 + Math.random() * 0.08;
+        const shade = Math.random() > 0.5 ? 255 : 0;
+        ctx.fillStyle = `rgba(${shade},${shade},${shade},${alpha})`;
+        const r = 1 + Math.random() * 2.2;
+        ctx.fillRect(Math.random() * size, Math.random() * size, r, r);
+    }
+
+    const grid = options.grid ?? 32;
+    if (grid > 0) {
+        ctx.strokeStyle = colorToCss(lineHex);
+        ctx.globalAlpha = options.lineAlpha ?? 0.28;
+        ctx.lineWidth = options.lineWidth ?? 1;
+        for (let x = 0; x <= size; x += grid) {
+            ctx.beginPath();
+            ctx.moveTo(x + 0.5, 0);
+            ctx.lineTo(x + 0.5, size);
+            ctx.stroke();
+        }
+        for (let y = 0; y <= size; y += grid) {
+            ctx.beginPath();
+            ctx.moveTo(0, y + 0.5);
+            ctx.lineTo(size, y + 0.5);
+            ctx.stroke();
+        }
+    }
+    ctx.globalAlpha = 1;
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(options.repeatX ?? 18, options.repeatY ?? 18);
+    texture.anisotropy = renderer.capabilities.getMaxAnisotropy ? Math.min(4, renderer.capabilities.getMaxAnisotropy()) : 1;
+    return texture;
+}
+
+function createArenaFloorTexture() {
+    return makeNoiseTexture(256, 0xffffff, 0xd0d0d0, {
+        grid: 0,
+        repeatX: 20,
+        repeatY: 20,
+        speckles: 140,
+        lineAlpha: 0
+    });
+}
+
+function createIndoorFloorTexture(baseHex) {
+    return makeNoiseTexture(256, baseHex, 0x1e1e1e, {
+        grid: 64,
+        repeatX: 14,
+        repeatY: 14,
+        speckles: 160,
+        lineAlpha: 0.24,
+        lineWidth: 1.4
+    });
+}
+
+function createWallPanelTexture(baseHex, lowerWall = false) {
+    return makeNoiseTexture(256, baseHex, lowerWall ? 0x2f2f2f : 0x8a8a8a, {
+        grid: lowerWall ? 64 : 48,
+        repeatX: 4,
+        repeatY: 2,
+        speckles: lowerWall ? 120 : 80,
+        lineAlpha: lowerWall ? 0.18 : 0.14
+    });
+}
+
+const floorGeometry = new THREE.CircleGeometry(ARENA_RADIUS, 64);
+const arenaFloorTexture = createArenaFloorTexture();
+let indoorFloorTexture = null;
+const floorMaterial = new THREE.MeshLambertMaterial({ color: ARENA_FLOOR_DEFAULT_COLOR, map: arenaFloorTexture });
+const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+floor.rotation.x = -Math.PI / 2;
+floor.position.y = -FLOOR_HEIGHT;
+floor.receiveShadow = true;
+floor.userData.isGround = true; // 地面を保護するフラグ
+scene.add(floor);
+
+function setArenaFloorColor(colorValue) {
+    const hex = typeof colorValue === 'number'
+        ? colorValue
+        : parseInt(String(colorValue).replace('#', '0x'));
+    if (Number.isNaN(hex)) return;
+    floor.material.color.setHex(hex);
+    floor.material.needsUpdate = true;
+}
+
+function setArenaFloorTexture(texture) {
+    floor.material.map = texture;
+    floor.material.needsUpdate = true;
+}
+
+function setIndoorArenaFloorTexture(baseHex) {
+    if (indoorFloorTexture) indoorFloorTexture.dispose();
+    indoorFloorTexture = createIndoorFloorTexture(baseHex);
+    setArenaFloorTexture(indoorFloorTexture);
+}
+const edgeGeometry = new THREE.TorusGeometry(ARENA_RADIUS, ARENA_EDGE_THICKNESS, 8, 64);
+const edgeMaterial = new THREE.MeshLambertMaterial({ color: 0x880000 });
+const edge = new THREE.Mesh(edgeGeometry, edgeMaterial);
+edge.rotation.x = Math.PI / 2;
+edge.position.y = 0;
+scene.add(edge);
+const streetLights = [];
+
+function setStreetLightsIntensity(level) {
+    const intensity = Math.max(0, Number(level) || 0);
+    if (!streetLights || streetLights.length === 0) return;
+    streetLights.forEach(lightGroup => {
+        if (!lightGroup) return;
+        const pointLight = lightGroup.children.find(child => child.isPointLight);
+        if (pointLight) pointLight.intensity = intensity;
+        const glowMesh = lightGroup.userData ? lightGroup.userData.glowMesh : null;
+        if (glowMesh && glowMesh.material && glowMesh.material.emissive) {
+            glowMesh.material.emissiveIntensity = intensity > 0 ? Math.min(2.2, 0.55 + intensity * 0.42) : 0;
+            glowMesh.material.opacity = intensity > 0 ? Math.min(0.92, 0.28 + intensity * 0.18) : 0;
+        }
+        const haloMesh = lightGroup.userData ? lightGroup.userData.haloMesh : null;
+        if (haloMesh && haloMesh.material) {
+            haloMesh.material.opacity = intensity > 0 ? Math.min(0.06, 0.008 + intensity * 0.012) : 0;
+            haloMesh.visible = intensity > 0;
+        }
+    });
+}
+
+function createStreetLight(position) {
+    const lightGroup = new THREE.Group();
+    lightGroup.userData.isStreetLight = true;
+    const poleGeometry = new THREE.CylinderGeometry(0.2, 0.2, 10, 8);
+    const poleMaterial = new THREE.MeshLambertMaterial({ color: 0x444444 });
+    const pole = new THREE.Mesh(poleGeometry, poleMaterial);
+    pole.position.y = (poleGeometry.parameters.height / 2) - FLOOR_HEIGHT;
+    lightGroup.add(pole);
+    const shadeGeometry = new THREE.CylinderGeometry(0, 1, 1, 8);
+    const shadeMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
+    const shade = new THREE.Mesh(shadeGeometry, shadeMaterial);
+    shade.position.y = pole.position.y + (poleGeometry.parameters.height / 2) + (shadeGeometry.parameters.height / 2);
+    lightGroup.add(shade);
+    // 傘の下のぼんやり発光（夜間に強くする）
+    const glowMaterial = new THREE.MeshLambertMaterial({
+        color: 0xffcc88,
+        emissive: 0xffcc88,
+        emissiveIntensity: 0,
+        transparent: true,
+        opacity: 0
+    });
+    const glowMesh = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 12), glowMaterial);
+    // 傘の内側（下側）に配置
+    glowMesh.position.y = shade.position.y - (shadeGeometry.parameters.height * 0.28);
+    lightGroup.add(glowMesh);
+    // うっすら広がるグロー（雰囲気用）
+    const haloMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffd39a,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    });
+    const haloMesh = new THREE.Mesh(new THREE.SphereGeometry(1.1, 14, 14), haloMaterial);
+    haloMesh.position.copy(glowMesh.position);
+    haloMesh.visible = false;
+    lightGroup.add(haloMesh);
+    const pointLight = new THREE.PointLight(0xffddaa, 0, 50, 2);
+    pointLight.position.y = shade.position.y - (shadeGeometry.parameters.height * 0.32);
+    lightGroup.add(pointLight);
+    lightGroup.userData = lightGroup.userData || {};
+    lightGroup.userData.glowMesh = glowMesh;
+    lightGroup.userData.haloMesh = haloMesh;
+    lightGroup.position.copy(position);
+    scene.add(lightGroup);
+    streetLights.push(lightGroup);
+}
+
+function isStreetLightObject(object) {
+    let current = object;
+    while (current) {
+        if (current.userData && current.userData.isStreetLight) return true;
+        current = current.parent;
+    }
+    return false;
+}
+
+function createStreetLights() {
+    const numLights = 8;
+    const hasCompleteStreetLights = streetLights.length === numLights && streetLights.every(lightGroup => {
+        if (!lightGroup || lightGroup.parent !== scene || !lightGroup.userData.isStreetLight) return false;
+        const meshCount = lightGroup.children.filter(child => child.isMesh).length;
+        const hasPointLight = lightGroup.children.some(child => child.isPointLight);
+        return meshCount >= 4 && hasPointLight;
+    });
+    if (hasCompleteStreetLights) {
+        return;
+    }
+    streetLights.splice(0).forEach(lightGroup => {
+        if (lightGroup && lightGroup.parent) {
+            lightGroup.parent.remove(lightGroup);
+        }
+        if (lightGroup && lightGroup.traverse) {
+            lightGroup.traverse(object => {
+                if (object.geometry) object.geometry.dispose();
+                if (object.material) disposeMaterial(object.material);
+            });
+        }
+    });
+    const radius = ARENA_RADIUS - (ARENA_EDGE_THICKNESS / 2) + 0.5;
+    for (let i = 0; i < numLights; i++) {
+        const angle = (i / numLights) * Math.PI * 2;
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+        createStreetLight(new THREE.Vector3(x, 0, z));
+    }
+}
+
+const obstacles = [];
+const houses = [];
+const HIDING_SPOTS = [];
+const weaponPickups = [];
+const ladderSwitches = [];
+const respawningPickups = [];
+const respawningBarrels = [];
+const RESPAWN_DELAY = 60;
+const AI_INITIAL_POSITION = new THREE.Vector3(0, 0, 20);
+const NUM_RANDOM_OBSTACLES = 20;
+const defaultObstaclesConfig = [
+    { x: 5, z: 5, height: 1.8 }, { x: -5, z: -5 }, { x: 0, z: 10, height: 1.8 }, { x: 10, z: 0 }, { x: -10, z: 5 }, { x: 5, z: -10 },
+    { x: 15, z: 15, height: 1.8 }, { x: -15, z: 15 }, { x: 15, z: -15, height: 1.8 }, { x: -15, z: -15 }, { x: 0, z: -18, height: 1.8 }, { x: -18, z: 0 },
+    { x: 25, z: 0, width: 0.5, depth: 10 }, { x: -25, z: 0, width: 0.5, depth: 10 }, { x: 0, z: 25, width: 10, depth: 0.5 }, { x: 0, z: -25, width: 10, depth: 0.5 },
+    { x: 20, z: 20, height: 1.8 }, { x: -20, z: 20 }, { x: 20, z: -20, height: 1.8 }, { x: -20, z: -20 },
+    { x: 35, z: 10, width: 0.5, depth: 8 }, { x: -35, z: 10, width: 0.5, depth: 8 }, { x: 10, z: 35, width: 8, depth: 0.5 }, { x: -10, z: 35, width: 8, depth: 0.5 },
+    { x: 30, z: -30, height: 1.8 }, { x: -30, z: -30 },
+    { x: 40, z: 0, width: 0.5, depth: 15 }, { x: -40, z: 0, width: 0.5, depth: 15 }, { x: 0, z: 40, width: 15, depth: 0.5, height: 1.8 }, { x: 0, z: -40, width: 15, depth: 0.5 },
+    { x: 0, z: -30, width: 2, height: 1.8, depth: 2 },
+    { x: 10, z: -35, width: 2, height: 1.8, depth: 2 },
+    { x: -10, z: -35, width: 2, height: 1.8, depth: 2 },
+    { x: 20, z: -25, width: 3, height: 1.8, depth: 3 },
+    { x: -20, z: -25, width: 3, height: 1.8, depth: 3 },
+    { x: 30, z: -15, width: 2, height: 1.8, depth: 2 },
+    // デフォルトマップ用の爆発ドラム缶（深緑）
+    { type: 'barrel', x: 32, z: 22, color: 0x1f5d2e, radius: 0.75, height: 2.4 },
+    { type: 'barrel', x: -32, z: 18, color: 0x1f5d2e, radius: 0.75, height: 2.4 },
+    { type: 'barrel', x: 28, z: -18, color: 0x1f5d2e, radius: 0.75, height: 2.4 },
+    { type: 'barrel', x: -28, z: -22, color: 0x1f5d2e, radius: 0.75, height: 2.4 },
+    { type: 'barrel', x: 12, z: 28, color: 0x1f5d2e, radius: 0.75, height: 2.4 },
+    { type: 'barrel', x: -14, z: 30, color: 0x1f5d2e, radius: 0.75, height: 2.4 },
+    { type: 'barrel', x: 22, z: 6, color: 0x1f5d2e, radius: 0.75, height: 2.4 },
+    { type: 'barrel', x: -24, z: 4, color: 0x1f5d2e, radius: 0.75, height: 2.4 },
+    { type: 'barrel', x: 6, z: -28, color: 0x1f5d2e, radius: 0.75, height: 2.4 },
+    { type: 'barrel', x: -8, z: -32, color: 0x1f5d2e, radius: 0.75, height: 2.4 }
+];
+
+function getRandomSafePosition(itemWidth = 1, itemHeight = 1, itemDepth = 2) {
+    const MAX_ATTEMPTS = 500;
+    const MIN_DISTANCE_FROM_PLAYER = 15;
+    const MIN_DISTANCE_BETWEEN_PICKUPS = 5;
+    const PLACEMENT_PADDING = 2.5; // 障害物からの余白
+
+    const WEAPON_PLACEMENT_RADIUS = ARENA_PLAY_AREA_RADIUS - Math.max(itemWidth, itemDepth) / 2;
+
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * WEAPON_PLACEMENT_RADIUS;
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+        const newPosition = new THREE.Vector3(x, (itemHeight / 2) - FLOOR_HEIGHT, z);
+
+        if (newPosition.distanceTo(PLAYER_INITIAL_POSITION) < MIN_DISTANCE_FROM_PLAYER) {
+            continue;
+        }
+
+        const itemBox = new THREE.Box3().setFromCenterAndSize(newPosition, new THREE.Vector3(itemWidth + PLACEMENT_PADDING, itemHeight, itemDepth + PLACEMENT_PADDING));
+        
+        let collisionDetected = false;
+        for (const obstacle of obstacles) {
+            const obstacleBox = new THREE.Box3().setFromObject(obstacle);
+            if (itemBox.intersectsBox(obstacleBox)) {
+                collisionDetected = true;
+                break;
+            }
+        }
+        if (collisionDetected) continue;
+
+        for (const pickup of weaponPickups) {
+            if (newPosition.distanceTo(pickup.position) < MIN_DISTANCE_BETWEEN_PICKUPS) {
+                collisionDetected = true;
+                break;
+            }
+        }
+        if (collisionDetected) continue;
+        
+        return newPosition;
+    }
+    
+    console.warn("getRandomSafePosition: Failed to find a safe position after all attempts, returning (0,0,0).");
+    return new THREE.Vector3(0, 0, 0); // フォールバック
+}
+
+function findSafePositionNear(centerPoint, searchRadius = 10, minDistance = 5, itemWidth = 1, itemHeight = 1, itemDepth = 2) {
+    const MAX_ATTEMPTS = 100;
+    const WEAPON_PLACEMENT_RADIUS = ARENA_PLAY_AREA_RADIUS - 2.0;
+    const PLACEMENT_PADDING = 2.5;
+
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * searchRadius;
+        const x = centerPoint.x + Math.cos(angle) * radius;
+        const z = centerPoint.z + Math.sin(angle) * radius;
+        const newPosition = new THREE.Vector3(x, (itemHeight / 2) - FLOOR_HEIGHT, z);
+
+        if (newPosition.length() > WEAPON_PLACEMENT_RADIUS) {
+            continue; // アリーナの外なら再試行
+        }
+
+        const itemBox = new THREE.Box3().setFromCenterAndSize(newPosition, new THREE.Vector3(itemWidth + PLACEMENT_PADDING, itemHeight, itemDepth + PLACEMENT_PADDING));
+        
+        let collisionDetected = false;
+        for (const obstacle of obstacles) {
+            const obstacleBox = new THREE.Box3().setFromObject(obstacle);
+            if (itemBox.intersectsBox(obstacleBox)) {
+                collisionDetected = true;
+                break;
+            }
+        }
+        if (collisionDetected) continue;
+
+        for (const pickup of weaponPickups) {
+            if (newPosition.distanceTo(pickup.position) < minDistance) {
+                collisionDetected = true;
+                break;
+            }
+        }
+        if (collisionDetected) continue;
+
+        return newPosition;
+    }
+    // フォールバック: 安全な位置が見つからない場合、とりあえずアリーナの中心を返す
+    console.warn("findSafePositionNear: Failed to find a safe position, returning arena center.");
+    return new THREE.Vector3(0, 0, 0);
+}
+
+  function createWeaponPickupLabel(text) {
+    const canvas = document.createElement('canvas');
+    const size = 256;
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, size, size);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 140px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, size / 2, size / 2);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
+    return new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.45), material);
+  }
+
+  function createWeaponPickup(text, position, weaponType) {
+    const boxWidth = 1;
+    const boxHeight = 0.8;
+    const boxDepth = 2;
+    
+    const pickupGroup = new THREE.Group();
+    const boxGeometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+    const boxMaterial = new THREE.MeshLambertMaterial({ color: 0x006400 });
+    const boxMesh = new THREE.Mesh(boxGeometry, boxMaterial);
+    // boxMesh.position.y = boxHeight / 2; // これがアイテム浮きの原因になっていた
+    pickupGroup.add(boxMesh);
+
+    if (font) {
+        const textOptions = { font: font, size: 0.35, height: 0.2, curveSegments: 12, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelOffset: 0, bevelSegments: 5 };
+        const textMaterial = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
+        const textGeometryLeft = new THREE.TextGeometry(text, textOptions);
+        textGeometryLeft.computeBoundingBox();
+        textGeometryLeft.translate(-0.5 * (textGeometryLeft.boundingBox.max.x - textGeometryLeft.boundingBox.min.x), -0.5 * (textGeometryLeft.boundingBox.max.y - textGeometryLeft.boundingBox.min.y), -0.5 * (textGeometryLeft.boundingBox.max.z - textGeometryLeft.boundingBox.min.z));
+        const textMeshLeft = new THREE.Mesh(textGeometryLeft, textMaterial);
+        // textMeshLeft.position.y = boxHeight / 2;
+        textMeshLeft.position.x = -boxWidth / 2 + (textOptions.height / 2);
+        textMeshLeft.rotation.y = -Math.PI / 2;
+        pickupGroup.add(textMeshLeft);
+        const textGeometryRight = new THREE.TextGeometry(text, textOptions);
+        textGeometryRight.computeBoundingBox();
+        textGeometryRight.translate(-0.5 * (textGeometryRight.boundingBox.max.x - textGeometryRight.boundingBox.min.x), -0.5 * (textGeometryRight.boundingBox.max.y - textGeometryRight.boundingBox.min.y), -0.5 * (textGeometryRight.boundingBox.max.z - textGeometryRight.boundingBox.min.z));
+        const textMeshRight = new THREE.Mesh(textGeometryRight, textMaterial);
+        // textMeshRight.position.y = boxHeight / 2;
+        textMeshRight.position.x = boxWidth / 2 - (textOptions.height / 2);
+        textMeshRight.rotation.y = Math.PI / 2;
+        pickupGroup.add(textMeshRight);
+    } else {
+        const textMeshLeft = createWeaponPickupLabel(text);
+        textMeshLeft.position.x = -boxWidth / 2 - 0.02;
+        textMeshLeft.rotation.y = -Math.PI / 2;
+        pickupGroup.add(textMeshLeft);
+        const textMeshRight = createWeaponPickupLabel(text);
+        textMeshRight.position.x = boxWidth / 2 + 0.02;
+        textMeshRight.rotation.y = Math.PI / 2;
+        pickupGroup.add(textMeshRight);
+    }
+    pickupGroup.position.copy(position);
+
+    pickupGroup.userData = { type: 'weaponPickup', weaponType: weaponType };
+    scene.add(pickupGroup);
+    weaponPickups.push(pickupGroup);
+    return pickupGroup;
+}
+
+function createWeaponPickups(aiList = []) {
+    const weaponTypes = [];
+    for (let i = 0; i < gameSettings.mgCount; i++) weaponTypes.push({ name: 'MG', type: WEAPON_MG });
+    for (let i = 0; i < gameSettings.rrCount; i++) weaponTypes.push({ name: 'RL', type: WEAPON_RR });
+    for (let i = 0; i < gameSettings.srCount; i++) weaponTypes.push({ name: 'SR', type: WEAPON_SR });
+    for (let i = 0; i < gameSettings.sgCount; i++) weaponTypes.push({ name: 'SG', type: WEAPON_SG });
+    for (let i = 0; i < gameSettings.mrCount; i++) weaponTypes.push({ name: 'MR', type: WEAPON_MR });
+
+    shuffle(weaponTypes);
+
+    const availableAis = [...aiList];
+
+    // すべての武器ピックアップで共通のため、武器ボックスサイズをここで定義
+    const weaponBoxWidth = 1;
+    const weaponBoxHeight = 0.8;
+    const weaponBoxDepth = 2;
+    const getWeaponPickupPosition = () => {
+        if (isBillBattleMode()) {
+            return getBillBattleRandomPosition(weaponBoxWidth, weaponBoxHeight, weaponBoxDepth, false);
+        }
+        return getRandomSafePosition(weaponBoxWidth, weaponBoxHeight, weaponBoxDepth);
+    };
+
+    for (let i = 0; i < weaponTypes.length; i++) {
+        const weapon = weaponTypes[i];
+        let position;
+
+        if (availableAis.length > 0) {
+            const aiIndex = Math.floor(Math.random() * availableAis.length);
+            const targetAi = availableAis[aiIndex];
+            
+            position = findSafePositionNear(targetAi.position, 10, 5, weaponBoxWidth, weaponBoxHeight, weaponBoxDepth);
+
+            availableAis.splice(aiIndex, 1);
+        } else {
+            position = getWeaponPickupPosition();
+        }
+        createWeaponPickup(weapon.name, position, weapon.type);
+    }
+}
+
+const MEDIKIT_WIDTH = 0.5;
+const MEDIKIT_HEIGHT = 0.8;
+const MEDIKIT_DEPTH = 1;
+
+function createMedikitPickup(position) {
+    const medikitGroup = new THREE.Group();
+    const boxGeometry = new THREE.BoxGeometry(MEDIKIT_WIDTH, MEDIKIT_HEIGHT, MEDIKIT_DEPTH);
+    const boxMaterial = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const boxMesh = new THREE.Mesh(boxGeometry, boxMaterial);
+    // boxMesh.position.y = MEDIKIT_HEIGHT / 2; // これがアイテム浮きの原因になっていた
+    medikitGroup.add(boxMesh);
+    const crossThickness = 0.25;
+    const crossLength = MEDIKIT_HEIGHT * 0.8;
+    const crossGroup = new THREE.Group();
+    const verticalBarGeometry = new THREE.BoxGeometry(crossThickness, crossLength, crossThickness);
+    const crossMaterial = new THREE.MeshLambertMaterial({ color: 0xff0000 });
+    const verticalBar = new THREE.Mesh(verticalBarGeometry, crossMaterial);
+    // verticalBar.position.y = 0;
+    crossGroup.add(verticalBar);
+    const horizontalBarGeometry = new THREE.BoxGeometry(crossLength, crossThickness, crossThickness);
+    const horizontalBar = new THREE.Mesh(horizontalBarGeometry, crossMaterial);
+    // horizontalBar.position.y = 0;
+    crossGroup.add(horizontalBar);
+    const crossGroup1 = crossGroup.clone();
+    crossGroup1.position.set(MEDIKIT_WIDTH / 2 - crossThickness / 2, 0, 0); // Yオフセットを削除
+    crossGroup1.rotation.y = Math.PI / 2;
+    medikitGroup.add(crossGroup1);
+    const crossGroup2 = crossGroup.clone();
+    crossGroup2.position.set(-MEDIKIT_WIDTH / 2 + crossThickness / 2, 0, 0); // Yオフセットを削除
+    crossGroup2.rotation.y = -Math.PI / 2;
+    medikitGroup.add(crossGroup2);
+    medikitGroup.position.copy(position);
+
+    medikitGroup.userData = { type: 'medikitPickup' };
+    scene.add(medikitGroup);
+    weaponPickups.push(medikitGroup);
+    return medikitGroup;
+}
+
+function shouldSpawnMedikits() {
+    return !isPlayerInvincible()
+        && gameSettings.medikitCount > 0
+        && (gameSettings.gameMode === 'arcade' || isBillBattleMode());
+}
+
+function getMedikitSpawnPosition() {
+    if (isBillBattleMode()) {
+        return getBillBattleRandomPosition(MEDIKIT_WIDTH, MEDIKIT_HEIGHT, MEDIKIT_DEPTH, false);
+    }
+    return getRandomSafePosition(MEDIKIT_WIDTH, MEDIKIT_HEIGHT, MEDIKIT_DEPTH);
+}
+
+const DEFAULT_OBSTACLE_HEIGHT = BODY_HEIGHT + (2 * HEAD_RADIUS);
+
+function createAndAttachLadder(obstacle, ladderFace = -1) {
+    const LADDER_WIDTH = 1.5;
+    const RUNG_SPACING = 0.5;
+    const RUNG_THICKNESS = 0.1;
+    const ladderGroup = new THREE.Group();
+    ladderGroup.name = 'ladder';
+    const obstacleSize = new THREE.Vector3();
+    new THREE.Box3().setFromObject(obstacle).getSize(obstacleSize);
+    const numRungs = Math.floor(obstacleSize.y / RUNG_SPACING);
+    const sideMaterial = new THREE.MeshLambertMaterial({ color: 0x666666 });
+    const rungMaterial = new THREE.MeshLambertMaterial({ color: 0x888888 });
+    const sideGeometry = new THREE.BoxGeometry(RUNG_THICKNESS * 2, obstacleSize.y, RUNG_THICKNESS * 2);
+    const leftSide = new THREE.Mesh(sideGeometry, sideMaterial);
+    const rightSide = new THREE.Mesh(sideGeometry, sideMaterial);
+    leftSide.position.set(-LADDER_WIDTH / 2, 0, 0);
+    rightSide.position.set(LADDER_WIDTH / 2, 0, 0);
+    ladderGroup.add(leftSide);
+    ladderGroup.add(rightSide);
+    for (let i = 0; i < numRungs; i++) {
+        const rungGeometry = new THREE.BoxGeometry(LADDER_WIDTH, RUNG_THICKNESS, RUNG_THICKNESS);
+        const rung = new THREE.Mesh(rungGeometry, rungMaterial);
+        rung.position.y = -obstacleSize.y / 2 + RUNG_SPACING * (i + 0.5);
+        ladderGroup.add(rung);
+    }
+    const face = ladderFace === -1 ? Math.floor(Math.random() * 4) : ladderFace;
+    const offset = 0.1;
+    switch (face) {
+        case 0: ladderGroup.position.set(0, 0, obstacleSize.z / 2 + offset); break;
+        case 1: ladderGroup.position.set(0, 0, -obstacleSize.z / 2 - offset); break;
+        case 2: ladderGroup.position.set(obstacleSize.x / 2 + offset, 0, 0); ladderGroup.rotation.y = Math.PI / 2; break;
+        case 3: ladderGroup.position.set(-obstacleSize.x / 2 - offset, 0, 0); ladderGroup.rotation.y = -Math.PI / 2; break;
+    }
+    obstacle.add(ladderGroup);
+    const sensorAreaDepth = 3;
+    const sensorAreaWidth = 3;
+    const sensorAreaHeight = 3;
+    const sensorGeometry = new THREE.BoxGeometry(sensorAreaWidth, sensorAreaHeight, sensorAreaDepth);
+    const sensorMaterial = new THREE.MeshBasicMaterial({ color: 0x0000ff, transparent: true, opacity: 0.0 }); // 完全に透明
+    const sensorArea = new THREE.Mesh(sensorGeometry, sensorMaterial);
+    sensorArea.name = 'ladderSensorArea';
+    const offsetFromLadderWall = sensorAreaDepth / 2 - 0.5;
+    sensorArea.rotation.y = ladderGroup.rotation.y;
+    const ladderWorldPosition = new THREE.Vector3();
+    ladderGroup.getWorldPosition(ladderWorldPosition);
+    const obstacleWorldPosition = obstacle.position.clone();
+    const directionFromObstacleCenterToLadder = ladderWorldPosition.clone().sub(obstacleWorldPosition);
+    directionFromObstacleCenterToLadder.y = 0;
+    directionFromObstacleCenterToLadder.normalize();
+    const sensorWorldPosition = ladderWorldPosition.clone().add(
+        directionFromObstacleCenterToLadder.multiplyScalar(offsetFromLadderWall)
+    );
+    sensorArea.position.copy(sensorWorldPosition);
+    sensorArea.position.y = (sensorAreaHeight / 2) - FLOOR_HEIGHT;
+    sensorArea.userData.obstacle = obstacle;
+    sensorArea.userData.ladderPos = ladderWorldPosition.clone();
+    sensorArea.visible = true; // デバッグ用に可視化
+    scene.add(sensorArea);
+    ladderSwitches.push(sensorArea);
+    return face;
+}
+
+function addRooftopFeatures(obstacle, ladderFace) {
+    if (!obstacle.userData.rooftopParts) {
+        obstacle.userData.rooftopParts = [];
+    }
+    
+    // ジオメトリの安全な取得
+    let buildingWidth, buildingHeight, buildingDepth;
+    
+    if (obstacle.geometry && obstacle.geometry.parameters) {
+        // BoxGeometryの場合
+        buildingWidth = obstacle.geometry.parameters.width || 6;
+        buildingHeight = obstacle.geometry.parameters.height || 4;
+        buildingDepth = obstacle.geometry.parameters.depth || 6;
+    } else {
+        // デフォルト値
+        buildingWidth = 6;
+        buildingHeight = 4;
+        buildingDepth = 6;
+    }
+    
+    const rooftopY = obstacle.position.y + (buildingHeight / 2);
+    
+    // テクスチャ未初期化なら初期化
+    initializeTextures();
+    
+    const wallHeight = 1.0;
+    const wallThickness = 0.5;
+    const wallMaterial = new THREE.MeshLambertMaterial({ 
+        map: objectSurfaceTexture,
+        color: 0x880000 
+    });
+    const wallDefs = [
+        { face: 0, w: buildingWidth, h: wallHeight, d: wallThickness, ox: 0, oz: buildingDepth / 2 - wallThickness / 2 },
+        { face: 1, w: buildingWidth, h: wallHeight, d: wallThickness, ox: 0, oz: -(buildingDepth / 2 - wallThickness / 2) },
+        { face: 2, w: wallThickness, h: wallHeight, d: buildingDepth - wallThickness * 2, ox: buildingWidth / 2 - wallThickness / 2, oz: 0 },
+        { face: 3, w: wallThickness, h: wallHeight, d: buildingDepth - wallThickness * 2, ox: -(buildingWidth / 2 - wallThickness / 2), oz: 0 }
+    ];
+    const LADDER_WIDTH = 1.5;
+    const LADDER_GAP = LADDER_WIDTH + 1.0;
+    for (const def of wallDefs) {
+        if (def.face === ladderFace) {
+            const wallLength = def.w > def.d ? def.w : def.d;
+            const newWallLength = (wallLength - LADDER_GAP) / 2;
+            if (newWallLength <= 0) continue;
+            const wall1 = new THREE.Mesh(def.w > def.d ? new THREE.BoxGeometry(newWallLength, def.h, def.d) : new THREE.BoxGeometry(def.w, def.h, newWallLength), wallMaterial);
+            const wall2 = wall1.clone();
+            const offset = (wallLength / 2) - (newWallLength / 2);
+            if (def.w > def.d) {
+                wall1.position.set(obstacle.position.x + def.ox - offset, rooftopY + (def.h / 2), obstacle.position.z + def.oz);
+                wall2.position.set(obstacle.position.x + def.ox + offset, rooftopY + (def.h / 2), obstacle.position.z + def.oz);
+            } else {
+                wall1.position.set(obstacle.position.x + def.ox, rooftopY + (def.h / 2), obstacle.position.z + def.oz - offset);
+                wall2.position.set(obstacle.position.x + def.ox, rooftopY + (def.h / 2), obstacle.position.z + def.oz + offset);
+            }
+            wall1.userData.isWall = true;
+            wall1.userData.isRooftop = true;
+            wall1.userData.isRooftopCover = true;
+            wall1.userData.parentBuildingRef = obstacle;
+            scene.add(wall1);
+            obstacles.push(wall1);
+            obstacle.userData.rooftopParts.push(wall1);
+            wall2.userData.isWall = true;
+            wall2.userData.isRooftop = true;
+            wall2.userData.isRooftopCover = true;
+            wall2.userData.parentBuildingRef = obstacle;
+            scene.add(wall2);
+            obstacles.push(wall2);
+            obstacle.userData.rooftopParts.push(wall2);
+        } else {
+            const wallGeometry = new THREE.BoxGeometry(def.w, def.h, def.d);
+            const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+            wall.position.set(obstacle.position.x + def.ox, rooftopY + (def.h / 2), obstacle.position.z + def.oz);
+            wall.userData.isWall = true;
+            wall.userData.isRooftop = true;
+            wall.userData.isRooftopCover = true;
+            wall.userData.parentBuildingRef = obstacle;
+            scene.add(wall);
+            obstacles.push(wall);
+            obstacle.userData.rooftopParts.push(wall);
+        }
+    }
+
+}
+
+function createHollowObstacle(x, z, width = 8, height = 5, depth = 8, color = 0xff4444, hp = 1, holeConfigs = [], isNew = true) {
+    debugLog('=== 中空障害物（動作バージョン） ===');
+    debugLog('建物の高さ:', height);
+    
+    const building = new THREE.Group();
+    building.position.set(x, 0, z);
+    building.userData.hp = hp;
+    building.userData.isHollow = true;
+    building.userData.type = 'hollow_obstacle';
+    building.userData.width = width;
+    building.userData.height = height;
+    building.userData.depth = depth;
+    building.userData.color = color;
+    
+    const material = new THREE.MeshStandardMaterial({ color: color, side: THREE.DoubleSide });
+    const wallThickness = 0.3; // 壁の厚さを増やしてコリジョンを強化
+    
+    // 床 - 地面に配置
+    const floorGeometry = new THREE.BoxGeometry(width, 0.1, depth);
+    const floor = new THREE.Mesh(floorGeometry, material);
+    floor.position.set(0, 0.05, 0); // 床の厚さの半分を地面から上に
+    floor.userData.type = 'floor';
+    floor.userData.isWall = true; // コリジョン用に壁として扱う
+    building.add(floor);
+    obstacles.push(floor); // 障害物リストに追加
+    
+    // 各壁の配置 - 床の上に配置
+    createFrontWallWithDoor(building, width, height, wallThickness, depth/2, material);
+    createBackWallWithWindows(building, width, height, wallThickness, -depth/2, material);
+    // 側壁は回転が必要
+    createSideWallWithWindow(building, depth, height, wallThickness, -width/2, material, Math.PI / 2);
+    createSideWallWithWindow(building, depth, height, wallThickness, width/2, material, Math.PI / 2);
+    
+    // 天井の配置
+    const ceilingGeometry = new THREE.BoxGeometry(width + wallThickness, 0.3, depth + wallThickness);
+    const ceiling = new THREE.Mesh(ceilingGeometry, material);
+    ceiling.position.set(0, height, 0); 
+    ceiling.userData.type = 'ceiling';
+    ceiling.userData.isWall = true; // コリジョン用に壁として扱う
+    building.add(ceiling);
+    obstacles.push(ceiling); // 障害物リストに追加
+    
+    scene.add(building);
+    
+    debugLog('=== 作成完了 ===');
+}
+
+// 基本の壁形状を作成する補助関数
+function createBaseWallShape(w, h) {
+    const shape = new THREE.Shape();
+    shape.moveTo(-w/2, 0);
+    shape.lineTo(w/2, 0);
+    shape.lineTo(w/2, h);
+    shape.lineTo(-w/2, h);
+    shape.lineTo(-w/2, 0);
+    return shape;
+}
+
+function createFrontWallWithDoor(building, width, height, thickness, zPos, material) {
+    // BoxGeometry方式で確実なコリジョン
+    const doorWidth = 2.0;
+    const doorHeight = 3.2; // プレイヤーの高さ3.0m + 余裕
+    
+    debugLog('FRONT WALL: door width =', doorWidth, 'door height =', doorHeight);
+    debugLog('Building width =', width, 'height =', height);
+    
+    // 上部パーツ - ドア上部
+    const topHeight = height - doorHeight;
+    if (topHeight > 0) {
+        const topGeometry = new THREE.BoxGeometry(width, topHeight, thickness);
+        const topPiece = new THREE.Mesh(topGeometry, material);
+        topPiece.position.set(0, doorHeight + topHeight/2, zPos);
+        topPiece.userData.isWall = true;
+        building.add(topPiece);
+        obstacles.push(topPiece);
+        debugLog('Top piece: height =', topHeight, 'y =', doorHeight + topHeight/2);
+    }
+    
+    // 左パーツ - ドア左側
+    const leftWidth = (width - doorWidth) / 2;
+    if (leftWidth > 0) {
+        const leftGeometry = new THREE.BoxGeometry(leftWidth, doorHeight, thickness);
+        const leftPiece = new THREE.Mesh(leftGeometry, material);
+        leftPiece.position.set(-width/2 + leftWidth/2, doorHeight/2, zPos);
+        leftPiece.userData.isWall = true;
+        building.add(leftPiece);
+        obstacles.push(leftPiece);
+        debugLog('Left piece: width =', leftWidth, 'y =', doorHeight/2);
+    }
+    
+    // 右パーツ - ドア右側
+    if (leftWidth > 0) {
+        const rightGeometry = new THREE.BoxGeometry(leftWidth, doorHeight, thickness);
+        const rightPiece = new THREE.Mesh(rightGeometry, material);
+        rightPiece.position.set(width/2 - leftWidth/2, doorHeight/2, zPos);
+        rightPiece.userData.isWall = true;
+        building.add(rightPiece);
+        obstacles.push(rightPiece);
+        debugLog('Right piece: width =', leftWidth, 'y =', doorHeight/2);
+    }
+    
+    debugLog('Front wall with door created using BoxGeometry method');
+}
+
+function createBackWallWithWindows(building, width, height, thickness, zPos, material) {
+    // BoxGeometry方式で確実なコリジョン
+    const windowWidth = 1.2;
+    const windowHeight = 1.2;
+    const windowY = 0.3; // プレイヤーの視線レベルにさらに下げる
+    const windowSpacing = 0.5; // 窓の間隔
+    
+    debugLog('BACK WALL: window width =', windowWidth, 'height =', windowHeight, 'y =', windowY);
+    
+    // 上部パーツ - 窓上部
+    const topHeight = height - windowY - windowHeight;
+    if (topHeight > 0) {
+        const topGeometry = new THREE.BoxGeometry(width, topHeight, thickness);
+        const topPiece = new THREE.Mesh(topGeometry, material);
+        topPiece.position.set(0, windowY + windowHeight + topHeight/2, zPos);
+        topPiece.userData.isWall = true;
+        building.add(topPiece);
+        obstacles.push(topPiece);
+        debugLog('Back top piece: height =', topHeight, 'y =', windowY + windowHeight + topHeight/2);
+    }
+    
+    // 下部パーツ - 窓下部
+    const bottomHeight = windowY;
+    if (bottomHeight > 0) {
+        const bottomGeometry = new THREE.BoxGeometry(width, bottomHeight, thickness);
+        const bottomPiece = new THREE.Mesh(bottomGeometry, material);
+        bottomPiece.position.set(0, bottomHeight/2, zPos);
+        bottomPiece.userData.isWall = true;
+        building.add(bottomPiece);
+        obstacles.push(bottomPiece);
+        debugLog('Back bottom piece: height =', bottomHeight, 'y =', bottomHeight/2);
+    }
+    
+    // 左パーツ - 左窓の左側
+    const leftWidth = (width - windowWidth*2 - windowSpacing) / 2;
+    if (leftWidth > 0) {
+        const leftGeometry = new THREE.BoxGeometry(leftWidth, windowHeight, thickness);
+        const leftPiece = new THREE.Mesh(leftGeometry, material);
+        leftPiece.position.set(-width/2 + leftWidth/2, windowY + windowHeight/2, zPos);
+        leftPiece.userData.isWall = true;
+        building.add(leftPiece);
+        obstacles.push(leftPiece);
+        debugLog('Back left piece: width =', leftWidth, 'y =', windowY + windowHeight/2);
+    }
+    
+    // 中央パーツ - 窓の間
+    const middleGeometry = new THREE.BoxGeometry(windowSpacing, windowHeight, thickness);
+    const middlePiece = new THREE.Mesh(middleGeometry, material);
+    middlePiece.position.set(0, windowY + windowHeight/2, zPos);
+    middlePiece.userData.isWall = true;
+    building.add(middlePiece);
+    obstacles.push(middlePiece);
+    debugLog('Back middle piece: width =', windowSpacing, 'y =', windowY + windowHeight/2);
+    
+    // 右パーツ - 右窓の右側
+    if (leftWidth > 0) {
+        const rightGeometry = new THREE.BoxGeometry(leftWidth, windowHeight, thickness);
+        const rightPiece = new THREE.Mesh(rightGeometry, material);
+        rightPiece.position.set(width/2 - leftWidth/2, windowY + windowHeight/2, zPos);
+        rightPiece.userData.isWall = true;
+        building.add(rightPiece);
+        obstacles.push(rightPiece);
+        debugLog('Back right piece: width =', leftWidth, 'y =', windowY + windowHeight/2);
+    }
+    
+    debugLog('Back wall with windows created using BoxGeometry method');
+}
+
+function createSideWallWithWindow(building, wallDepth, height, thickness, xPos, material, rotationY) {
+    // BoxGeometry方式で確実なコリジョン
+    const windowWidth = 1.2;
+    const windowHeight = 1.2;
+    const windowY = 0.3; // プレイヤーの視線レベルにさらに下げる
+    
+    debugLog('SIDE WALL: window width =', windowWidth, 'height =', windowHeight, 'y =', windowY);
+    
+    // 上部パーツ - 窓上部
+    const topHeight = height - windowY - windowHeight;
+    if (topHeight > 0) {
+        const topGeometry = new THREE.BoxGeometry(thickness, topHeight, wallDepth);
+        const topPiece = new THREE.Mesh(topGeometry, material);
+        topPiece.position.set(xPos, windowY + windowHeight + topHeight/2, 0);
+        topPiece.userData.isWall = true;
+        building.add(topPiece);
+        obstacles.push(topPiece);
+        debugLog('Side top piece: height =', topHeight, 'y =', windowY + windowHeight + topHeight/2);
+    }
+    
+    // 下部パーツ - 窓下部
+    const bottomHeight = windowY;
+    if (bottomHeight > 0) {
+        const bottomGeometry = new THREE.BoxGeometry(thickness, bottomHeight, wallDepth);
+        const bottomPiece = new THREE.Mesh(bottomGeometry, material);
+        bottomPiece.position.set(xPos, bottomHeight/2, 0);
+        bottomPiece.userData.isWall = true;
+        building.add(bottomPiece);
+        obstacles.push(bottomPiece);
+        debugLog('Side bottom piece: height =', bottomHeight, 'y =', bottomHeight/2);
+    }
+    
+    // 左パーツ - 窓左側
+    const leftWidth = (wallDepth - windowWidth) / 2;
+    if (leftWidth > 0) {
+        const leftGeometry = new THREE.BoxGeometry(thickness, windowHeight, leftWidth);
+        const leftPiece = new THREE.Mesh(leftGeometry, material);
+        leftPiece.position.set(xPos, windowY + windowHeight/2, -wallDepth/2 + leftWidth/2);
+        leftPiece.userData.isWall = true;
+        building.add(leftPiece);
+        obstacles.push(leftPiece);
+        debugLog('Side left piece: width =', leftWidth, 'y =', windowY + windowHeight/2);
+    }
+    
+    // 右パーツ - 窓右側
+    if (leftWidth > 0) {
+        const rightGeometry = new THREE.BoxGeometry(thickness, windowHeight, leftWidth);
+        const rightPiece = new THREE.Mesh(rightGeometry, material);
+        rightPiece.position.set(xPos, windowY + windowHeight/2, wallDepth/2 - leftWidth/2);
+        rightPiece.userData.isWall = true;
+        building.add(rightPiece);
+        obstacles.push(rightPiece);
+        debugLog('Side right piece: width =', leftWidth, 'y =', windowY + windowHeight/2);
+    }
+    
+    debugLog('Side wall with window created using BoxGeometry method');
+}
+
+const WAREHOUSE_DOOR_TEXTURE_SRC = 'door.png';
+const WAREHOUSE_WINDOW_TEXTURE_SRC = 'window.png';
+const WAREHOUSE_MIN_FACE_SIZE = 7.5;
+const WAREHOUSE_MIN_HEIGHT = 3.0;
+const warehouseTextureCache = {};
+
+function getWarehouseTexture(src) {
+    if (warehouseTextureCache[src]) return warehouseTextureCache[src];
+    const loader = new THREE.TextureLoader();
+    const texture = loader.load(src);
+    if ('colorSpace' in texture && THREE.SRGBColorSpace) {
+        texture.colorSpace = THREE.SRGBColorSpace;
+    } else if ('encoding' in texture && THREE.sRGBEncoding) {
+        texture.encoding = THREE.sRGBEncoding;
+    }
+    texture.anisotropy = renderer.capabilities.getMaxAnisotropy ? Math.min(4, renderer.capabilities.getMaxAnisotropy()) : 1;
+    warehouseTextureCache[src] = texture;
+    return texture;
+}
+
+function shouldDecorateWarehouseObstacle(width, height, depth) {
+    return height >= WAREHOUSE_MIN_HEIGHT && width >= WAREHOUSE_MIN_FACE_SIZE && depth >= WAREHOUSE_MIN_FACE_SIZE;
+}
+
+function createWarehouseDecal(width, height, textureSrc) {
+    const geometry = new THREE.PlaneGeometry(width, height);
+    const material = new THREE.MeshLambertMaterial({
+        map: getWarehouseTexture(textureSrc),
+        transparent: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.userData.isWarehouseDecal = true;
+    return mesh;
+}
+
+function addWarehouseDecorations(obstacleMesh, width, height, depth) {
+    if (!shouldDecorateWarehouseObstacle(width, height, depth)) return;
+
+    const epsilon = 0.035;
+    const doorWidth = Math.min(3.2, Math.max(2.2, Math.max(width, depth) * 0.26));
+    const doorHeight = Math.min(height - 0.25, 3.4);
+    const windowSize = Math.min(1.6, Math.max(1.1, height * 0.32));
+    const windowY = Math.min(height / 2 - windowSize / 2 - 0.25, -height / 2 + height * 0.66);
+    const doorY = -height / 2 + doorHeight / 2;
+
+    const door = createWarehouseDecal(doorWidth, doorHeight, WAREHOUSE_DOOR_TEXTURE_SRC);
+    door.position.y = doorY;
+
+    const leftWindow = createWarehouseDecal(windowSize, windowSize, WAREHOUSE_WINDOW_TEXTURE_SRC);
+    const rightWindow = createWarehouseDecal(windowSize, windowSize, WAREHOUSE_WINDOW_TEXTURE_SRC);
+    leftWindow.position.y = windowY;
+    rightWindow.position.y = windowY;
+
+    if (width >= depth) {
+        door.position.z = depth / 2 + epsilon;
+        leftWindow.position.set(-width / 2 - epsilon, windowY, 0);
+        leftWindow.rotation.y = -Math.PI / 2;
+        rightWindow.position.set(width / 2 + epsilon, windowY, 0);
+        rightWindow.rotation.y = Math.PI / 2;
+    } else {
+        door.position.x = width / 2 + epsilon;
+        door.rotation.y = Math.PI / 2;
+        leftWindow.position.set(0, windowY, depth / 2 + epsilon);
+        rightWindow.position.set(0, windowY, -depth / 2 - epsilon);
+        rightWindow.rotation.y = Math.PI;
+    }
+
+    obstacleMesh.add(door);
+    obstacleMesh.add(leftWindow);
+    obstacleMesh.add(rightWindow);
+    obstacleMesh.userData.isWarehouseObstacle = true;
+}
+
+const STATIC_SHADOW_Y_OFFSET = 0.035;
+function createStaticShadowMaterial(opacity = 0.1) {
+    return new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1
+    });
+}
+const STATIC_RECT_SHADOW_GEOMETRY = new THREE.PlaneGeometry(1, 1);
+STATIC_RECT_SHADOW_GEOMETRY.rotateX(-Math.PI / 2);
+const STATIC_CIRCLE_SHADOW_GEOMETRY = new THREE.CircleGeometry(1, 20);
+STATIC_CIRCLE_SHADOW_GEOMETRY.rotateX(-Math.PI / 2);
+const staticObjectShadows = [];
+
+function getStaticShadowCastDirection() {
+    const lightPos = directionalLight && directionalLight.position
+        ? directionalLight.position
+        : new THREE.Vector3(0, 10, 5);
+    const dir = new THREE.Vector3(-lightPos.x, 0, -lightPos.z);
+    if (dir.lengthSq() < 1e-6) dir.set(0.35, 0, -1);
+    return dir.normalize();
+}
+
+function getStaticShadowParentYaw(parent) {
+    if (!parent || !parent.rotation) return 0;
+    return parent.rotation.y || 0;
+}
+
+function addStaticObjectShadow(parent, width, depth, options = {}) {
+    if (!parent || parent.userData && parent.userData.staticObjectShadow) return null;
+    const useCircle = !!options.circle;
+    const geometry = useCircle ? STATIC_CIRCLE_SHADOW_GEOMETRY : STATIC_RECT_SHADOW_GEOMETRY;
+    const shadow = new THREE.Mesh(geometry, createStaticShadowMaterial(options.opacity || 0.1));
+    const localY = Number.isFinite(options.localY) ? options.localY : (-((options.height || 0) / 2) + STATIC_SHADOW_Y_OFFSET);
+    const padX = Number.isFinite(options.padX) ? options.padX : 0.55;
+    const padZ = Number.isFinite(options.padZ) ? options.padZ : 0.55;
+    const height = Math.max(0, Number(options.height) || 0);
+    const castDir = getStaticShadowCastDirection();
+    const parentYaw = getStaticShadowParentYaw(parent);
+    const castYaw = Math.atan2(castDir.x, castDir.z);
+    const localCastYaw = castYaw - parentYaw;
+    const localCastDir = new THREE.Vector3(Math.sin(localCastYaw), 0, Math.cos(localCastYaw));
+    const castLength = Math.max(0.12, height * (Number.isFinite(options.lengthFactor) ? options.lengthFactor : 0.14));
+    const shadowLength = Math.max(0.18, castLength + (Number.isFinite(options.tailPad) ? options.tailPad : 0.25));
+    if (useCircle) {
+        const radius = Math.max(width, depth) * 0.5 + Math.max(padX, padZ);
+        const stretch = 1 + Math.min(0.35, castLength * 0.06);
+        shadow.position.set(
+            (options.localX || 0) + localCastDir.x * (radius * 0.35),
+            localY,
+            (options.localZ || 0) + localCastDir.z * (radius * 0.35)
+        );
+        shadow.rotation.y = Number.isFinite(options.rotationY) ? options.rotationY : localCastYaw;
+        shadow.scale.set(radius * 0.92, 1, radius * stretch);
+    } else {
+        const useXFace = Math.abs(localCastDir.x) >= Math.abs(localCastDir.z);
+        if (useXFace) {
+            const faceSign = localCastDir.x >= 0 ? 1 : -1;
+            shadow.position.set(
+                (options.localX || 0) + faceSign * ((width / 2) + (shadowLength / 2)),
+                localY,
+                options.localZ || 0
+            );
+            shadow.rotation.y = Math.PI / 2;
+            shadow.scale.set(Math.max(0.1, depth), 1, Math.max(0.1, shadowLength + padX));
+        } else {
+            const faceSign = localCastDir.z >= 0 ? 1 : -1;
+            shadow.position.set(
+                options.localX || 0,
+                localY,
+                (options.localZ || 0) + faceSign * ((depth / 2) + (shadowLength / 2))
+            );
+            shadow.rotation.y = 0;
+            shadow.scale.set(Math.max(0.1, width), 1, Math.max(0.1, shadowLength + padZ));
+        }
+    }
+    shadow.renderOrder = 1;
+    shadow.userData.isStaticObjectShadow = true;
+    shadow.visible = !isNightForCharacterShadows() && !isBillBattleMode();
+    parent.add(shadow);
+    if (!parent.userData) parent.userData = {};
+    parent.userData.staticObjectShadow = shadow;
+    staticObjectShadows.push(shadow);
+    return shadow;
+}
+
+function updateStaticObjectShadows() {
+    const visible = !isNightForCharacterShadows() && !isBillBattleMode();
+    for (let i = staticObjectShadows.length - 1; i >= 0; i--) {
+        const shadow = staticObjectShadows[i];
+        if (!shadow || !shadow.parent) {
+            staticObjectShadows.splice(i, 1);
+            continue;
+        }
+        shadow.visible = visible;
+    }
+}
+
+function addHouseInteriorGroundShadow(house, width, height, depth) {
+    if (!house || house.userData && house.userData.houseInteriorGroundShadow) return null;
+    const shadow = new THREE.Mesh(STATIC_RECT_SHADOW_GEOMETRY, createStaticShadowMaterial(0.075));
+    const inset = 0.45;
+    shadow.position.set(0, -height / 2 + STATIC_SHADOW_Y_OFFSET + 0.01, 0);
+    shadow.scale.set(Math.max(0.1, width - inset), 1, Math.max(0.1, depth - inset));
+    shadow.renderOrder = 1;
+    shadow.userData.isStaticObjectShadow = true;
+    shadow.userData.isHouseInteriorGroundShadow = true;
+    shadow.visible = !isNightForCharacterShadows() && !isBillBattleMode();
+    house.add(shadow);
+    if (!house.userData) house.userData = {};
+    house.userData.houseInteriorGroundShadow = shadow;
+    staticObjectShadows.push(shadow);
+    return shadow;
+}
+
+function createObstacle(x, z, width = 2, height = DEFAULT_OBSTACLE_HEIGHT, depth = 2, color = 0xff0000, hp = 1) {
+    // テクスチャ未初期化なら初期化
+    initializeTextures();
+    
+    const boxGeometry = new THREE.BoxGeometry(width, height, depth);
+    
+    const material = new THREE.MeshLambertMaterial({
+        map: objectSurfaceTexture,
+        color: color
+    });
+    
+    const box = new THREE.Mesh(boxGeometry, material);
+    box.position.set(x, (height / 2) - FLOOR_HEIGHT, z);
+    box.userData.hp = hp;
+    box.castShadow = false; // 影をキャストしない
+    scene.add(box);
+    obstacles.push(box);
+    addWarehouseDecorations(box, width, height, depth);
+    let ladderFace = -1;
+    if (height > 6) {
+        ladderFace = createAndAttachLadder(box);
+        // 背の高い障害物（塔）には必ず屋上カバーを付与する。
+        addRooftopFeatures(box, ladderFace);
+    }
+    addStaticObjectShadow(box, width, depth, { height, padX: 0.45, padZ: 0.45 });
+    // 家の屋根には登れないようにする - 屋上機能を無効化
+    // addRooftopFeatures(box, ladderFace); // 家には梯子を設置しない
+    const HIDING_DISTANCE = 1.5;
+    HIDING_SPOTS.push({ position: new THREE.Vector3(x + HIDING_DISTANCE, 0, z + HIDING_DISTANCE), obstacle: box });
+    HIDING_SPOTS.push({ position: new THREE.Vector3(x - HIDING_DISTANCE, 0, z + HIDING_DISTANCE), obstacle: box });
+    HIDING_SPOTS.push({ position: new THREE.Vector3(x + HIDING_DISTANCE, 0, z - HIDING_DISTANCE), obstacle: box });
+    HIDING_SPOTS.push({ position: new THREE.Vector3(x - HIDING_DISTANCE, 0, z - HIDING_DISTANCE), obstacle: box });
+}
+
+const BARREL_HAZARD_ICON_SRC = 'barrel_hazard.png';
+let barrelHazardBaseTexture = null;
+let barrelHazardLoadStarted = false;
+
+function getTextureAspect(texture, fallback = 1.05) {
+    const image = texture && texture.image;
+    if (image && image.width && image.height) {
+        return image.width / image.height;
+    }
+    return fallback;
+}
+
+function createFallbackRadiationTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const r = 190;
+    const inner = 40;
+    const sectorOuter = r * 0.92;
+    const sectorInner = r * 0.38;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#f4cf00';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#111111';
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#f4cf00';
+    for (let i = 0; i < 3; i++) {
+        const start = -Math.PI / 2 + i * (Math.PI * 2 / 3) - 0.28;
+        const end = start + 0.56;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos((start + end) / 2) * sectorInner, cy + Math.sin((start + end) / 2) * sectorInner);
+        ctx.arc(cx, cy, sectorOuter, start, end);
+        ctx.arc(cx, cy, sectorInner, end, start, true);
+        ctx.closePath();
+        ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(cx, cy, inner, 0, Math.PI * 2);
+    ctx.fill();
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+}
+
+function requestBarrelHazardTexture() {
+    if (barrelHazardLoadStarted || barrelHazardBaseTexture) return;
+    barrelHazardLoadStarted = true;
+    const loader = new THREE.TextureLoader();
+    loader.load(
+        BARREL_HAZARD_ICON_SRC,
+        (tex) => {
+            if ('colorSpace' in tex && THREE.SRGBColorSpace) {
+                tex.colorSpace = THREE.SRGBColorSpace;
+            } else if ('encoding' in tex && THREE.sRGBEncoding) {
+                tex.encoding = THREE.sRGBEncoding;
+            }
+            barrelHazardBaseTexture = tex;
+            scene.traverse((obj) => {
+                if (!obj || !obj.isMesh || !obj.userData || !obj.userData.isBarrelLabel) return;
+                const mat = obj.material;
+                if (!mat) return;
+                if (mat.map && mat.map.userData && mat.map.userData.isFallbackHazard) {
+                    mat.map.dispose();
+                }
+                const replacement = barrelHazardBaseTexture.clone();
+                replacement.needsUpdate = true;
+                mat.map = replacement;
+                mat.needsUpdate = true;
+                updateBarrelHazardLabelGeometry(obj, replacement);
+            });
+        },
+        undefined,
+        () => {
+            // PNG未配置時はフォールバックマークを使い続ける
+        }
+    );
+}
+
+function updateBarrelHazardLabelGeometry(label, texture) {
+    if (!label || !label.userData) return;
+    const radius = label.userData.barrelRadius || 0.75;
+    const height = label.userData.barrelHeight || 2.4;
+    const labelRadius = radius * 1.003;
+    const labelHeight = Math.max(0.34, height * 0.34);
+    const aspect = THREE.MathUtils.clamp(getTextureAspect(texture), 0.45, 1.5);
+    const thetaLength = THREE.MathUtils.clamp(
+        (labelHeight * aspect) / Math.max(0.001, labelRadius),
+        Math.PI * 0.18,
+        Math.PI * 0.52
+    );
+    const thetaCenter = label.userData.thetaCenter ?? (Math.PI / 2);
+    const thetaStart = thetaCenter - (thetaLength / 2);
+    const oldGeometry = label.geometry;
+    label.geometry = new THREE.CylinderGeometry(labelRadius, labelRadius, labelHeight, 48, 1, true, thetaStart, thetaLength);
+    if (oldGeometry) oldGeometry.dispose();
+    label.position.set(0, 0, 0);
+}
+
+function createBarrelHazardLabel(radius, height, thetaCenter = Math.PI / 2) {
+    let texture = null;
+    if (barrelHazardBaseTexture) {
+        texture = barrelHazardBaseTexture.clone();
+        texture.needsUpdate = true;
+    } else {
+        texture = createFallbackRadiationTexture();
+        if (texture) {
+            texture.userData = texture.userData || {};
+            texture.userData.isFallbackHazard = true;
+        }
+        requestBarrelHazardTexture();
+    }
+    if (!texture) return null;
+
+    // ドラム缶のRに沿う曲面ラベル（前面側のみ）
+    const label = new THREE.Mesh(
+        new THREE.CylinderGeometry(radius * 1.003, radius * 1.003, Math.max(0.34, height * 0.34), 48, 1, true, thetaCenter, Math.PI * 0.3),
+        new THREE.MeshBasicMaterial({
+            map: texture,
+            transparent: true,
+            side: THREE.DoubleSide,
+            depthWrite: false
+        })
+    );
+    label.userData.barrelRadius = radius;
+    label.userData.barrelHeight = height;
+    label.userData.thetaCenter = thetaCenter;
+    updateBarrelHazardLabelGeometry(label, texture);
+    label.userData.isBarrelLabel = true;
+    return label;
+}
+
+function getDarkerBarrelColor(color, factor = 0.58) {
+    const base = new THREE.Color(color);
+    base.multiplyScalar(factor);
+    return base;
+}
+
+function addBarrelBodyGrooves(barrel, radius, height, color) {
+    const grooveColor = getDarkerBarrelColor(color);
+    const grooveMaterial = new THREE.MeshLambertMaterial({ color: grooveColor });
+    const grooveGeometry = new THREE.TorusGeometry(
+        radius * 1.006,
+        Math.max(0.018, radius * 0.032),
+        8,
+        56
+    );
+    grooveGeometry.rotateX(Math.PI / 2);
+    const grooveYs = [-height * 0.24, height * 0.24];
+    grooveYs.forEach((y, index) => {
+        const groove = new THREE.Mesh(grooveGeometry, grooveMaterial);
+        groove.position.set(0, y, 0);
+        groove.userData.isBarrelGroove = true;
+        groove.userData.grooveIndex = index;
+        barrel.add(groove);
+    });
+}
+
+function addBarrelTopLids(barrel, radius, height) {
+    const largeLidGeometry = new THREE.CylinderGeometry(radius * 0.16, radius * 0.16, 0.035, 20);
+    const smallLidGeometry = new THREE.CylinderGeometry(radius * 0.115, radius * 0.115, 0.032, 18);
+    const lidMaterial = new THREE.MeshLambertMaterial({ color: 0x2f2f2f });
+    const lids = [
+        { geometry: largeLidGeometry, position: new THREE.Vector3(radius * 0.48, height / 2 + 0.025, -radius * 0.24) },
+        { geometry: smallLidGeometry, position: new THREE.Vector3(-radius * 0.48, height / 2 + 0.026, radius * 0.24) }
+    ];
+    lids.forEach((config, index) => {
+        const lid = new THREE.Mesh(config.geometry, lidMaterial);
+        lid.position.copy(config.position);
+        lid.userData.isBarrelTopLid = true;
+        lid.userData.lidIndex = index;
+        barrel.add(lid);
+    });
+}
+
+function createExplosiveBarrel(x, z, color = 0xe74c3c, radius = 0.75, height = 2.4) {
+    if (isBillBattleMode()) {
+        const clamped = clampBillBattleInside(new THREE.Vector3(x, 0, z), Math.max(1.5, radius + 0.5));
+        x = clamped.x;
+        z = clamped.z;
+    }
+    const resolvedColor = (color !== undefined && color !== null) ? color : 0xe74c3c;
+    const geometry = new THREE.CylinderGeometry(radius, radius, height, 20);
+    const material = new THREE.MeshLambertMaterial({ color: resolvedColor });
+    const barrel = new THREE.Mesh(geometry, material);
+    barrel.position.set(x, (height / 2) - FLOOR_HEIGHT, z);
+    barrel.userData.type = 'barrel';
+    barrel.userData.color = material.color.getHex();
+    barrel.userData.radius = radius;
+    barrel.userData.height = height;
+    barrel.userData.spawnPos = new THREE.Vector3(x, barrel.position.y, z);
+    barrel.userData.hp = 1;
+    barrel.castShadow = false;
+    addBarrelBodyGrooves(barrel, radius, height, material.color.getHex());
+    const hazardLabel = createBarrelHazardLabel(radius, height, Math.random() * Math.PI * 2);
+    if (hazardLabel) barrel.add(hazardLabel);
+    addBarrelTopLids(barrel, radius, height);
+    addStaticObjectShadow(barrel, radius * 2, radius * 2, { height, circle: true, padX: 0.18, padZ: 0.18, lengthFactor: 0.08, opacity: 0.08 });
+    scene.add(barrel);
+    obstacles.push(barrel);
+    const HIDING_DISTANCE = radius + 0.6;
+    HIDING_SPOTS.push({ position: new THREE.Vector3(x + HIDING_DISTANCE, 0, z), obstacle: barrel });
+    HIDING_SPOTS.push({ position: new THREE.Vector3(x - HIDING_DISTANCE, 0, z), obstacle: barrel });
+    HIDING_SPOTS.push({ position: new THREE.Vector3(x, 0, z + HIDING_DISTANCE), obstacle: barrel });
+    HIDING_SPOTS.push({ position: new THREE.Vector3(x, 0, z - HIDING_DISTANCE), obstacle: barrel });
+}
+
+  function clearBillBattleState() {
+      if (billBattleCeiling) {
+          const ceilingIndex = obstacles.indexOf(billBattleCeiling);
+          if (ceilingIndex > -1) obstacles.splice(ceilingIndex, 1);
+          scene.remove(billBattleCeiling);
+          if (billBattleCeiling.geometry) billBattleCeiling.geometry.dispose();
+          disposeMaterial(billBattleCeiling.material);
+          billBattleCeiling = null;
+      }
+      if (billBattleLights.length > 0) {
+          for (const entry of billBattleLights) {
+              if (!entry) continue;
+              if (entry.light) {
+                  scene.remove(entry.light);
+              }
+              if (entry.mesh) {
+                  const meshIndex = obstacles.indexOf(entry.mesh);
+                  if (meshIndex > -1) obstacles.splice(meshIndex, 1);
+                  scene.remove(entry.mesh);
+                  if (entry.mesh.geometry) entry.mesh.geometry.dispose();
+                  disposeMaterial(entry.mesh.material);
+              }
+          }
+      }
+      billBattleLights = [];
+      billBattleTotalLightCount = 0;
+      billBattleBaseAmbient = null;
+      billBattleBaseDirectional = null;
+      billBattleElevatorDoors.length = 0;
+      billBattleElevatorOpen = false;
+      billBattleTransitioning = false;
+      billBattleAIRespawnQueue = [];
+  }
+
+function getBillBattleEntranceZ() {
+    return -BILL_BATTLE_HALF + 2.0;
+}
+
+function getBillBattleElevatorZ() {
+    return BILL_BATTLE_HALF - 2.0;
+}
+
+  function isBillBattleFloorCleared() {
+      const alive = ais.filter(ai => ai && ai.hp > 0 && ai.team === 'enemy').length;
+      return billBattleKillsRemaining <= 0 && alive === 0;
+  }
+
+  function createBillBattleSolidBox(x, z, width, height, depth, color, hp, yOffset = 0) {
+      const geometry = new THREE.BoxGeometry(width, height, depth);
+      const material = new THREE.MeshLambertMaterial({ color: color });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, (height / 2) - FLOOR_HEIGHT + yOffset, z);
+      if (!mesh.userData) mesh.userData = {};
+      if (hp !== null && hp !== undefined) mesh.userData.hp = hp;
+      scene.add(mesh);
+      obstacles.push(mesh);
+      if (Math.abs(yOffset) < 0.001) {
+          addStaticObjectShadow(mesh, width, depth, { height, padX: 0.25, padZ: 0.25, lengthFactor: 0.04, opacity: 0.07 });
+      }
+      return mesh;
+  }
+
+  function createBillBattleWall(x, z, width, height, depth) {
+      const wallColor = (billBattleRoomStyle && billBattleRoomStyle.wallTopColor) ? billBattleRoomStyle.wallTopColor : BILL_BATTLE_WALL_COLOR;
+      const wall = createBillBattleSolidBox(x, z, width, height, depth, wallColor, 9999);
+      if (wall && wall.userData) {
+          wall.userData.isWall = true;
+          wall.userData.isBillBattleWall = true;
+          wall.userData.blocksProjectiles = true;
+          wall.userData.isFloor = false;
+      }
+      applyBillBattleWallTwoTone(wall);
+      return wall;
+  }
+
+function createBillBattleElevatorDoors() {
+    if (!BILL_BATTLE_USE_ELEVATOR) return;
+    const doorHeight = 4.0;
+    const doorWidth = BILL_BATTLE_ELEVATOR_WIDTH / 2;
+    const doorDepth = BILL_BATTLE_ELEVATOR_DOOR_DEPTH;
+    const z = getBillBattleElevatorZ();
+    const leftDoor = createBillBattleWall(-doorWidth / 2, z, doorWidth, doorHeight, doorDepth);
+    const rightDoor = createBillBattleWall(doorWidth / 2, z, doorWidth, doorHeight, doorDepth);
+    if (leftDoor) leftDoor.userData.isElevatorDoor = true;
+    if (rightDoor) rightDoor.userData.isElevatorDoor = true;
+    billBattleElevatorDoors = [leftDoor, rightDoor].filter(Boolean);
+    billBattleElevatorOpen = false;
+}
+
+function createBillBattleOuterWalls() {
+    const h = BILL_BATTLE_WALL_HEIGHT;
+    const t = BILL_BATTLE_WALL_THICKNESS;
+    const half = BILL_BATTLE_HALF;
+
+    // 背面の壁
+    createBillBattleWall(0, half, BILL_BATTLE_SIZE, h, t);
+    // 左側の壁
+    createBillBattleWall(-half, 0, t, h, BILL_BATTLE_SIZE);
+    // 右側の壁
+    createBillBattleWall(half, 0, t, h, BILL_BATTLE_SIZE);
+    // 正面の壁（入口なし）
+    createBillBattleWall(0, -half, BILL_BATTLE_SIZE, h, t);
+}
+
+function createBillBattleCeiling() {
+      const thickness = BILL_BATTLE_CEILING_THICKNESS;
+      const yOffset = BILL_BATTLE_WALL_HEIGHT - thickness;
+      billBattleCeiling = createBillBattleSolidBox(
+          0,
+          0,
+          BILL_BATTLE_SIZE,
+          thickness,
+          BILL_BATTLE_SIZE,
+          BILL_BATTLE_CEILING_COLOR,
+          9999,
+          yOffset
+      );
+      if (billBattleCeiling && billBattleCeiling.userData) {
+          billBattleCeiling.userData.isBillBattleCeiling = true;
+          billBattleCeiling.userData.blocksProjectiles = true;
+      }
+}
+
+function setBillBattleLightState(entry, isOn) {
+    if (!entry) return;
+    entry.userData = entry.userData || {};
+    entry.userData.isLit = isOn;
+    if (entry.light) {
+        const baseIntensity = entry.userData.baseIntensity ?? entry.light.intensity;
+        entry.light.intensity = isOn ? baseIntensity : 0;
+    }
+    if (entry.mesh && entry.mesh.material && entry.mesh.material.emissive) {
+        const baseEmissive = entry.userData.baseEmissive ?? 0.6;
+        entry.mesh.material.emissiveIntensity = isOn ? baseEmissive : 0.05;
+        entry.mesh.material.needsUpdate = true;
+    }
+}
+
+function getBillBattleLightIntensityScale() {
+    let slider = (gameSettings && typeof gameSettings.indoorLightIntensity === 'number')
+        ? gameSettings.indoorLightIntensity
+        : 2;
+    if (!Number.isFinite(slider)) slider = 1;
+    const clamped = Math.max(0, Math.min(2, slider));
+    const normalized = clamped / 2;
+    const mobileScale = isProbablyMobileDevice() ? 0.55 : 1.0;
+    return normalized * mobileScale;
+}
+
+function applyBillBattleLightIntensityScale() {
+    if (!isBillBattleMode()) return;
+    const scale = getBillBattleLightIntensityScale();
+    for (const entry of billBattleLights) {
+        if (!entry || !entry.userData) continue;
+        const rawIntensity = entry.userData.baseIntensityRaw
+            ?? entry.userData.baseIntensity
+            ?? (entry.light ? entry.light.intensity : 2.4);
+        const rawEmissive = entry.userData.baseEmissiveRaw
+            ?? entry.userData.baseEmissive
+            ?? 0.6;
+        entry.userData.baseIntensityRaw = rawIntensity;
+        entry.userData.baseEmissiveRaw = rawEmissive;
+        entry.userData.baseIntensity = rawIntensity * scale;
+        entry.userData.baseEmissive = rawEmissive * scale;
+        setBillBattleLightState(entry, !!entry.userData.isLit);
+    }
+}
+
+function updateBillBattleLightFlicker(timeElapsed) {
+    if (!isBillBattleMode()) return;
+    if (getBillBattleLightingCount() >= billBattleTotalLightCount) return;
+    let changed = false;
+    for (const entry of billBattleLights) {
+        if (!entry || !entry.mesh || !entry.mesh.parent || !entry.userData) continue;
+        if (!entry.userData.flicker) continue;
+        if ((entry.userData.nextFlickerAt || 0) > timeElapsed) continue;
+        entry.userData.nextFlickerAt = timeElapsed + 0.15 + Math.random() * 0.5;
+        const newState = Math.random() > 0.5;
+        setBillBattleLightState(entry, newState);
+        changed = true;
+    }
+    if (changed) updateBillBattleGlobalLighting();
+}
+
+function createBillBattleCeilingLights() {
+    const count = 4;
+    const zStart = -BILL_BATTLE_HALF + 6;
+    const zEnd = BILL_BATTLE_HALF - 6;
+    const step = (zEnd - zStart) / Math.max(1, count - 1);
+    const lightY = -FLOOR_HEIGHT + BILL_BATTLE_WALL_HEIGHT - BILL_BATTLE_CEILING_THICKNESS - 0.2;
+    const rowSpan = BILL_BATTLE_HALF - 6;
+    const rows = [-rowSpan, 0, rowSpan];
+    const litCountSetting = getBillBattleLightingCount();
+    const lightIntensityScale = getBillBattleLightIntensityScale();
+    const baseIntensityRaw = 1.9;
+    const baseEmissiveRaw = 0.45;
+    const baseIntensity = baseIntensityRaw * lightIntensityScale;
+    const baseEmissive = baseEmissiveRaw * lightIntensityScale;
+    const totalLights = rows.length * count;
+    billBattleTotalLightCount = totalLights;
+    let remainingLights = totalLights;
+    let remainingLit = Math.max(0, Math.min(totalLights, litCountSetting));
+    const now = clock ? clock.getElapsedTime() : 0;
+    for (const x of rows) {
+        for (let i = 0; i < count; i++) {
+            const z = zStart + step * i;
+            const lightGeom = new THREE.BoxGeometry(0.9, 0.35, 6.5);
+            const lightMat = new THREE.MeshLambertMaterial({
+                color: BILL_BATTLE_LIGHT_COLOR,
+                emissive: new THREE.Color(0xffffff),
+                emissiveIntensity: baseEmissive
+            });
+            const lightMesh = new THREE.Mesh(lightGeom, lightMat);
+            lightMesh.position.set(x, lightY, z);
+            lightMesh.userData = lightMesh.userData || {};
+            lightMesh.userData.type = 'billLight';
+            lightMesh.userData.hp = 1;
+            lightMesh.userData.blocksProjectiles = true;
+            scene.add(lightMesh);
+            obstacles.push(lightMesh);
+
+            const pointLight = new THREE.PointLight(0xffffff, baseIntensity, 30, 2);
+            pointLight.position.set(x, lightY - 0.6, z);
+            scene.add(pointLight);
+            lightMesh.userData.lightRef = pointLight;
+            const entry = { mesh: lightMesh, light: pointLight, userData: {} };
+            entry.userData.baseIntensityRaw = baseIntensityRaw;
+            entry.userData.baseEmissiveRaw = baseEmissiveRaw;
+            entry.userData.baseIntensity = baseIntensity;
+            entry.userData.baseEmissive = baseEmissive;
+            const chance = remainingLit / Math.max(1, remainingLights);
+            const isLit = Math.random() < chance;
+            if (isLit) remainingLit -= 1;
+            remainingLights -= 1;
+            entry.userData.flicker = false;
+            entry.userData.nextFlickerAt = now + 99999;
+            setBillBattleLightState(entry, isLit);
+            billBattleLights.push(entry);
+        }
+    }
+    updateBillBattleGlobalLighting();
+}
+
+function updateBillBattleGlobalLighting() {
+    if (!isBillBattleMode()) return;
+    if (forceSettingsLighting) return;
+    const litCount = billBattleLights.filter(entry => {
+        if (!entry || !entry.mesh || !entry.mesh.parent) return false;
+        return entry.userData && entry.userData.isLit;
+    }).length;
+    const ratio = billBattleTotalLightCount > 0 ? litCount / billBattleTotalLightCount : 0;
+    if (billBattleBaseAmbient === null && ambientLight) billBattleBaseAmbient = ambientLight.intensity;
+    if (billBattleBaseDirectional === null && directionalLight) billBattleBaseDirectional = directionalLight.intensity;
+    const targetAmbient = (billBattleBaseAmbient || 0) * ratio;
+    const targetDirectional = (billBattleBaseDirectional || 0) * ratio;
+      if (ambientLight) {
+          new TWEEN.Tween(ambientLight).to({ intensity: targetAmbient }, 800).easing(TWEEN.Easing.Quadratic.Out).start();
+      }
+      if (directionalLight) {
+          new TWEEN.Tween(directionalLight).to({ intensity: targetDirectional }, 800).easing(TWEEN.Easing.Quadratic.Out).start();
+      }
+      if (streetLights && streetLights.length > 0) {
+          streetLights.forEach(light => {
+              const pointLight = light.children.find(child => child.isPointLight);
+              if (pointLight) pointLight.intensity = 0;
+          });
+      }
+        if (litCount === 0) {
+            if (ambientLight) ambientLight.intensity = 0;
+            if (directionalLight) directionalLight.intensity = 0;
+        }
+    }
+
+  function ensureBillBattleKillDisplay() {
+      let el = document.getElementById('billbattle-kills-remaining');
+      if (!el) {
+          el = document.createElement('div');
+          el.id = 'billbattle-kills-remaining';
+          el.style.position = 'fixed';
+          el.style.top = '10px';
+          el.style.left = '50%';
+          el.style.transform = 'translateX(-50%)';
+          el.style.color = '#ffffff';
+          el.style.fontSize = '20px';
+          el.style.fontWeight = 'bold';
+          el.style.textShadow = '0 0 6px rgba(0,0,0,0.6)';
+          el.style.zIndex = '1000';
+          document.body.appendChild(el);
+      }
+      return el;
+  }
+
+function updateBillBattleKillDisplay() {
+      if (!isClassicBillBattleMode()) return;
+      const el = ensureBillBattleKillDisplay();
+      el.textContent = `REMAINING KILLS: ${billBattleKillsRemaining}`;
+      el.style.display = 'block';
+  }
+
+  function hideBillBattleKillDisplay() {
+      const el = document.getElementById('billbattle-kills-remaining');
+      if (el) el.style.display = 'none';
+  }
+
+  function getBillBattleInnerBounds() {
+      let minX = -BILL_BATTLE_HALF;
+      let maxX = BILL_BATTLE_HALF;
+      let minZ = -BILL_BATTLE_HALF;
+      let maxZ = BILL_BATTLE_HALF;
+      const walls = obstacles.filter(obs => obs && obs.userData && obs.userData.isBillBattleWall);
+      if (walls.length > 0) {
+          const bounds = new THREE.Box3();
+          bounds.makeEmpty();
+          for (const wall of walls) {
+              bounds.expandByObject(wall);
+          }
+          const padding = Math.max(0.5, BILL_BATTLE_WALL_THICKNESS);
+          minX = bounds.min.x + padding;
+          maxX = bounds.max.x - padding;
+          minZ = bounds.min.z + padding;
+          maxZ = bounds.max.z - padding;
+      }
+      return { minX, maxX, minZ, maxZ };
+  }
+
+  function clampBillBattleInside(pos, margin = 1.2) {
+      const bounds = getBillBattleInnerBounds();
+      let minX = bounds.minX + margin;
+      let maxX = bounds.maxX - margin;
+      let minZ = bounds.minZ + margin;
+      let maxZ = bounds.maxZ - margin;
+      if (minX > maxX) {
+          const midX = (bounds.minX + bounds.maxX) / 2;
+          minX = maxX = midX;
+      }
+      if (minZ > maxZ) {
+          const midZ = (bounds.minZ + bounds.maxZ) / 2;
+          minZ = maxZ = midZ;
+      }
+      pos.x = THREE.MathUtils.clamp(pos.x, minX, maxX);
+      pos.z = THREE.MathUtils.clamp(pos.z, minZ, maxZ);
+      return pos;
+  }
+
+  function enforceBillBattleInsideActor(actor, margin = 1.2, applyGround = false, groundOffset = 0) {
+      if (!actor || !actor.position) return false;
+      const beforeX = actor.position.x;
+      const beforeZ = actor.position.z;
+      const clamped = clampBillBattleInside(actor.position.clone(), margin);
+      const moved = (Math.abs(beforeX - clamped.x) > 1e-4) || (Math.abs(beforeZ - clamped.z) > 1e-4);
+      if (moved) {
+          actor.position.x = clamped.x;
+          actor.position.z = clamped.z;
+          if (applyGround) {
+              if (isBillBattleMode()) {
+                  actor.position.y = groundOffset;
+              } else {
+                  actor.position.y = getGroundSurfaceY(actor.position) + groundOffset;
+              }
+          }
+          if (actor.targetPosition) {
+              const targetClamped = clampBillBattleInside(actor.targetPosition.clone(), margin);
+              actor.targetPosition.x = targetClamped.x;
+              actor.targetPosition.z = targetClamped.z;
+              actor.targetPosition.y = isBillBattleMode()
+                  ? 0
+                  : getGroundSurfaceY(actor.targetPosition);
+          }
+      }
+      if (isBillBattleMode() && billBattleCeiling && actor.position) {
+          const ceilingGeom = billBattleCeiling.geometry;
+          const ceilingH = ceilingGeom && ceilingGeom.parameters && ceilingGeom.parameters.height
+              ? ceilingGeom.parameters.height
+              : BILL_BATTLE_CEILING_THICKNESS;
+          const maxY = billBattleCeiling.position.y - (ceilingH / 2) - 0.2;
+          if (actor.position.y > maxY) {
+              actor.position.y = getGroundSurfaceY(actor.position) + (applyGround ? groundOffset : 0);
+          }
+      }
+      return moved;
+  }
+
+  function canApplyBillBattleDamage() {
+      return !isBillBattleMode() || billBattlePlayerEntered;
+  }
+
+function ensureBillBattleAIIntegrity(ai) {
+    if (!ai) return;
+    if (!ai.userData) ai.userData = {};
+    const reviveHP = gameSettings.aiHP === 'Infinity' ? Infinity : parseInt(gameSettings.aiHP, 10);
+    if (!Number.isFinite(ai.hp)) {
+        ai.hp = reviveHP;
+    }
+    if (ai.hp <= 0) {
+        return; // 死亡したAIはリスポーン処理が行うまで非アクティブのままにする
+    }
+    ai.visible = true;
+    if (!ai.parent) scene.add(ai);
+      if (!ai.userData.parts || ai.children.length === 0) {
+          const color = ai.userData.baseColor || 0x00ff00;
+          const customization = ai.userData.customization || null;
+          const rebuilt = createCharacterModel(color, customization);
+          while (ai.children.length > 0) {
+              ai.remove(ai.children[0]);
+          }
+          while (rebuilt.children.length > 0) {
+              ai.add(rebuilt.children[0]);
+          }
+          ai.userData.parts = rebuilt.userData.parts;
+          if (ai.userData.parts.modernRig) GFACharacterModels.adopt(ai);
+          bindArmoryCharacter(ai, `enemy${ai.userData.slotIndex || 1}`, ai.currentWeapon || WEAPON_PISTOL);
+      }
+  }
+
+  function markBillBattlePlayerDamage(ai, timeElapsed) {
+      if (!ai) return;
+      if (!ai.userData) ai.userData = {};
+      ai.userData.lastPlayerDamageTime = timeElapsed;
+  }
+
+  function isBillBattlePlayerKillWindow(ai, timeElapsed) {
+      if (!isBillBattleMode()) return true;
+      if (!ai || !ai.userData) return false;
+      const lastHit = ai.userData.lastPlayerDamageTime || -999;
+      return (timeElapsed - lastHit) <= 1.2;
+  }
+
+  function getBillBattleLightMeshes() {
+      if (!isBillBattleMode() || billBattleLights.length === 0) return [];
+      return billBattleLights
+          .filter(entry => entry && entry.mesh && entry.mesh.parent)
+          .map(entry => entry.mesh);
+  }
+
+  function tryHitBillBattleLight(origin, direction) {
+      if (!isBillBattleMode()) return false;
+      const lightMeshes = getBillBattleLightMeshes();
+      if (lightMeshes.length === 0) return false;
+      raycaster.set(origin, direction.clone().normalize());
+      raycaster.far = 120;
+      const hits = raycaster.intersectObjects(lightMeshes, true);
+      if (hits.length > 0) {
+          const target = hits[0].object;
+          destroyObstacle(target, hits[0].point || target.position);
+          return true;
+      }
+      return false;
+  }
+
+  function distancePointToSegment(point, a, b) {
+      const ab = new THREE.Vector3().subVectors(b, a);
+      const t = THREE.MathUtils.clamp(point.clone().sub(a).dot(ab) / Math.max(ab.lengthSq(), 1e-6), 0, 1);
+      const closest = a.clone().add(ab.multiplyScalar(t));
+      return closest.distanceTo(point);
+  }
+
+  function isNearBillBattleAISpawn(x, z, radius) {
+    if (!isBillBattleMode() || billBattleAISpawnPoints.length === 0) return false;
+    const r2 = radius * radius;
+    for (const sp of billBattleAISpawnPoints) {
+        const dx = sp.x - x;
+        const dz = sp.z - z;
+        if (dx * dx + dz * dz < r2) return true;
+    }
+    return false;
+  }
+
+  function isBillBattleBoxBlocked(box) {
+      for (const obs of obstacles) {
+          if (!obs || !obs.position || !obs.parent) continue;
+          if (obs.userData && (obs.userData.isBillBattleCeiling || obs.userData.type === 'ceiling')) continue;
+          const obsBox = new THREE.Box3().setFromObject(obs);
+          if (box.intersectsBox(obsBox)) return true;
+      }
+      if (Array.isArray(weaponPickups)) {
+          for (const pickup of weaponPickups) {
+              if (!pickup || !pickup.position || !pickup.parent) continue;
+              const pickupBox = new THREE.Box3().setFromObject(pickup);
+              if (box.intersectsBox(pickupBox)) return true;
+          }
+      }
+      return false;
+  }
+
+  function getBillBattleRandomPosition(itemWidth, itemHeight, itemDepth, allowCorridor = false, requireFreeSpace = false) {
+      const baseY = (itemHeight / 2) - FLOOR_HEIGHT;
+      const maxAttempts = requireFreeSpace ? 120 : 200;
+      const bounds = getBillBattleInnerBounds();
+      const innerHalfX = Math.min(Math.abs(bounds.minX), Math.abs(bounds.maxX));
+      const innerHalfZ = Math.min(Math.abs(bounds.minZ), Math.abs(bounds.maxZ));
+      const halfX = Math.max(0, innerHalfX - 4);
+      const halfZ = Math.max(0, innerHalfZ - 4);
+      const maxCorridor = Math.max(0, halfX - 1);
+      const corridorHalf = Math.min(BILL_BATTLE_CORRIDOR_HALF + 1.0, maxCorridor);
+      for (let i = 0; i < maxAttempts; i++) {
+          const side = Math.random() > 0.5 ? 1 : -1;
+          let x = (Math.random() * Math.max(0, halfX - corridorHalf) + corridorHalf) * side;
+          let z = Math.random() * (halfZ * 2) - halfZ;
+          if (!allowCorridor && Math.abs(x) < corridorHalf) continue;
+          if (isNearBillBattleAISpawn(x, z, 6.5)) continue;
+          const pos = new THREE.Vector3(x, baseY, z);
+          const box = new THREE.Box3().setFromCenterAndSize(pos, new THREE.Vector3(itemWidth, itemHeight, itemDepth));
+          if (isBillBattleBoxBlocked(box)) continue;
+          return clampBillBattleInside(pos, 2.5);
+      }
+      if (requireFreeSpace) return null;
+    // 改善フォールバック: 建物内のより安全な位置を探す
+      const safePositions = [
+          new THREE.Vector3(halfX - 3, baseY, 0),
+          new THREE.Vector3(-halfX + 3, baseY, 0),
+          new THREE.Vector3(0, baseY, halfZ - 3),
+          new THREE.Vector3(0, baseY, -halfZ + 3),
+          new THREE.Vector3(halfX - 3, baseY, halfZ - 3),
+          new THREE.Vector3(-halfX + 3, baseY, -halfZ + 3),
+          new THREE.Vector3(halfX / 2, baseY, halfZ / 2),
+          new THREE.Vector3(-halfX / 2, baseY, -halfZ / 2),
+          new THREE.Vector3(halfX / 2, baseY, -halfZ / 2),
+          new THREE.Vector3(-halfX / 2, baseY, halfZ / 2)
+      ];
+    
+    // 各安全位置を試す
+      for (const pos of safePositions) {
+          const box = new THREE.Box3().setFromCenterAndSize(pos, new THREE.Vector3(itemWidth, itemHeight, itemDepth));
+          if (!isBillBattleBoxBlocked(box)) {
+              return clampBillBattleInside(pos, 2.5);
+          }
+      }
+    
+    // 最終フォールバック - アリーナ中央
+      return new THREE.Vector3(0, baseY, 0);
+  }
+
+function isBillBattleSpawnBlocked(topPos, width, height, depth) {
+      const center = topPos.clone();
+      center.y -= height / 2;
+      const box = new THREE.Box3().setFromCenterAndSize(center, new THREE.Vector3(width, height, depth));
+      if (isBillBattleBoxBlocked(box)) return true;
+      const safety = 1.1;
+      for (const obs of obstacles) {
+          if (!obs || !obs.userData || !obs.position) continue;
+          if (obs.userData.type !== 'barrel') continue;
+          const radius = obs.userData.radius ?? 0.75;
+          const dx = obs.position.x - topPos.x;
+          const dz = obs.position.z - topPos.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist < radius + safety) return true;
+      }
+      if (Array.isArray(respawningBarrels)) {
+          for (const barrel of respawningBarrels) {
+              if (!barrel) continue;
+              const radius = barrel.radius ?? 0.75;
+              const dx = barrel.x - topPos.x;
+              const dz = barrel.z - topPos.z;
+              const dist = Math.sqrt(dx * dx + dz * dz);
+              if (dist < radius + safety) return true;
+          }
+      }
+      return false;
+  }
+
+  function isBillBattleSpawnTooClose(pos, minDist, ignoreAI = null) {
+      if (!pos) return true;
+      if (billBattleLastPlayerSpawn) {
+          if (pos.distanceTo(billBattleLastPlayerSpawn) < minDist) return true;
+      } else if (player && player.position && playerHP > 0) {
+          if (pos.distanceTo(player.position) < minDist) return true;
+      }
+      for (const ai of ais) {
+          if (!ai || ai === ignoreAI || ai.hp <= 0) continue;
+          if (pos.distanceTo(ai.position) < minDist * 0.8) return true;
+      }
+      return false;
+  }
+
+  function getBillBattleSpawnSeparation() {
+      return Math.max(10, BILL_BATTLE_SIZE * 0.12);
+  }
+
+function getBillBattlePlayerSpawn() {
+    const spawnHeight = playerTargetHeight * 2;
+    const candidates = obstacles.filter(obs => {
+        if (!obs || !obs.userData) return false;
+        if (obs.userData.isBillBattleCeiling) return false;
+        if (obs.userData.isWall) return false;
+        if (obs.userData.type === 'billLight') return false;
+        if (obs.userData.isElevatorDoor) return false;
+        return true;
+    });
+
+    for (let i = 0; i < 20; i++) {
+        if (candidates.length > 0) {
+            const obs = candidates[Math.floor(Math.random() * candidates.length)];
+            const size = new THREE.Vector3();
+            new THREE.Box3().setFromObject(obs).getSize(size);
+            let dir = new THREE.Vector3(obs.position.x, 0, obs.position.z);
+            if (dir.lengthSq() < 1e-6) dir.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+            dir.normalize();
+            const offsetDist = (Math.max(size.x, size.z) / 2) + 2.5 + Math.random() * 2.5;
+            let pos = obs.position.clone().add(dir.multiplyScalar(offsetDist));
+            pos = clampBillBattleInside(pos);
+            pos.y = getGroundSurfaceY(pos) + playerTargetHeight;
+              if (!isBillBattleSpawnBlocked(pos, 1.6, spawnHeight, 1.6) && !isBillBattleSpawnTooClose(pos, getBillBattleSpawnSeparation())) {
+                  billBattleLastPlayerSpawn = pos.clone();
+                  return pos;
+              }
+          }
+      }
+
+      for (let i = 0; i < 30; i++) {
+          const fallback = getBillBattleRandomPosition(2.0, spawnHeight, 2.0, true);
+          const clamped = clampBillBattleInside(fallback);
+          clamped.y = getGroundSurfaceY(clamped) + playerTargetHeight;
+          if (!isBillBattleSpawnBlocked(clamped, 1.6, spawnHeight, 1.6) && !isBillBattleSpawnTooClose(clamped, getBillBattleSpawnSeparation())) {
+              billBattleLastPlayerSpawn = clamped.clone();
+              return clamped;
+          }
+      }
+      const fallback = clampBillBattleInside(getBillBattleRandomPosition(2.0, spawnHeight, 2.0, true));
+      fallback.y = getGroundSurfaceY(fallback) + playerTargetHeight;
+      billBattleLastPlayerSpawn = fallback.clone();
+      return fallback;
+  }
+
+    function getBillBattleAISpawn() {
+        const spawnHeight = BODY_HEIGHT * 2;
+        if (billBattleAISpawnPoints.length > 0) {
+            const baseIndex = billBattleAISpawnIndex % billBattleAISpawnPoints.length;
+            const pos = billBattleAISpawnPoints[baseIndex].clone();
+            const offsetPattern = [0, 2.5, -2.5, 4.5, -4.5];
+            const offset = offsetPattern[Math.floor(billBattleAISpawnIndex / billBattleAISpawnPoints.length) % offsetPattern.length];
+            if (Math.abs(pos.z) > Math.abs(pos.x)) {
+                pos.x += offset;
+            } else {
+                pos.z += offset;
+            }
+            billBattleAISpawnIndex += 1;
+            pos.y = getGroundSurfaceY(pos) + BODY_HEIGHT;
+              if (!isBillBattleSpawnBlocked(pos, 1.6, spawnHeight, 1.6) && !isBillBattleSpawnTooClose(pos, getBillBattleSpawnSeparation(), null)) {
+                  return clampBillBattleInside(pos);
+              }
+          }
+        for (let i = 0; i < 30; i++) {
+            const pos = getBillBattleRandomPosition(2.0, spawnHeight, 2.0, false);
+            pos.y = getGroundSurfaceY(pos) + BODY_HEIGHT;
+              if (!isBillBattleSpawnBlocked(pos, 1.6, spawnHeight, 1.6) && !isBillBattleSpawnTooClose(pos, getBillBattleSpawnSeparation(), null)) {
+                  return clampBillBattleInside(pos);
+              }
+          }
+        const fallback = getBillBattleRandomPosition(2.0, spawnHeight, 2.0, true);
+        fallback.y = getGroundSurfaceY(fallback) + BODY_HEIGHT;
+          const finalPos = clampBillBattleInside(fallback);
+          return finalPos;
+      }
+
+  function createBillBattleObstacles() {
+        const sizeFactor = Math.max(0.5, Math.min(1, BILL_BATTLE_SIZE / 100));
+        const level = normalizeBillBattleObstacleLevel(gameSettings.billBattleObstacles);
+        const multiplier = [1, 1.5, 2][level - 1];
+        const baseWallCount = Math.max(8, Math.round(24 * sizeFactor));
+        const baseBlockCount = Math.max(6, Math.round(20 * sizeFactor));
+        const wallCount = Math.round(baseWallCount * multiplier);
+        const blockCount = Math.round(baseBlockCount * multiplier);
+        const bounds = getBillBattleInnerBounds();
+        const innerHalfX = Math.min(Math.abs(bounds.minX), Math.abs(bounds.maxX));
+        const innerHalfZ = Math.min(Math.abs(bounds.minZ), Math.abs(bounds.maxZ));
+        const halfX = Math.max(0, innerHalfX - 3);
+        const halfZ = Math.max(0, innerHalfZ - 3);
+        const corridorHalf = Math.min(BILL_BATTLE_CORRIDOR_HALF + 1.0, Math.max(0, halfX - 1));
+        const barrelRadius = 0.75;
+        const barrelHeight = 2.4;
+        const barrelChanceWall = 0.35 * sizeFactor / multiplier;
+        const barrelChanceBlock = 0.4 * sizeFactor / multiplier;
+        const ceilingReachHeight = getBillBattleCeilingClearHeight();
+        const wallTallThreshold = 3.6;
+        const blockTallThreshold = 3.2;
+
+        for (let i = 0; i < wallCount; i++) {
+            let height = 2 + Math.random() * 3;
+            if (height >= wallTallThreshold) height = ceilingReachHeight;
+            const length = 5 + Math.random() * 5;
+            const thickness = 0.5;
+          const isHorizontal = Math.random() > 0.5;
+          const width = isHorizontal ? length : thickness;
+          const depth = isHorizontal ? thickness : length;
+          const pos = getBillBattleRandomPosition(width, height, depth, false, i >= baseWallCount);
+          if (!pos) continue;
+          createBillBattleSolidBox(pos.x, pos.z, width, height, depth, BILL_BATTLE_OBSTACLE_COLOR, 2);
+            if (Math.random() < barrelChanceWall) {
+                const offset = (Math.random() > 0.5 ? 1 : -1) * (Math.max(width, depth) / 2 + 1.5);
+                const barrelPos = new THREE.Vector3(pos.x + (isHorizontal ? 0 : offset), 0, pos.z + (isHorizontal ? offset : 0));
+                const clampedBarrel = clampBillBattleInside(barrelPos.clone(), Math.max(1.5, barrelRadius + 0.5));
+                if (Math.abs(clampedBarrel.x) > corridorHalf && Math.abs(clampedBarrel.x) < halfX && Math.abs(clampedBarrel.z) < halfZ && !isNearBillBattleAISpawn(clampedBarrel.x, clampedBarrel.z, 6.5)) {
+                    const barrelCenter = new THREE.Vector3(clampedBarrel.x, (barrelHeight / 2) - FLOOR_HEIGHT, clampedBarrel.z);
+                    const barrelBox = new THREE.Box3().setFromCenterAndSize(barrelCenter, new THREE.Vector3(barrelRadius * 2, barrelHeight, barrelRadius * 2));
+                    if (!isBillBattleBoxBlocked(barrelBox)) {
+                        createExplosiveBarrel(clampedBarrel.x, clampedBarrel.z, undefined, barrelRadius, barrelHeight);
+                    }
+                }
+            }
+        }
+
+      for (let i = 0; i < blockCount; i++) {
+          let height = 2 + Math.random() * 3;
+          if (height >= blockTallThreshold) height = ceilingReachHeight;
+          const size = 2;
+          const pos = getBillBattleRandomPosition(size, height, size, false, i >= baseBlockCount);
+          if (!pos) continue;
+          createBillBattleSolidBox(pos.x, pos.z, size, height, size, BILL_BATTLE_OBSTACLE_COLOR, 2);
+            if (Math.random() < barrelChanceBlock) {
+                const barrelX = pos.x + 2.5;
+                const barrelZ = pos.z + 2.5;
+                const barrelPos = new THREE.Vector3(barrelX, 0, barrelZ);
+                const clampedBarrel = clampBillBattleInside(barrelPos.clone(), Math.max(1.5, barrelRadius + 0.5));
+                if (!isNearBillBattleAISpawn(clampedBarrel.x, clampedBarrel.z, 6.5)) {
+                    const barrelCenter = new THREE.Vector3(clampedBarrel.x, (barrelHeight / 2) - FLOOR_HEIGHT, clampedBarrel.z);
+                    const barrelBox = new THREE.Box3().setFromCenterAndSize(barrelCenter, new THREE.Vector3(barrelRadius * 2, barrelHeight, barrelRadius * 2));
+                    if (!isBillBattleBoxBlocked(barrelBox)) {
+                        createExplosiveBarrel(clampedBarrel.x, clampedBarrel.z, undefined, barrelRadius, barrelHeight);
+                    }
+                }
+            }
+        }
+    }
+
+  function createBillBattleAISpawnBarriers() {
+      const half = BILL_BATTLE_HALF;
+      const barrierHeight = 5;
+      const barrierLength = 10;
+      const barrierDepth = 0.5;
+      const innerWallZ = half - (BILL_BATTLE_WALL_THICKNESS / 2);
+      const innerWallX = half - (BILL_BATTLE_WALL_THICKNESS / 2);
+      const spawnInset = 1.2;
+      const barrierInset = 4.2;
+      const backBarrierZ = innerWallZ - barrierInset;
+      const sideBarrierX = innerWallX - barrierInset;
+
+      billBattleAISpawnPoints = [];
+      billBattleAISpawnIndex = 0;
+      if (!BILL_BATTLE_USE_FIXED_SPAWNS) {
+          return;
+      }
+
+      // 背面中央のバリア＋スポーン（中央背面）
+      createBillBattleSolidBox(0, backBarrierZ, barrierLength, barrierHeight, barrierDepth, BILL_BATTLE_OBSTACLE_COLOR, 2);
+      billBattleAISpawnPoints.push(new THREE.Vector3(0, -FLOOR_HEIGHT, innerWallZ - spawnInset));
+
+      // 右壁のバリア＋スポーン（中央右）
+      createBillBattleSolidBox(sideBarrierX, 0, barrierDepth, barrierHeight, barrierLength, BILL_BATTLE_OBSTACLE_COLOR, 2);
+      billBattleAISpawnPoints.push(new THREE.Vector3(innerWallX - spawnInset, -FLOOR_HEIGHT, 0));
+
+      // 左壁のバリア＋スポーン（中央左）
+      createBillBattleSolidBox(-sideBarrierX, 0, barrierDepth, barrierHeight, barrierLength, BILL_BATTLE_OBSTACLE_COLOR, 2);
+      billBattleAISpawnPoints.push(new THREE.Vector3(-(innerWallX - spawnInset), -FLOOR_HEIGHT, 0));
+  }
+
+  function setupBillBattleFloor(showMessage = false) {
+      clearBillBattleState();
+      billBattleLastPlayerSpawn = null;
+    if ((gameSettings.billBattleSize || '').toString() === 'random') {
+        billBattleCurrentSize = null;
+    }
+    applyBillBattleSizeSettings(true);
+    billBattleRoomStyle = createBillBattleRoomStyle();
+    const floorColor = (billBattleRoomStyle && billBattleRoomStyle.floorColor !== undefined)
+        ? billBattleRoomStyle.floorColor
+        : ARENA_FLOOR_DEFAULT_COLOR;
+    setArenaFloorColor(floorColor);
+    setIndoorArenaFloorTexture(floorColor);
+    applyNightMode(false);
+    if (ambientLight) billBattleBaseAmbient = ambientLight.intensity;
+    if (directionalLight) billBattleBaseDirectional = directionalLight.intensity;
+    billBattlePlayerEntered = true;
+    createBillBattleOuterWalls();
+    createBillBattleCeiling();
+      createBillBattleCeilingLights();
+      createBillBattleAISpawnBarriers();
+      createBillBattleObstacles();
+      billBattleAttackDelayUntil = null;
+      billBattleAttackActivated = false;
+      if (BILL_BATTLE_USE_ELEVATOR) {
+          createBillBattleElevatorDoors();
+      }
+      ensurePauseButtonVisible();
+    if (isClassicBillBattleMode()) {
+        const billBattleCount = getBillBattleAICount();
+        billBattleTotalKills = billBattleCount;
+        billBattleKillsRemaining = billBattleTotalKills;
+        billBattleRemainingSpawns = 0;
+        billBattleRoomClearVoicePlayed = false;
+        updateBillBattleKillDisplay();
+        if (showMessage) {
+            showFloorStartMessage(billBattleFloor);
+        }
+    } else {
+        billBattleTotalKills = 0;
+        billBattleKillsRemaining = 0;
+        billBattleRemainingSpawns = 0;
+        billBattleRoomClearVoicePlayed = false;
+        hideBillBattleKillDisplay();
+    }
+}
+
+// マテリアルを安全に破棄する関数（配列対応）
+function disposeMaterial(material) {
+    if (!material) return;
+    
+    if (Array.isArray(material)) {
+        // マテリアル配列の場合
+        material.forEach(mat => {
+            if (mat && mat.dispose) {
+                mat.dispose();
+            }
+        });
+    } else if (material.dispose) {
+        // 単一マテリアルの場合
+        material.dispose();
+    }
+}
+
+function applyExplosionEffectsToBillLights(explosionPos, radius) {
+    if (!isBillBattleMode()) return;
+    if (!explosionPos || !Number.isFinite(radius)) return;
+    const now = clock.getElapsedTime();
+    for (const entry of billBattleLights) {
+        if (!entry || !entry.mesh || !entry.mesh.parent) continue;
+        const lightPos = entry.mesh.position;
+        const dist = lightPos.distanceTo(explosionPos);
+        if (dist < radius * 0.45 || (dist < radius * 0.9 && Math.random() < 0.2)) {
+            destroyObstacle(entry.mesh, explosionPos);
+            continue;
+        }
+        if (dist < radius * 1.2) {
+            entry.userData = entry.userData || {};
+            entry.userData.flicker = true;
+            entry.userData.nextFlickerAt = Math.min(entry.userData.nextFlickerAt || now, now + 0.05);
+        }
+    }
+    updateBillBattleGlobalLighting();
+}
+
+function createHouse(x, z, width = 8, height = 5, depth = 8, color = 0xff6666, hp = 8, rotation = 0, twoStory = false) {
+    // テクスチャ未初期化なら初期化
+    initializeTextures();
+    
+    const house = new THREE.Group();
+    house.position.set(x, height / 2 - FLOOR_HEIGHT, z); // 地面に完全に接地させる
+    
+    // 回転角度を設定
+    if (rotation !== undefined) {
+        house.rotation.y = rotation;
+    } else if (arguments.length <= 2) { // パラメータがx, zのみの場合はランダム
+        const randomRotation = Math.floor(Math.random() * 4) * (Math.PI / 2); // 0, 90, 180, 270度
+        house.rotation.y = randomRotation;
+    }
+
+    const material = new THREE.MeshLambertMaterial({ 
+        color: color, 
+        side: THREE.DoubleSide 
+    });
+
+    const thickness = 0.2;
+    const twoStoryLadderX = Math.min(width * 0.32, Math.max(0, width / 2 - 1.35));
+    let twoStoryDeckSpec = null;
+
+    // 外壁は指定色、内壁は濃い色に固定（光の影響を受けにくくする）
+    const baseColor = new THREE.Color(color);
+    const baseHSL = { h: 0, s: 0, l: 0 };
+    baseColor.getHSL(baseHSL);
+    const exteriorColor = new THREE.Color().setHSL(baseHSL.h, baseHSL.s, Math.min(1, baseHSL.l * 1.0));
+    const interiorColor = new THREE.Color().setHSL(baseHSL.h, baseHSL.s, Math.max(0, baseHSL.l * 0.55));
+    const exteriorMaterial = new THREE.MeshStandardMaterial({
+        color: exteriorColor,
+        map: objectSurfaceTexture,
+        emissive: exteriorColor.clone().multiplyScalar(0.12),
+        roughness: 0.95,
+        metalness: 0.0,
+        side: THREE.DoubleSide
+    });
+    const interiorMaterial = new THREE.MeshStandardMaterial({
+        color: interiorColor,
+        emissive: new THREE.Color(0x000000),
+        roughness: 0.98,
+        metalness: 0.0,
+        side: THREE.DoubleSide
+    });
+    
+    // 両面マテリアルを作成（内側と外側で色を塗り分け）
+    function createDualSidedWallMaterial(exteriorMat, interiorMat) {
+        const materials = [
+            exteriorMat, // +X面（外側）
+            interiorMat, // -X面（内側）
+            exteriorMat, // +Y面（上面）
+            exteriorMat, // -Y面（下面）
+            exteriorMat, // +Z面（外側）
+            interiorMat  // -Z面（内側）
+        ];
+        return materials;
+    }
+
+    function addHouseWallSegmentMesh(w, h, t, pos, rotY = 0) {
+        const mesh = new THREE.Mesh(
+            new THREE.BoxGeometry(w, h, t),
+            createDualSidedWallMaterial(exteriorMaterial, interiorMaterial)
+        );
+        mesh.position.copy(pos);
+        mesh.rotation.y = rotY;
+        mesh.userData.isWall = true;
+        mesh.userData.isHouseWall = true;
+        mesh.castShadow = false;
+        mesh.geometry.computeBoundingBox();
+        mesh.geometry.computeBoundingSphere();
+        house.add(mesh);
+    }
+
+    // 1. 床 - 完全に削除して内部移動を可能に
+    // const floor = new THREE.Mesh(
+    //     new THREE.BoxGeometry(width, thickness, depth),
+    //     material
+    // );
+    // floor.position.y = thickness / 2;
+    // house.add(floor);
+
+    // 2. 正面壁 - ドア部分を空けて2つの壁パーツに分ける
+    
+    // 左側の壁
+    const leftWallWidth = (width - 2.5) / 2; // ドア幅2.5mを引いて半分に
+    const frontLeftWall = new THREE.Mesh(
+        new THREE.BoxGeometry(leftWallWidth, height, thickness),
+        createDualSidedWallMaterial(exteriorMaterial, interiorMaterial)
+    );
+    frontLeftWall.position.set(-width/2 + leftWallWidth/2, 0, depth / 2);
+    frontLeftWall.userData.isWall = true;
+    frontLeftWall.userData.isHouseWall = true;
+    frontLeftWall.castShadow = false; // 影をキャストしない
+    // 境界ボックスを計算して確実なコリジョンを保証
+    frontLeftWall.geometry.computeBoundingBox();
+    frontLeftWall.geometry.computeBoundingSphere();
+    house.add(frontLeftWall);
+    // obstacles.push(frontLeftWall); // コリジョンは専用コライダーで処理
+    
+    // 右側の壁
+    const rightWallPart = new THREE.Mesh(
+        new THREE.BoxGeometry(leftWallWidth, height, thickness),
+        createDualSidedWallMaterial(exteriorMaterial, interiorMaterial)
+    );
+    rightWallPart.position.set(width/2 - leftWallWidth/2, 0, depth / 2);
+    rightWallPart.userData.isWall = true;
+    rightWallPart.userData.isHouseWall = true;
+    rightWallPart.castShadow = false; // 影をキャストしない
+    // 境界ボックスを計算して確実なコリジョンを保証
+    rightWallPart.geometry.computeBoundingBox();
+    rightWallPart.geometry.computeBoundingSphere();
+    house.add(rightWallPart);
+    // obstacles.push(rightWallPart); // コリジョンは専用コライダーで処理
+
+    // 3. 背面壁 (窓2つ) - 分割Boxで生成
+    // 4. 左壁 (窓1つ) - 分割Boxで生成
+    // 5. 右壁 (窓1つ) - 分割Boxで生成
+
+    // 登録マップは通常選択・ランダム選択のどちらでも屋根/デッキを完全に復元する。
+    if (gameSettings.mapType === 'custom' || gameSettings.mapType === 'random') {
+        if (twoStory) {
+            addTwoStoryDeck();
+            const topRoof = new THREE.Mesh(
+                new THREE.BoxGeometry(width + 0.4, thickness, depth + 0.4),
+                createDualSidedWallMaterial(exteriorMaterial, interiorMaterial)
+            );
+            topRoof.position.y = height * 1.5;
+            topRoof.castShadow = false;
+            topRoof.userData.isRoof = true;
+            topRoof.userData.isHouseRoof = true;
+            house.add(topRoof);
+            addHouseWallCollider(width + 0.4, thickness, depth + 0.4, new THREE.Vector3(0, height * 1.5, 0), 0, true, 'roof');
+        } else {
+            const roof = new THREE.Mesh(
+                new THREE.BoxGeometry(width + 0.4, thickness, depth + 0.4),
+                createDualSidedWallMaterial(exteriorMaterial, interiorMaterial)
+            );
+            roof.position.y = height / 2;
+            roof.castShadow = false;
+            roof.userData.isRoof = true;
+            roof.userData.isHouseRoof = true;
+            house.add(roof);
+            addHouseWallCollider(width + 0.4, thickness, depth + 0.4, new THREE.Vector3(0, height / 2, 0), 0, true, 'roof');
+        }
+    }
+
+    // 家の衝突専用壁（窓/ドア開口を反映）
+    function addHouseWallCollider(w, h, t, pos, rotY = 0, blocksProjectiles = true, face = '') {
+        const collider = new THREE.Mesh(
+            new THREE.BoxGeometry(w, h, t),
+            new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.0, depthWrite: false })
+        );
+        collider.visible = true; // Raycaster判定には可視オブジェクトが必要
+        collider.position.copy(pos);
+        collider.rotation.y = rotY;
+        collider.userData.isWall = true;
+        collider.userData.isHouseWall = true;
+        collider.userData.isHouseCollider = true;
+        collider.userData.blocksProjectiles = blocksProjectiles;
+        collider.userData.houseRef = house;
+        collider.userData.houseFace = face;
+        house.add(collider);
+        obstacles.push(collider);
+    }
+
+    function addTwoStoryDeck() {
+        const deckWidth = width + 4;
+        const deckDepth = depth + 4;
+        const ladderX = twoStoryLadderX;
+        const openingWidth = 1.5;
+        const openingLeft = ladderX - openingWidth / 2;
+        const openingRight = ladderX + openingWidth / 2;
+        const rearEdge = -deckDepth / 2;
+        const frontStripStart = depth / 2 + 0.1;
+        const frontEdge = deckDepth / 2;
+        const rearDepth = frontStripStart - rearEdge;
+        const rearCenterZ = (rearEdge + frontStripStart) / 2;
+        const ladderZ = depth / 2 + 0.9;
+        const openingStartZ = ladderZ - 0.28;
+        const landingDepth = openingStartZ - frontStripStart;
+        const landingCenterZ = (frontStripStart + openingStartZ) / 2;
+        const outerStripDepth = frontEdge - openingStartZ;
+        const outerCenterZ = (openingStartZ + frontEdge) / 2;
+        const deckSurfaceY = height - FLOOR_HEIGHT + thickness / 2;
+
+        const addDeckPart = (partWidth, partDepth, px, pz) => {
+            if (partWidth <= 0.05 || partDepth <= 0.05) return;
+            const deck = new THREE.Mesh(
+                new THREE.BoxGeometry(partWidth, thickness, partDepth),
+                createDualSidedWallMaterial(exteriorMaterial, interiorMaterial)
+            );
+            deck.position.set(px, height / 2, pz);
+            deck.userData.isRoof = true;
+            deck.userData.isRooftop = true;
+            deck.userData.isHouseDeck = true;
+            deck.userData.blocksProjectiles = true;
+            deck.userData.isIndestructibleSurface = true;
+            deck.userData.houseRef = house;
+            deck.userData.surfaceY = deckSurfaceY;
+            deck.userData.parentBuildingRef = house;
+            deck.castShadow = false;
+            house.add(deck);
+            obstacles.push(deck);
+        };
+
+        addDeckPart(deckWidth, rearDepth, 0, rearCenterZ);
+        // 梯子の正面から2階入口まで、切れ目のない着地床を設ける。
+        addDeckPart(deckWidth, landingDepth, 0, landingCenterZ);
+        addDeckPart(openingLeft + deckWidth / 2, outerStripDepth, (-deckWidth / 2 + openingLeft) / 2, outerCenterZ);
+        addDeckPart(deckWidth / 2 - openingRight, outerStripDepth, (openingRight + deckWidth / 2) / 2, outerCenterZ);
+
+        const ladderMaterial = new THREE.MeshLambertMaterial({ color: 0x666666 });
+        const ladderGroup = new THREE.Group();
+        ladderGroup.name = 'houseDeckLadder';
+        const lowerY = -height / 2 + 0.1;
+        const upperY = height / 2 + 0.95;
+        const railHeight = upperY - lowerY;
+        [-0.75, 0.75].forEach(offsetX => {
+            const rail = new THREE.Mesh(new THREE.BoxGeometry(0.16, railHeight, 0.16), ladderMaterial);
+            rail.position.set(ladderX + offsetX, (lowerY + upperY) / 2, ladderZ);
+            rail.userData.isLadder = true;
+            ladderGroup.add(rail);
+        });
+        for (let rungY = lowerY + 0.3; rungY <= height / 2 + 0.05; rungY += 0.5) {
+            const rung = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.1, 0.12), ladderMaterial);
+            rung.position.set(ladderX, rungY, ladderZ);
+            rung.userData.isLadder = true;
+            ladderGroup.add(rung);
+        }
+        house.add(ladderGroup);
+
+        house.updateMatrixWorld(true);
+        const ladderWorld = house.localToWorld(new THREE.Vector3(ladderX, -height / 2, ladderZ));
+        const landingWorld = house.localToWorld(new THREE.Vector3(ladderX, height / 2 + thickness / 2, landingCenterZ));
+        const interiorEntryWorld = house.localToWorld(new THREE.Vector3(ladderX, height / 2 + thickness / 2, depth / 2 - 1.0));
+        const houseWorld = house.position.clone();
+        const outward = ladderWorld.clone().sub(houseWorld).setY(0).normalize();
+        const sensor = new THREE.Mesh(
+            new THREE.BoxGeometry(3, 3, 3),
+            new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+        );
+        sensor.name = 'houseLadderSensorArea';
+        sensor.position.copy(ladderWorld).addScaledVector(outward, 0.7);
+        sensor.position.y = 1.5 - FLOOR_HEIGHT;
+        sensor.userData.obstacle = house;
+        sensor.userData.ladderPos = ladderWorld.clone();
+        sensor.userData.targetY = deckSurfaceY;
+        sensor.userData.landingPos = landingWorld;
+        sensor.userData.interiorEntryPos = interiorEntryWorld;
+        sensor.userData.deckWidth = deckWidth;
+        sensor.userData.deckDepth = deckDepth;
+        sensor.userData.isHouseLadderSensor = true;
+        scene.add(sensor);
+        ladderSwitches.push(sensor);
+        house.userData.ladderSensor = sensor;
+        twoStoryDeckSpec = {
+            width: deckWidth,
+            depth: deckDepth,
+            openingLeft,
+            openingRight,
+            openingStartZ,
+            surfaceY: deckSurfaceY,
+            localSurfaceY: height / 2 + thickness / 2
+        };
+    }
+
+    function addWindowWallVisuals(span, wallHeight, t, wallOffset, windowCenters, windowSize, rotY = 0, baseY = 0) {
+        const windowBottom = windowCenters[0].y;
+        const windowHeight = windowSize.h;
+        const topHeight = Math.max(0, wallHeight - (windowBottom + windowHeight));
+        const bottomHeight = Math.max(0, windowBottom);
+
+        if (bottomHeight > 0) {
+            const pos = wallOffset.clone().setY(baseY + (-wallHeight / 2 + bottomHeight / 2));
+            addHouseWallSegmentMesh(span, bottomHeight, t, pos, rotY);
+        }
+        if (topHeight > 0) {
+            const topCenterY = baseY + (-wallHeight / 2 + windowBottom + windowHeight + topHeight / 2);
+            const pos = wallOffset.clone().setY(topCenterY);
+            addHouseWallSegmentMesh(span, topHeight, t, pos, rotY);
+        }
+
+        // 窓の間の縦ストリップ
+        const halfSpan = span / 2;
+        const segments = [];
+        let prev = -halfSpan;
+        const sorted = windowCenters
+            .map(c => ({ min: c.x - windowSize.w / 2, max: c.x + windowSize.w / 2 }))
+            .sort((a, b) => a.min - b.min);
+        for (const w of sorted) {
+            if (w.min > prev) segments.push({ min: prev, max: w.min });
+            prev = w.max;
+        }
+        if (prev < halfSpan) segments.push({ min: prev, max: halfSpan });
+
+        const midY = baseY + (-wallHeight / 2 + windowBottom + windowHeight / 2);
+        for (const seg of segments) {
+            const segWidth = seg.max - seg.min;
+            if (segWidth <= 0.01) continue;
+            const segCenter = (seg.min + seg.max) / 2;
+            const pos = wallOffset.clone();
+            if (rotY === 0) {
+                pos.x += segCenter;
+            } else {
+                pos.z += segCenter;
+            }
+            pos.y = midY;
+            addHouseWallSegmentMesh(segWidth, windowHeight, t, pos, rotY);
+        }
+    }
+
+    // 正面壁: 左右コライダー（ドア開口は維持）
+    addHouseWallCollider(leftWallWidth, height, thickness, new THREE.Vector3(-width / 2 + leftWallWidth / 2, 0, depth / 2), 0, true, 'front');
+    addHouseWallCollider(leftWallWidth, height, thickness, new THREE.Vector3(width / 2 - leftWallWidth / 2, 0, depth / 2), 0, true, 'front');
+
+    // 背面壁の窓（2つ）
+    addWindowWallVisuals(
+        width,
+        height,
+        thickness,
+        new THREE.Vector3(0, 0, -depth / 2),
+        [{ x: -width / 4, y: 1.5 }, { x: width / 4, y: 1.5 }],
+        { w: 1.5, h: 1.5 },
+        0,
+        0
+    );
+
+    // 左壁の窓（回転あり）
+    addWindowWallVisuals(
+        depth,
+        height,
+        thickness,
+        new THREE.Vector3(-width / 2, 0, 0),
+        [{ x: 0, y: 1.5 }],
+        { w: 2.0, h: 1.5 },
+        Math.PI / 2,
+        0
+    );
+
+    // 右壁の窓（回転あり）
+    addWindowWallVisuals(
+        depth,
+        height,
+        thickness,
+        new THREE.Vector3(width / 2, 0, 0),
+        [{ x: 0, y: 1.5 }],
+        { w: 2.0, h: 1.5 },
+        Math.PI / 2,
+        0
+    );
+
+    // 窓付き壁用の実体コライダー（弾は解析チェックで窓を通過）
+    addHouseWallCollider(width, height, thickness, new THREE.Vector3(0, 0, -depth / 2), 0, true, 'back');
+    addHouseWallCollider(depth, height, thickness, new THREE.Vector3(-width / 2, 0, 0), Math.PI / 2, true, 'left');
+    addHouseWallCollider(depth, height, thickness, new THREE.Vector3(width / 2, 0, 0), Math.PI / 2, true, 'right');
+
+    const secondDoorX = twoStoryLadderX;
+    if (twoStory) {
+        const secondDoorWidth = 2.5;
+        const secondLeftWidth = secondDoorX - secondDoorWidth / 2 + width / 2;
+        const secondRightWidth = width / 2 - (secondDoorX + secondDoorWidth / 2);
+        if (secondLeftWidth > 0.05) {
+            addHouseWallSegmentMesh(
+                secondLeftWidth,
+                height,
+                thickness,
+                new THREE.Vector3(-width / 2 + secondLeftWidth / 2, height, depth / 2)
+            );
+            addHouseWallCollider(
+                secondLeftWidth,
+                height,
+                thickness,
+                new THREE.Vector3(-width / 2 + secondLeftWidth / 2, height, depth / 2),
+                0,
+                true,
+                'front'
+            );
+        }
+        if (secondRightWidth > 0.05) {
+            addHouseWallSegmentMesh(
+                secondRightWidth,
+                height,
+                thickness,
+                new THREE.Vector3(width / 2 - secondRightWidth / 2, height, depth / 2)
+            );
+            addHouseWallCollider(
+                secondRightWidth,
+                height,
+                thickness,
+                new THREE.Vector3(width / 2 - secondRightWidth / 2, height, depth / 2),
+                0,
+                true,
+                'front'
+            );
+        }
+
+        addWindowWallVisuals(
+            width,
+            height,
+            thickness,
+            new THREE.Vector3(0, height, -depth / 2),
+            [{ x: -width / 4, y: 1.5 }, { x: width / 4, y: 1.5 }],
+            { w: 1.5, h: 1.5 },
+            0,
+            height
+        );
+        addWindowWallVisuals(
+            depth,
+            height,
+            thickness,
+            new THREE.Vector3(-width / 2, height, 0),
+            [{ x: 0, y: 1.5 }],
+            { w: 2.0, h: 1.5 },
+            Math.PI / 2,
+            height
+        );
+        addWindowWallVisuals(
+            depth,
+            height,
+            thickness,
+            new THREE.Vector3(width / 2, height, 0),
+            [{ x: 0, y: 1.5 }],
+            { w: 2.0, h: 1.5 },
+            Math.PI / 2,
+            height
+        );
+        addHouseWallCollider(width, height, thickness, new THREE.Vector3(0, height, -depth / 2), 0, true, 'back');
+        addHouseWallCollider(depth, height, thickness, new THREE.Vector3(-width / 2, height, 0), Math.PI / 2, true, 'left');
+        addHouseWallCollider(depth, height, thickness, new THREE.Vector3(width / 2, height, 0), Math.PI / 2, true, 'right');
+    }
+
+    // 弾の解析的な窓通過判定用に窓仕様を保持
+    const windowSpec = {
+        back: [
+            { x: -width / 4, y: 1.5, w: 1.5, h: 1.5, story: 0 },
+            { x: width / 4, y: 1.5, w: 1.5, h: 1.5, story: 0 },
+            ...(twoStory ? [
+                { x: -width / 4, y: height + 1.5, w: 1.5, h: 1.5, story: 1 },
+                { x: width / 4, y: height + 1.5, w: 1.5, h: 1.5, story: 1 }
+            ] : [])
+        ],
+        side: [
+            { x: 0, y: 1.5, w: 2.0, h: 1.5, story: 0 },
+            ...(twoStory ? [{ x: 0, y: height + 1.5, w: 2.0, h: 1.5, story: 1 }] : [])
+        ]
+    };
+    const ladderSensor = house.userData.ladderSensor || null;
+
+    // userDataを設定
+    house.userData = { 
+        type: 'house',
+        width: width,
+        height: height,
+        depth: depth,
+        color: color,
+        hp: hp,
+        twoStory: !!twoStory,
+        totalHeight: twoStory ? height * 2 : height,
+        windowSpec,
+        frontDoors: [
+            { x: 0, y: 0, w: 2.5, h: height },
+            ...(twoStory ? [{ x: secondDoorX, y: height, w: 2.5, h: height }] : [])
+        ],
+        ladderSensor,
+        deckSpec: twoStoryDeckSpec
+    };
+    
+    scene.add(house);
+    // obstacles.push(house); // 家全体を障害物として追加しない（個別の壁パーツを追加済み）
+    houses.push(house);
+    addHouseInteriorGroundShadow(house, width, height, depth);
+    addStaticObjectShadow(house, width, depth, { height, padX: 0.45, padZ: 0.45, lengthFactor: 0.1, opacity: 0.09 });
+    
+    return house;
+}
+
+function createSniperTower(x, z) {
+    // テクスチャ未初期化なら初期化
+    initializeTextures();
+    
+    const TOWER_WIDTH = 6;
+    const TOWER_DEPTH = 6;
+    const TOWER_HEIGHT = DEFAULT_OBSTACLE_HEIGHT * 3;
+    const towerYPos = (TOWER_HEIGHT / 2) - FLOOR_HEIGHT;
+    const towerGeometry = new THREE.BoxGeometry(TOWER_WIDTH, TOWER_HEIGHT, TOWER_DEPTH);
+    
+    const towerMaterial = new THREE.MeshLambertMaterial({ 
+        map: objectSurfaceTexture,
+        color: 0x4A4A4A 
+    });
+    
+    const tower = new THREE.Mesh(towerGeometry, towerMaterial);
+    tower.position.set(x, towerYPos, z);
+    tower.userData.isTower = true;
+    tower.userData.type = 'tower';
+    const DEFAULT_OBSTACLE_VOLUME = 2 * DEFAULT_OBSTACLE_HEIGHT * 2;
+    const TOWER_VOLUME = TOWER_WIDTH * TOWER_HEIGHT * TOWER_DEPTH;
+    tower.userData.hp = Math.round(TOWER_VOLUME / DEFAULT_OBSTACLE_VOLUME / 2);
+    tower.castShadow = false; // 影をキャストしない
+    scene.add(tower);
+    obstacles.push(tower);
+    let ladderFace;
+    if (Math.abs(x) > Math.abs(z)) {
+        ladderFace = x > 0 ? 2 : 3;
+    } else {
+        ladderFace = z > 0 ? 0 : 1;
+    }
+    ladderFace = createAndAttachLadder(tower, ladderFace);
+    // createWindows(tower, TOWER_WIDTH, TOWER_HEIGHT, TOWER_DEPTH); // パフォーマンスのため窓を削除
+    // すべてのマップで屋上機能を有効化
+    addRooftopFeatures(tower, ladderFace);
+    addStaticObjectShadow(tower, TOWER_WIDTH, TOWER_DEPTH, { height: TOWER_HEIGHT, padX: 0.45, padZ: 0.45, lengthFactor: 0.12, opacity: 0.1 });
+}
+
+function createRandomMapRect(x, z, width, depth, padding = 0) {
+    const halfW = (width / 2) + padding;
+    const halfD = (depth / 2) + padding;
+    return {
+        minX: x - halfW,
+        maxX: x + halfW,
+        minZ: z - halfD,
+        maxZ: z + halfD
+    };
+}
+
+function randomMapRectsOverlap(a, b) {
+    return a.minX < b.maxX && a.maxX > b.minX && a.minZ < b.maxZ && a.maxZ > b.minZ;
+}
+
+function isRandomMapRectInsideArena(rect) {
+    const limit = ARENA_PLAY_AREA_RADIUS - 1;
+    const corners = [
+        new THREE.Vector2(rect.minX, rect.minZ),
+        new THREE.Vector2(rect.maxX, rect.minZ),
+        new THREE.Vector2(rect.minX, rect.maxZ),
+        new THREE.Vector2(rect.maxX, rect.maxZ)
+    ];
+    return corners.every(corner => corner.length() <= limit);
+}
+
+function randomMapRectClearsSpawnPoints(rect, spawnPoints) {
+    const safeRadius = 5.5;
+    return spawnPoints.every(spawn => {
+        const x = Math.max(rect.minX, Math.min(spawn.x, rect.maxX));
+        const z = Math.max(rect.minZ, Math.min(spawn.z, rect.maxZ));
+        const dx = spawn.x - x;
+        const dz = spawn.z - z;
+        return Math.sqrt(dx * dx + dz * dz) >= safeRadius;
+    });
+}
+
+function findRandomMapPlacement(width, depth, placedRects, spawnPoints, padding = 0.5, maxAttempts = 260) {
+    for (let i = 0; i < maxAttempts; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.sqrt(Math.random()) * (ARENA_PLAY_AREA_RADIUS - Math.max(width, depth) / 2 - 2);
+        const x = Math.round((Math.cos(angle) * radius) / 3) * 3;
+        const z = Math.round((Math.sin(angle) * radius) / 3) * 3;
+        const rect = createRandomMapRect(x, z, width, depth, padding);
+        if (!isRandomMapRectInsideArena(rect)) continue;
+        if (!randomMapRectClearsSpawnPoints(rect, spawnPoints)) continue;
+        if (placedRects.some(existing => randomMapRectsOverlap(rect, existing))) continue;
+        return { x, z, rect };
+    }
+    return null;
+}
+
+function persistLastRandomMapForEditor(mapData) {
+    try {
+        localStorage.setItem(LAST_RANDOM_MAP_STORAGE_KEY, JSON.stringify(mapData));
+    } catch (e) {
+        debugLog('Failed to persist random map for editor:', e);
+    }
+}
+
+function createRuntimeRandomMapData() {
+    const rand = (min, max) => min + Math.random() * (max - min);
+    const pick = values => values[Math.floor(Math.random() * values.length)];
+    const spawnPoints = [
+        { id: 0, x: 0, z: -20, color: 0x0000ff, name: 'Player' },
+        { id: 1, x: 0, z: 20, color: 0x00ff00, name: 'AI 1' },
+        { id: 2, x: 15, z: 20, color: 0x00ffff, name: 'AI 2' },
+        { id: 3, x: -15, z: 20, color: 0xffb6c1, name: 'AI 3' }
+    ];
+    const obstaclesToCreate = [];
+    const placedRects = [];
+    const houseCount = Math.floor(Math.random() * 9);
+    const towerCount = Math.floor(Math.random() * 5);
+    const obstacleCount = 5 + Math.floor(Math.random() * 44);
+    const barrelCount = Math.floor(Math.random() * 31);
+    const houseColors = [0xc96f50, 0xb66a45, 0xa85d4a, 0x9b6f4d, 0xb8795a];
+
+    const addRandomObstacle = (maxAttempts = 260) => {
+        const isWall = Math.random() > 0.22;
+        const horizontal = Math.random() > 0.5;
+        const length = isWall ? rand(5, 10) : pick([2, 3, 4]);
+        const thickness = isWall ? 0.5 : length;
+        const width = horizontal ? length : thickness;
+        const depth = horizontal ? thickness : length;
+        const placement = findRandomMapPlacement(width, depth, placedRects, spawnPoints, 0.45, maxAttempts);
+        if (!placement) return false;
+        obstaclesToCreate.push({
+            x: placement.x,
+            z: placement.z,
+            width,
+            height: Math.min(3.0, isWall ? rand(2.2, 3.0) : rand(2.0, 2.8)),
+            depth,
+            color: 0x9e9e9e,
+            hp: 2
+        });
+        placedRects.push(placement.rect);
+        return true;
+    };
+
+    for (let i = 0; i < 5; i++) {
+        addRandomObstacle(500);
+    }
+
+    for (let i = 0; i < houseCount; i++) {
+        const width = pick([9, 12, 15]);
+        const depth = pick([9, 12, 15]);
+        const footprint = Math.max(width, depth);
+        const placement = findRandomMapPlacement(footprint, footprint, placedRects, spawnPoints, 1.0, 380);
+        if (!placement) continue;
+        obstaclesToCreate.push({
+            x: placement.x,
+            z: placement.z,
+            width,
+            height: pick([4.5, 5.5, 6]),
+            depth,
+            color: pick(houseColors),
+            hp: 9
+        });
+        placedRects.push(placement.rect);
+    }
+
+    for (let i = 0; i < towerCount; i++) {
+        const placement = findRandomMapPlacement(6, 6, placedRects, spawnPoints, 1.2, 380);
+        if (!placement) continue;
+        obstaclesToCreate.push({ type: 'tower', x: placement.x, z: placement.z });
+        placedRects.push(placement.rect);
+    }
+
+    for (let i = 5; i < obstacleCount; i++) {
+        addRandomObstacle(260);
+    }
+
+    for (let i = 0; i < barrelCount; i++) {
+        const placement = findRandomMapPlacement(1.5, 1.5, placedRects, spawnPoints, 0.35, 260);
+        if (!placement) continue;
+        obstaclesToCreate.push({
+            type: 'barrel',
+            x: placement.x,
+            z: placement.z,
+            radius: 0.75,
+            height: 2.4,
+            color: 0xe74c3c
+        });
+        placedRects.push(placement.rect);
+    }
+
+    const mapData = {
+        name: 'RANDOM MAP',
+        obstacles: obstaclesToCreate,
+        spawnPoints,
+        floorColor: ARENA_FLOOR_DEFAULT_COLOR
+    };
+    persistLastRandomMapForEditor(mapData);
+    return mapData;
+}
+
+function generateObstaclePositions(count) {
+    const data = createRuntimeRandomMapData();
+    return data.obstacles.slice(0, Math.max(5, count || data.obstacles.length));
+}
+
+  function resetObstacles() {
+      // まず即時クリーンアップを実行
+      immediateRooftopCleanup();
+      if (billBattleLights.length > 0 || billBattleCeiling) {
+          clearBillBattleState();
+      }
+    
+    // 屋上パーツを含む全障害物をクリーンアップ
+    for (const obstacle of obstacles) {
+        // 家の場合は、すべての子オブジェクトを明示的に削除
+        if (obstacle && obstacle.userData.type === 'house') {
+            // 家のすべての子をトラバースして削除
+            const childrenToRemove = [];
+            if (obstacle.traverse) {
+                obstacle.traverse((child) => {
+                    if (child && child.isMesh && child !== obstacle) {
+                        childrenToRemove.push(child);
+                    }
+                });
+            }
+            // 子オブジェクトを削除
+            for (const child of childrenToRemove) {
+                obstacle.remove(child);
+                scene.remove(child);
+                if (child.geometry) child.geometry.dispose();
+                disposeMaterial(child.material); // 安全なマテリアル破棄を使用
+                // obstacles配列からも削除
+                const childIndex = obstacles.indexOf(child);
+                if (childIndex > -1) {
+                    obstacles.splice(childIndex, 1);
+                }
+            }
+        }
+        
+        // 先に屋上パーツをクリーンアップ
+        if (obstacle.userData.rooftopParts && Array.isArray(obstacle.userData.rooftopParts)) {
+            for (const part of obstacle.userData.rooftopParts) {
+                scene.remove(part);
+                if (part.geometry) part.geometry.dispose();
+                disposeMaterial(part.material); // 安全なマテリアル破棄を使用
+            }
+        }
+        // 梯子をクリーンアップ
+        const ladderGroup = obstacle.children.find(child => child.name === 'ladder');
+        if (ladderGroup) {
+            obstacle.remove(ladderGroup);
+        }
+        // メイン障害物を削除
+        if (obstacle.parent) {
+            obstacle.parent.remove(obstacle);
+        }
+        // ジオメトリとマテリアルを破棄
+        if (obstacle.geometry) obstacle.geometry.dispose();
+        disposeMaterial(obstacle.material); // 安全なマテリアル破棄を使用
+    }
+    obstacles.length = 0;
+    houses.length = 0;
+    HIDING_SPOTS.length = 0;
+    for (const ladderSwitch of ladderSwitches) {
+        scene.remove(ladderSwitch);
+    }
+    ladderSwitches.length = 0;
+    if (isBillBattleMode()) {
+        setupBillBattleFloor(false);
+        return;
+    }
+    setArenaFloorTexture(arenaFloorTexture);
+    let obstaclesToCreate = [];
+    if (gameSettings.mapType === 'random') {
+        const resolved = resolveCustomMapSelection();
+        const selectedMapData = resolved.mapData;
+        if (selectedMapData && Array.isArray(selectedMapData.obstacles)) {
+            obstaclesToCreate = selectedMapData.obstacles;
+            setArenaFloorColor(selectedMapData.floorColor !== undefined
+                ? selectedMapData.floorColor
+                : ARENA_FLOOR_DEFAULT_COLOR);
+        } else {
+            obstaclesToCreate = defaultObstaclesConfig;
+            setArenaFloorColor(ARENA_FLOOR_DEFAULT_COLOR);
+        }
+    } else if (gameSettings.mapType === 'custom') {
+        const resolved = resolveCustomMapSelection();
+        const selectedMapData = resolved.mapData;
+        if (gameSettings.mapType === 'custom' && resolved.mapName && resolved.mapName !== gameSettings.customMapName) {
+            gameSettings.customMapName = resolved.mapName;
+            saveSettings();
+        }
+        if (selectedMapData) {
+            try {
+                if (selectedMapData && selectedMapData.obstacles) {
+                    obstaclesToCreate = selectedMapData.obstacles;
+                } else {
+                    obstaclesToCreate = defaultObstaclesConfig;
+                }
+                if (selectedMapData.floorColor !== undefined) {
+                    setArenaFloorColor(selectedMapData.floorColor);
+                } else {
+                    setArenaFloorColor(ARENA_FLOOR_DEFAULT_COLOR);
+                }
+            } catch (e) {
+                obstaclesToCreate = defaultObstaclesConfig;
+                setArenaFloorColor(ARENA_FLOOR_DEFAULT_COLOR);
+            }
+        } else {
+            obstaclesToCreate = defaultObstaclesConfig;
+            setArenaFloorColor(ARENA_FLOOR_DEFAULT_COLOR);
+        }
+    } else {
+        obstaclesToCreate = defaultObstaclesConfig;
+        setArenaFloorColor(ARENA_FLOOR_DEFAULT_COLOR);
+        createSniperTower(35, -35);
+        createSniperTower(-35, 35);
+    }
+    for (const config of obstaclesToCreate) {
+        if (config.type === 'tower') {
+            // カスタムマップの塔データの場合
+            createSniperTower(config.x, config.z);
+        } else if (config.type === 'house' && (gameSettings.mapType === 'custom' || gameSettings.mapType === 'random')) {
+            // 登録マップの家データを通常選択・ランダム選択の両方で復元する
+            createHouse(config.x, config.z, config.width, config.height, config.depth, config.color, config.hp, config.rotation || 0, !!config.twoStory);
+        } else if (config.type === 'barrel') {
+            createExplosiveBarrel(config.x, config.z, config.color, config.radius, config.height);
+        } else {
+            // 通常の建物の場合
+            createObstacle(config.x, config.z, config.width, config.height || DEFAULT_OBSTACLE_HEIGHT, config.depth, config.color || 0xff0000, config.hp || 1);
+        }
+    }
+}
+
+const AI_INITIAL_POSITIONS = [
+    new THREE.Vector3(0, 0, 20),
+    new THREE.Vector3(25, 0, 10),
+    new THREE.Vector3(-25, 0, 10),
+    new THREE.Vector3(0, 0, -20),
+    new THREE.Vector3(20, 0, -20),
+    new THREE.Vector3(-20, 0, -20),
+];
+resetObstacles();
+let playerModel;
+let isPlayerDeathPlaying = false;
+let playerDeathTweenPos = null;
+let playerDeathTweenRotX = null;
+let playerDeathTweenRotZ = null;
+let playerDeathLookAt = null;
+let playerDeathCamOffset = null;
+let playerDeathCamWorldPosition = null;
+let playerDeathActor = null;
+let playerDeathCamSavedParent = null;
+let playerDeathCamSavedLocalPos = null;
+let playerDeathCamSavedLocalRot = null;
+let killCamPhysics = {
+    active: false,
+    actor: null,
+    parts: null,
+    velocity: new THREE.Vector3(),
+    clearance: 0.25,
+    lastBounceAt: 0,
+    fallingToGround: false
+};
+playerModel = createCharacterModel(0xff3333, characterCustomization.player); // プレイヤーのカスタマイズ設定
+bindArmoryCharacter(playerModel, 'player', currentWeapon);
+resetCharacterPose(playerModel); // 既定ポーズへリセット
+// ゲームプレイ中は銃を表示
+if (playerModel.userData.parts && playerModel.userData.parts.gun) {
+    playerModel.userData.parts.gun.visible = true;
+}
+player.add(playerModel);
+playerModel.position.set(0, -playerTargetHeight, 0);
+playerModel.visible = false;
+const CHARACTER_SHADOW_Y_OFFSET = 0.04;
+const CHARACTER_SHADOW_BASE_OPACITY = 0.24;
+const CHARACTER_SHADOW_GEOMETRY = new THREE.CircleGeometry(1, 24);
+CHARACTER_SHADOW_GEOMETRY.rotateX(-Math.PI / 2);
+function createCharacterBlobShadow(actor, kind = 'ai') {
+    if (!actor) return null;
+    if (!actor.userData) actor.userData = {};
+    if (actor.userData.characterBlobShadow) return actor.userData.characterBlobShadow;
+    const material = new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity: CHARACTER_SHADOW_BASE_OPACITY,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1
+    });
+    const shadow = new THREE.Mesh(CHARACTER_SHADOW_GEOMETRY, material);
+    shadow.renderOrder = 2;
+    shadow.userData.isCharacterBlobShadow = true;
+    shadow.userData.ownerKind = kind;
+    shadow.visible = false;
+    scene.add(shadow);
+    actor.userData.characterBlobShadow = shadow;
+    return shadow;
+}
+
+function removeCharacterBlobShadow(actor) {
+    const shadow = actor && actor.userData ? actor.userData.characterBlobShadow : null;
+    if (!shadow) return;
+    if (shadow.parent) shadow.parent.remove(shadow);
+    disposeMaterial(shadow.material);
+    if (actor.userData) actor.userData.characterBlobShadow = null;
+}
+
+function isNightForCharacterShadows() {
+    return !!(gameSettings && gameSettings.nightModeEnabled);
+}
+
+function getCharacterShadowParts(actor, isPlayerActor) {
+    const model = isPlayerActor ? playerModel : actor;
+    return model && model.userData ? model.userData.parts : null;
+}
+
+function getCharacterWorldPoint(part) {
+    if (!part || !part.getWorldPosition) return null;
+    return part.getWorldPosition(new THREE.Vector3());
+}
+
+function getCharacterFootToHeadShadowLine(actor, isPlayerActor) {
+    const parts = getCharacterShadowParts(actor, isPlayerActor);
+    if (!parts || !parts.head) return null;
+    const head = getCharacterWorldPoint(parts.head);
+    const leftFoot = getCharacterWorldPoint(parts.leftFoot);
+    const rightFoot = getCharacterWorldPoint(parts.rightFoot);
+    if (!head || (!leftFoot && !rightFoot)) return null;
+    let feet = null;
+    if (leftFoot && rightFoot) {
+        feet = leftFoot.clone().add(rightFoot).multiplyScalar(0.5);
+    } else {
+        feet = (leftFoot || rightFoot).clone();
+    }
+    return { feet, head };
+}
+
+function alignCharacterShadowToGround(shadow, yaw) {
+    shadow.rotation.set(0, yaw, 0);
+}
+
+function updateCharacterBlobShadow(actor, options = {}) {
+    const shadow = actor && actor.userData ? actor.userData.characterBlobShadow : null;
+    if (!shadow || !actor.position) return;
+    const isPlayerActor = !!options.isPlayer;
+    const isActorVisible = isPlayerActor
+        ? !!(playerModel && playerModel.visible)
+        : !!(actor.visible || (actor.userData && actor.userData.isDying) || (isAIDeathPlaying && cinematicTargetAI === actor));
+    if (isNightForCharacterShadows() || !isActorVisible || (!isGameRunning && !isPlayerDeathPlaying && !isAIDeathPlaying)) {
+        shadow.visible = false;
+        return;
+    }
+    const groundY = getGroundSurfaceY(actor.position);
+    const heightAboveGround = Math.max(0, actor.position.y - groundY);
+    const airborneScale = Math.min(0.35, heightAboveGround * 0.025);
+    const isCrouched = isPlayerActor ? isCrouchingToggle : !!actor.isCrouching;
+    const deathRotationSource = isPlayerActor && playerModel ? playerModel.rotation : actor.rotation;
+    const isDying = isPlayerActor
+        ? !!isPlayerDeathPlaying
+        : !!(actor.userData && actor.userData.isDying);
+    const fallenAmount = isDying
+        ? THREE.MathUtils.clamp(Math.max(Math.abs(deathRotationSource.x || 0), Math.abs(deathRotationSource.z || 0)) / (Math.PI / 2), 0.45, 1)
+        : 0;
+    const standingWidth = isCrouched ? 1.05 : 1.28;
+    const standingDepth = isCrouched ? 0.46 : 0.54;
+    const fallenWidth = 0.62;
+    const fallenDepth = 1.42;
+    let width = THREE.MathUtils.lerp(standingWidth, fallenWidth, fallenAmount) + airborneScale;
+    let depth = THREE.MathUtils.lerp(standingDepth, fallenDepth, fallenAmount) + airborneScale * 0.45;
+    let shadowX = actor.position.x;
+    let shadowZ = actor.position.z;
+    let shadowYaw = isPlayerActor && playerModel ? player.rotation.y + playerModel.rotation.y : actor.rotation.y;
+    if (fallenAmount > 0.05) {
+        const line = getCharacterFootToHeadShadowLine(actor, isPlayerActor);
+        if (line) {
+            const dx = line.head.x - line.feet.x;
+            const dz = line.head.z - line.feet.z;
+            const bodyLength = Math.sqrt(dx * dx + dz * dz);
+            if (bodyLength > 0.1) {
+                shadowX = (line.feet.x + line.head.x) * 0.5;
+                shadowZ = (line.feet.z + line.head.z) * 0.5;
+                shadowYaw = Math.atan2(dx, dz);
+                depth = Math.max(depth, bodyLength * 0.48);
+                width = Math.min(width, THREE.MathUtils.clamp(bodyLength * 0.18, 0.46, 0.62));
+            }
+        }
+    }
+    shadow.position.set(shadowX, groundY + CHARACTER_SHADOW_Y_OFFSET, shadowZ);
+    alignCharacterShadowToGround(shadow, shadowYaw);
+    shadow.scale.set(width, 1, depth);
+    if (shadow.material) {
+        const heightFade = Math.min(0.55, heightAboveGround * 0.055);
+        shadow.material.opacity = CHARACTER_SHADOW_BASE_OPACITY * (1 - heightFade);
+    }
+    shadow.visible = true;
+}
+
+function updateCharacterBlobShadows() {
+    updateStaticObjectShadows();
+    updateCharacterBlobShadow(player, { isPlayer: true });
+    for (const ai of ais) {
+        updateCharacterBlobShadow(ai);
+    }
+}
+
+function getKillCamRespawnTime() {
+    return performance.now() / 1000;
+}
+
+function isPlayerInvincible() {
+    return playerHP === Infinity || gameSettings.playerHP === 'Infinity';
+}
+
+function markActorAsFreshRespawnForKillCam(actor) {
+    if (!actor) return;
+    if (!actor.userData) actor.userData = {};
+    actor.userData.hideFromKillCamUntil = getKillCamRespawnTime() + KILLCAM_RESPAWN_HIDE_DURATION;
+}
+
+function isFreshRespawnHiddenFromKillCam(actor, now = getKillCamRespawnTime()) {
+    return !!(actor && actor.userData && actor.userData.hideFromKillCamUntil > now);
+}
+
+function hideFreshRespawnsForKillCam() {
+    if (!isPlayerDeathPlaying && !isAIDeathPlaying) return [];
+    const now = getKillCamRespawnTime();
+    const hiddenObjects = [];
+    const hideObject = (object) => {
+        if (!object || !object.visible) return;
+        hiddenObjects.push({ object, visible: object.visible });
+        object.visible = false;
+    };
+    if (isAIDeathPlaying && !isPlayerInvincible() && isFreshRespawnHiddenFromKillCam(player, now)) {
+        hideObject(playerModel);
+    }
+    for (const ai of ais) {
+        if (!ai || ai === cinematicTargetAI) continue;
+        if (isFreshRespawnHiddenFromKillCam(ai, now)) {
+            hideObject(ai);
+        }
+    }
+    return hiddenObjects;
+}
+
+function hideFreshRespawnAIsForPlayerDeathKillCam() {
+    if (!isPlayerDeathPlaying) return [];
+    const now = getKillCamRespawnTime();
+    const hiddenObjects = [];
+    for (const ai of ais) {
+        if (!ai || !ai.visible) continue;
+        if (isFreshRespawnHiddenFromKillCam(ai, now)) {
+            hiddenObjects.push({ object: ai, visible: ai.visible });
+            ai.visible = false;
+        }
+    }
+    return hiddenObjects;
+}
+
+function restoreKillCamHiddenObjects(hiddenObjects) {
+    for (const entry of hiddenObjects) {
+        if (entry && entry.object) entry.object.visible = entry.visible;
+    }
+}
+
+function renderKillCamScene() {
+    const hiddenObjects = hideFreshRespawnsForKillCam();
+    try {
+        updateCharacterBlobShadows();
+        renderer.render(scene, cinematicCamera);
+    } finally {
+        restoreKillCamHiddenObjects(hiddenObjects);
+    }
+}
+
+function renderPlayerDeathKillCamFrame() {
+    const hiddenObjects = hideFreshRespawnAIsForPlayerDeathKillCam();
+    try {
+        TWEEN.update();
+        if (shouldHoldDeathActorAboveGround(player)) liftKillCamActorAboveGround(player, 0.03);
+        if (isBillBattleMode() && shouldHoldDeathActorAboveGround(player)) {
+            enforceBillBattleInsideActor(player, 1.2, false);
+        }
+        player.updateMatrixWorld(true);
+        playerDeathLookAt = getPlayerDeathLookAt();
+        if (playerDeathCamOffset) {
+            playerDeathCamWorldPosition = playerDeathLookAt.clone().add(playerDeathCamOffset);
+            cinematicCamera.position.copy(playerDeathCamWorldPosition);
+        } else {
+            updatePlayerDeathCinematicCamera();
+        }
+        cinematicCamera.lookAt(playerDeathLookAt);
+        cinematicCamera.updateProjectionMatrix();
+        updateCharacterBlobShadows();
+        renderer.render(scene, cinematicCamera);
+    } finally {
+        restoreKillCamHiddenObjects(hiddenObjects);
+    }
+}
+
+createCharacterBlobShadow(player, 'player');
+  const AI_SPEED = 12.0;
+const HIDE_DURATION = 3.0;
+const ATTACK_DURATION = 1.0;
+const FLANK_COOLDOWN = 10.0;
+const MIN_DISTANCE_BETWEEN_AIS_AT_SPOT = 10.0;
+const EVASION_RANGE = 3.5;
+const ARRIVAL_THRESHOLD = 1.0;
+const AVOIDANCE_RAY_DISTANCE = 3.0;
+const FIRING_RATE = 0.2;
+const EXPLOSION_RADIUS = 25;
+const EXPLOSION_FORCE = 50;
+
+function cleanupAI(aiObject) {
+    if (aiObject) {
+        removeCharacterBlobShadow(aiObject);
+        // 子要素（体・頭など）を削除し、ジオメトリ/マテリアルを破棄
+        while (aiObject.children.length > 0) {
+            const child = aiObject.children[0];
+            aiObject.remove(child);
+            if (child.geometry) child.geometry.dispose();
+            disposeMaterial(child.material); // 安全なマテリアル破棄を使用
+            if (child.texture) child.texture.dispose(); // テクスチャがあればそれも破棄
+        }
+        // シーンからAI本体グループを削除
+        if (aiObject.parent) {
+            aiObject.parent.remove(aiObject);
+        }
+    }
+}
+
+const ais = [];
+
+function normalizeCharacterCustomization(customization, fallbackColor = '#ff3333') {
+    const normalized = {
+        ...CHARACTER_BASE_DEFAULT,
+        clothingColor: fallbackColor,
+        ...(customization || {})
+    };
+    if (normalized.gearType === 'mask') normalized.gearType = 'none';
+    if (normalized.gearType === 'camo') normalized.gearType = 'camo1';
+    if (normalized.gearType === 'vest') {
+        normalized.armorType = normalized.armorType === 'none' ? 'light' : normalized.armorType;
+        normalized.gearType = 'none';
+    }
+    if (normalized.gearType === 'helmet') {
+        normalized.headwearType = 'helmet';
+        normalized.hairStyle = 'short';
+        normalized.gearType = 'none';
+    }
+    if (normalized.hairStyle === 'helmet') {
+        normalized.headwearType = 'helmet';
+        normalized.hairStyle = 'short';
+    }
+    // Older editor versions stored the cap as the "bald" hair entry.
+    if (customization && customization.hairStyle === 'bald' && customization.headwearType === undefined) {
+        normalized.headwearType = 'cap';
+        normalized.hairStyle = 'short';
+    }
+    return normalized;
+}
+
+function getCharacterBodyProfile(type) {
+    const profiles = {
+        slim: { height: 0.98, torso: 0.92, head: 0.98, leg: 1.08, shoulder: 0.82, depth: 0.85, limb: 0.82, hip: 0.85 },
+        standard: { height: 1.0, torso: 1.0, head: 1.0, leg: 1.0, shoulder: 1.0, depth: 1.0, limb: 1.0, hip: 1.0 },
+        athletic: { height: 1.02, torso: 1.02, head: 0.96, leg: 1.03, shoulder: 1.15, depth: 1.08, limb: 1.05, hip: 1.05 },
+        heavy: { height: 0.98, torso: 1.08, head: 1.03, leg: 0.94, shoulder: 1.25, depth: 1.22, limb: 1.18, hip: 1.18 },
+        tall: { height: 1.08, torso: 1.02, head: 0.92, leg: 1.15, shoulder: 1.02, depth: 0.96, limb: 0.96, hip: 0.98 },
+        compact: { height: 0.92, torso: 0.98, head: 1.08, leg: 0.88, shoulder: 0.96, depth: 1.02, limb: 1.0, hip: 1.0 }
+    };
+    return profiles[type] || profiles.standard;
+}
+
+function getCharacterFaceProfile(type) {
+    const profiles = {
+        calm: { eyeWidth: 0.58, eyeHeight: 0.04, eyeY: 0.2, eyeTilt: 0, noseHeight: 0.28, mouthY: -0.16, mouthCurve: 0, browTilt: 0 },
+        focused: { eyeWidth: 0.52, eyeHeight: 0.035, eyeY: 0.23, eyeTilt: -0.16, noseHeight: 0.32, mouthY: -0.15, mouthCurve: -0.04, browTilt: -0.2 },
+        stern: { eyeWidth: 0.5, eyeHeight: 0.045, eyeY: 0.22, eyeTilt: -0.25, noseHeight: 0.36, mouthY: -0.18, mouthCurve: -0.08, browTilt: -0.32 },
+        sharp: { eyeWidth: 0.46, eyeHeight: 0.035, eyeY: 0.25, eyeTilt: -0.34, noseHeight: 0.3, mouthY: -0.13, mouthCurve: -0.02, browTilt: -0.38 },
+        wide: { eyeWidth: 0.68, eyeHeight: 0.05, eyeY: 0.18, eyeTilt: 0.08, noseHeight: 0.24, mouthY: -0.14, mouthCurve: 0.06, browTilt: 0.08 }
+    };
+    return profiles[type] || profiles.calm;
+}
+
+const camoTextures = {};
+function getCamoTexture(type = 'camo1') {
+    const textureType = type === 'camo2' ? 'camo2' : 'camo1';
+    if (camoTextures[textureType]) return camoTextures[textureType];
+    const size = 128;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+
+    if (textureType === 'camo2') {
+        ctx.fillStyle = '#d8cfb5';
+        ctx.fillRect(0, 0, size, size);
+
+        const pixelBlocks = [
+            ['#f0ead6', 10, 18, 7],
+            ['#c0aa78', 8, 16, 12],
+            ['#927135', 6, 12, 11],
+            ['#6f5526', 4, 8, 7],
+            ['#b8b096', 5, 10, 9]
+        ];
+        pixelBlocks.forEach(([blockColor, minCells, maxCells, count], colorIndex) => {
+            ctx.fillStyle = blockColor;
+            for (let i = 0; i < count; i++) {
+                const baseX = ((13 + i * 23 + colorIndex * 31) % 16) * 8;
+                const baseY = ((7 + i * 17 + colorIndex * 19) % 16) * 8;
+                const cells = minCells + ((i * 5 + colorIndex * 3) % (maxCells - minCells + 1));
+                let x = baseX;
+                let y = baseY;
+                for (let c = 0; c < cells; c++) {
+                    x = (x + ((c % 3) - 1) * 8 + size) % size;
+                    y = (y + (((c + i) % 3) - 1) * 8 + size) % size;
+                    ctx.fillRect(x, y, 8, 8);
+                    if ((c + colorIndex) % 4 === 0) ctx.fillRect((x + 8) % size, y, 8, 8);
+                }
+            }
+        });
+    } else {
+        ctx.fillStyle = '#34451f';
+        ctx.fillRect(0, 0, size, size);
+
+        const blobs = [
+            ['#1d2615', 14, 20],
+            ['#596a35', 18, 24],
+            ['#6b5b30', 12, 18],
+            ['#26351d', 20, 26]
+        ];
+        blobs.forEach(([color, minR, maxR], colorIndex) => {
+            ctx.fillStyle = color;
+            for (let i = 0; i < 9; i++) {
+                const x = (17 + i * 31 + colorIndex * 23) % size;
+                const y = (29 + i * 19 + colorIndex * 37) % size;
+                const rx = minR + ((i * 7 + colorIndex * 5) % (maxR - minR));
+                const ry = minR * 0.6 + ((i * 11 + colorIndex * 3) % (maxR - minR));
+                ctx.beginPath();
+                ctx.ellipse(x, y, rx, ry, (i + colorIndex) * 0.7, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        });
+    }
+
+    const camoTexture = new THREE.CanvasTexture(canvas);
+    camoTexture.wrapS = THREE.RepeatWrapping;
+    camoTexture.wrapT = THREE.RepeatWrapping;
+    camoTexture.repeat.set(2, 2);
+    camoTexture.magFilter = THREE.NearestFilter;
+    camoTexture.minFilter = THREE.LinearMipMapLinearFilter;
+    camoTexture.needsUpdate = true;
+    camoTextures[textureType] = camoTexture;
+    return camoTexture;
+}
+
+function createCharacterModel(color, customization = null) {
+    const fallbackColor = `#${new THREE.Color(color).getHexString()}`;
+    const modernCustom = normalizeCharacterCustomization(customization, fallbackColor);
+    return GFACharacterModels.create(modernCustom.clothingColor || fallbackColor, modernCustom);
+    // カスタマイズがあれば使用し、なければ既定値を使用
+    const custom = normalizeCharacterCustomization(customization, color);
+    const bodyProfile = getCharacterBodyProfile(custom.bodyType);
+    const faceProfile = getCharacterFaceProfile(custom.faceType);
+    
+    const isCamoGear = custom.gearType === 'camo1' || custom.gearType === 'camo2';
+    const camoMap = isCamoGear ? getCamoTexture(custom.gearType) : null;
+    const clothingMaterial = new THREE.MeshLambertMaterial({
+        color: isCamoGear ? 0xffffff : custom.clothingColor,
+        map: camoMap
+    });
+    const skinMaterial = new THREE.MeshLambertMaterial({ color: custom.skinColor });
+    const pantsMaterial = new THREE.MeshLambertMaterial({
+        color: isCamoGear ? 0xf1f1f1 : custom.pantsColor,
+        map: camoMap
+    });
+    const gunMaterial = new THREE.MeshLambertMaterial({ color: 0x111111 });
+    const shoeMaterial = new THREE.MeshLambertMaterial({ color: custom.shoesColor });
+    const hairMaterial = new THREE.MeshLambertMaterial({ color: custom.hairColor });
+
+    // rag.htmlの比率を使用し、現在のゲーム高さへスケール（見た目のみ・当たり判定は不変）
+    const targetHeight = (BODY_HEIGHT + HEAD_RADIUS * 2) * bodyProfile.height;
+    const ragTotalHeight = 2.5; // 0.6 + 0.6 + 0.9 + 0.4
+    const s = targetHeight / ragTotalHeight;
+    const torsoHeight = 0.7 * s * bodyProfile.torso; // 胴体をさらに短くする（0.8→0.7）
+    const headSize = 0.4 * s * bodyProfile.head; // 元のまま
+    const legSegmentHeight = 0.7 * s * bodyProfile.leg; // 脚をさらに長くする（0.65→0.7）
+    const torsoY = (legSegmentHeight * 2) + (torsoHeight / 2);
+    const headY = (legSegmentHeight * 2) + torsoHeight + (headSize / 2);
+    const torsoWidth = 0.6 * s * bodyProfile.shoulder;
+    const torsoDepth = 0.3 * s * bodyProfile.depth;
+    const armX = 0.45 * s * bodyProfile.shoulder;
+    const hipX = 0.2 * s * bodyProfile.hip;
+
+    // 体と頭
+    const body = new THREE.Mesh(new THREE.BoxGeometry(torsoWidth, torsoHeight, torsoDepth), clothingMaterial);
+    body.position.y = torsoY;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(headSize, headSize, headSize), skinMaterial);
+    head.position.y = headY;
+    
+    // すべてのキャラに目（横線）を追加 - 太さを2倍にする
+    const eyeLineGeom = new THREE.BoxGeometry(headSize * faceProfile.eyeWidth, headSize * faceProfile.eyeHeight, headSize * 0.04); // 太さ2倍（0.02→0.04）
+    const eyeLineMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    
+    // 左目のライン
+    const leftEyeLine = new THREE.Mesh(eyeLineGeom, eyeLineMaterial);
+    leftEyeLine.position.set(-headSize * 0.15, headSize * faceProfile.eyeY, headSize * 0.5); // 見えるように前方へ移動
+    leftEyeLine.rotation.z = faceProfile.eyeTilt;
+    
+    // 右目のライン  
+    const rightEyeLine = new THREE.Mesh(eyeLineGeom, eyeLineMaterial);
+    rightEyeLine.position.set(headSize * 0.15, headSize * faceProfile.eyeY, headSize * 0.5); // 見えるように前方へ移動
+    rightEyeLine.rotation.z = -faceProfile.eyeTilt;
+
+    // すべてのキャラに鼻を追加 - 目線の下に配置
+    const noseGeom = new THREE.BoxGeometry(headSize * 0.12, headSize * faceProfile.noseHeight, headSize * 0.12); // 大きく延長（0.08→0.12）
+    const noseMaterial = new THREE.MeshBasicMaterial({ color: custom.skinColor }); // 肌と同色
+    const nose = new THREE.Mesh(noseGeom, noseMaterial);
+    nose.position.set(0, headSize * 0.05, headSize * 0.54); // 目線より下（0.12→0.05）
+
+    const browGeom = new THREE.BoxGeometry(headSize * 0.34, headSize * 0.035, headSize * 0.035);
+    const browMaterial = new THREE.MeshBasicMaterial({ color: custom.hairColor });
+    const leftBrow = new THREE.Mesh(browGeom, browMaterial);
+    leftBrow.position.set(-headSize * 0.17, headSize * (faceProfile.eyeY + 0.14), headSize * 0.53);
+    leftBrow.rotation.z = faceProfile.browTilt;
+    const rightBrow = leftBrow.clone();
+    rightBrow.position.x = headSize * 0.17;
+    rightBrow.rotation.z = -faceProfile.browTilt;
+    const mouthGeom = new THREE.BoxGeometry(headSize * 0.42, headSize * 0.025, headSize * 0.03);
+    const mouthMaterial = new THREE.MeshBasicMaterial({ color: 0x2a1111 });
+    const mouth = new THREE.Mesh(mouthGeom, mouthMaterial);
+    mouth.position.set(0, headSize * faceProfile.mouthY, headSize * 0.55);
+    mouth.rotation.z = faceProfile.mouthCurve;
+
+    // すべてのキャラに耳を追加 - 大きくする
+    const earGeom = new THREE.BoxGeometry(headSize * 0.1, headSize * 0.25, headSize * 0.05); // 大型化（0.08→0.1, 0.2→0.25, 0.04→0.05）
+    const earMaterial = new THREE.MeshBasicMaterial({ color: custom.skinColor }); // 肌と同色
+    
+    // 左耳
+    const leftEar = new THREE.Mesh(earGeom, earMaterial);
+    leftEar.position.set(-headSize * 0.55, 0, 0); // 頭の側面
+    
+    // 右耳
+    const rightEar = new THREE.Mesh(earGeom, earMaterial);
+    rightEar.position.set(headSize * 0.55, 0, 0); // 頭の側面
+
+    // 髪 - カスタマイズに応じたスタイル
+    let hairParts = [];
+    
+    switch (custom.hairStyle) {
+        case 'short':
+            const shortHairGeom = new THREE.BoxGeometry(headSize * 1.1, headSize * 0.3, headSize * 1.1);
+            const shortHair = new THREE.Mesh(shortHairGeom, hairMaterial);
+            shortHair.position.set(0, headSize * 0.4, 0); // 頭を基準とした相対位置
+            
+            // 後頭部の半分を覆う後ろ髪を追加
+            const shortBackHairGeom = new THREE.BoxGeometry(headSize * 1.0, headSize * 0.4, headSize * 0.5);
+            const shortBackHair = new THREE.Mesh(shortBackHairGeom, hairMaterial);
+            shortBackHair.position.set(0, headSize * 0.2, -headSize * 0.25); // 頭を基準とした相対位置
+            
+            hairParts.push(shortHair, shortBackHair);
+            break;
+            
+        case 'long':
+            // アフロスタイル - 後頭上部から球状にし、顔の露出を増やす
+            const afroRadius = headSize * 0.8;
+            const afroGeom = new THREE.SphereGeometry(afroRadius, 16, 12);
+            const afro = new THREE.Mesh(afroGeom, hairMaterial);
+            afro.position.set(0, headSize * 0.6, -headSize * 0.4); // 頭を基準とした相対位置
+            afro.scale.set(1.4, 1.2, 1.3); // 顔をより見せるため横幅と高さを拡大
+            
+            hairParts.push(afro);
+            break;
+            
+        case 'spiky':
+            // モヒカンスタイル - 後頭頂から首までつながる髪（高く縦長）
+            const mohawkGeom = new THREE.BoxGeometry(headSize * 0.33, headSize * 0.7, headSize * 1.2); // より高く、より縦方向に
+            const mohawk = new THREE.Mesh(mohawkGeom, hairMaterial);
+            mohawk.position.set(0, headSize * 0.6, -headSize * 0.15); // 頭を基準とした相対位置
+            
+            hairParts.push(mohawk);
+            break;
+            
+        case 'bald':
+            // キャップスタイル - 箱型帽体に戻し、つばだけ少し長めにする
+            const capMainGeom = new THREE.BoxGeometry(headSize * 1.18, headSize * 0.28, headSize * 1.12);
+            const capMain = new THREE.Mesh(capMainGeom, hairMaterial);
+            capMain.position.set(0, headSize * 0.42, 0);
+
+            const capVisorGeom = new THREE.BoxGeometry(headSize * 1.16, headSize * 0.055, headSize * 0.92);
+            const capVisor = new THREE.Mesh(capVisorGeom, hairMaterial);
+            capVisor.position.set(0, headSize * 0.28, headSize * 0.62);
+            capVisor.rotation.x = -0.08;
+
+            hairParts.push(capMain, capVisor);
+            break;
+
+        case 'helmet':
+            const helmetGroup = new THREE.Group();
+            helmetGroup.position.y = headSize * 0.16;
+            helmetGroup.rotation.x = -0.2;
+            helmetGroup.scale.setScalar(0.95);
+            const dome = new THREE.Mesh(
+                new THREE.SphereGeometry(headSize * 0.78, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.56),
+                hairMaterial
+            );
+            dome.scale.set(1.04, 0.68, 1.1);
+            dome.position.y = headSize * 0.18;
+
+            const lowerRim = new THREE.Mesh(
+                new THREE.CylinderGeometry(headSize * 0.78, headSize * 0.84, headSize * 0.13, 28, 1, false),
+                hairMaterial
+            );
+            lowerRim.scale.set(1.03, 1, 1.14);
+            lowerRim.position.y = headSize * 0.01;
+
+            const skirt = new THREE.Mesh(
+                new THREE.CylinderGeometry(
+                    headSize * 0.78,
+                    headSize * 0.9,
+                    headSize * 0.24,
+                    28,
+                    1,
+                    true,
+                    Math.PI * 0.26,
+                    Math.PI * 1.48
+                ),
+                hairMaterial
+            );
+            skirt.scale.set(1.02, 1, 1.14);
+            skirt.position.y = -headSize * 0.11;
+            skirt.rotation.x = -0.08;
+
+            const frontPeak = new THREE.Mesh(
+                new THREE.SphereGeometry(headSize * 0.5, 18, 6, 0, Math.PI * 2, Math.PI * 0.44, Math.PI * 0.18),
+                hairMaterial
+            );
+            frontPeak.scale.set(1.18, 0.18, 0.38);
+            frontPeak.position.set(0, headSize * 0.02, headSize * 0.56);
+
+            helmetGroup.add(dome, lowerRim, skirt, frontPeak);
+            hairParts.push(helmetGroup);
+            break;
+            
+        case 'default':
+        default:
+            const hairBackGeom = new THREE.BoxGeometry(headSize * 1.15, headSize * 0.85, headSize * 0.75); // 薄めの後ろ髪
+            const hairBack = new THREE.Mesh(hairBackGeom, hairMaterial);
+            hairBack.position.set(0, 0, -headSize * 0.45); // 頭を基準とした相対位置
+            
+            const hairTopGeom = new THREE.BoxGeometry(headSize * 1.05, headSize * 0.35, headSize * 1.15); // 薄めの頭頂髪
+            const hairTop = new THREE.Mesh(hairTopGeom, hairMaterial);
+            hairTop.position.set(0, headSize * 0.45, -headSize * 0.1); // 頭を基準とした相対位置
+            
+            const hairBangsGeom = new THREE.BoxGeometry(headSize * 0.8, headSize * 0.05, headSize * 0.3);
+            const hairBangs = new THREE.Mesh(hairBangsGeom, hairMaterial);
+            hairBangs.position.set(0, headSize * 0.15, headSize * 0.35); // 頭を基準とした相対位置
+            
+            // 後ろ髪を切り揃えて頭頂髪と整列
+            const backHairCutGeom = new THREE.BoxGeometry(headSize * 1.2, headSize * 0.9, headSize * 0.3);
+            const backHairCut = new THREE.Mesh(backHairCutGeom, new THREE.MeshBasicMaterial({ color: 0x000000 }));
+            backHairCut.position.set(0, headSize * 0.4, -headSize * 0.45);
+            
+            hairParts.push(hairBack, hairTop, hairBangs);
+            break;
+    }
+
+    // 腕と銃
+    const aimGroup = new THREE.Group();
+    const gunLength = 2.0;
+    const gun = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, gunLength), gunMaterial);
+    gun.position.z = gunLength / 2;
+    gun.visible = true; // ゲームプレイ中は銃を表示（プレビューのリセット時のみ非表示）
+    aimGroup.position.y = (legSegmentHeight * 2) + torsoHeight * 0.7; // 元の腕位置に戻す
+    // 腕（上腕＋前腕）
+    const upperArmLen = 0.5 * s;
+    const foreArmLen = 0.5 * s;
+    const upperArmGeom = new THREE.BoxGeometry(0.2 * s * bodyProfile.limb, 0.2 * s * bodyProfile.limb, upperArmLen);
+    const foreArmGeom = new THREE.BoxGeometry(0.18 * s * bodyProfile.limb, 0.18 * s * bodyProfile.limb, foreArmLen);
+    const leftArm = new THREE.Mesh(upperArmGeom, clothingMaterial);
+    leftArm.position.set(-armX, 0, upperArmLen / 2);
+    const rightArm = new THREE.Mesh(upperArmGeom, clothingMaterial);
+    rightArm.position.set(armX, 0, upperArmLen / 2);
+    const leftElbow = new THREE.Object3D();
+    leftElbow.position.set(0, 0, upperArmLen / 2);
+    leftArm.add(leftElbow);
+    const rightElbow = new THREE.Object3D();
+    rightElbow.position.set(0, 0, upperArmLen / 2);
+    rightArm.add(rightElbow);
+    const leftForearm = new THREE.Mesh(foreArmGeom, clothingMaterial);
+    leftForearm.position.set(0, 0, foreArmLen / 2);
+    leftElbow.add(leftForearm);
+    const rightForearm = new THREE.Mesh(foreArmGeom, clothingMaterial);
+    rightForearm.position.set(0, 0, foreArmLen / 2);
+    rightElbow.add(rightForearm);
+    const handSize = 0.16 * s;
+    const leftHand = new THREE.Object3D();
+    leftHand.position.set(0, 0, foreArmLen / 2);
+    const leftHandMesh = new THREE.Mesh(new THREE.BoxGeometry(handSize, handSize, handSize), skinMaterial);
+    leftHand.add(leftHandMesh);
+    leftForearm.add(leftHand);
+    const rightHand = new THREE.Object3D();
+    rightHand.position.set(0, 0, foreArmLen / 2);
+    const rightHandMesh = leftHandMesh.clone();
+    rightHand.add(rightHandMesh);
+    rightForearm.add(rightHand);
+    const gunGrip = new THREE.Object3D();
+    gunGrip.position.set(0, 0, 0);
+    gunGrip.add(gun);
+    aimGroup.add(gunGrip);
+    aimGroup.add(leftArm, rightArm);
+
+    // 脚（太もも＋すね）
+    const legWidth = 0.25 * s * bodyProfile.limb;
+    const thighGeom = new THREE.BoxGeometry(legWidth, legSegmentHeight, legWidth);
+    const shinGeom = new THREE.BoxGeometry(legWidth * 0.88, legSegmentHeight * 0.85, legWidth * 0.88);
+    const leftHip = new THREE.Object3D();
+    leftHip.position.set(-hipX, legSegmentHeight * 2 - 0.12 * s, 0);
+    const rightHip = new THREE.Object3D();
+    rightHip.position.set(hipX, legSegmentHeight * 2 - 0.12 * s, 0);
+    const leftThigh = new THREE.Mesh(thighGeom, pantsMaterial);
+    leftThigh.position.y = -legSegmentHeight / 2;
+    leftHip.add(leftThigh);
+    const rightThigh = new THREE.Mesh(thighGeom, pantsMaterial);
+    rightThigh.position.y = -legSegmentHeight / 2;
+    rightHip.add(rightThigh);
+    const leftKnee = new THREE.Object3D();
+    leftKnee.position.y = -legSegmentHeight;
+    leftHip.add(leftKnee);
+    const rightKnee = new THREE.Object3D();
+    rightKnee.position.y = -legSegmentHeight;
+    rightHip.add(rightKnee);
+    const leftShin = new THREE.Mesh(shinGeom, pantsMaterial);
+    leftShin.position.y = -legSegmentHeight / 2;
+    leftKnee.add(leftShin);
+    const rightShin = new THREE.Mesh(shinGeom, pantsMaterial);
+    rightShin.position.y = -legSegmentHeight / 2;
+    rightKnee.add(rightShin);
+
+    // 腰/ヒップ（胴体と一体）
+    const waistLength = 0.15 * s;
+    const waistGeom = new THREE.BoxGeometry(0.65 * s * bodyProfile.hip, waistLength, 0.35 * s * bodyProfile.depth);
+    const waist = new THREE.Mesh(waistGeom, pantsMaterial);
+    waist.position.y = torsoY - torsoHeight / 2 - waistLength / 2;
+
+    // 足（靴）
+    const footLength = 0.3 * s;
+    const footWidth = 0.25 * s * bodyProfile.limb; // 脚の横幅に合わせる（0.35→0.25）
+    const footHeight = 0.12 * s;
+    const footGeom = new THREE.BoxGeometry(footWidth, footHeight, footLength);
+    
+    const leftFoot = new THREE.Mesh(footGeom, shoeMaterial);
+    leftFoot.position.set(0, -legSegmentHeight * 0.85 + footHeight / 2 - 0.06 * s, footLength / 10);
+    leftKnee.add(leftFoot);
+    
+    const rightFoot = new THREE.Mesh(footGeom, shoeMaterial);
+    rightFoot.position.set(0, -legSegmentHeight * 0.85 + footHeight / 2 - 0.06 * s, footLength / 10);
+    rightKnee.add(rightFoot);
+
+    const gearParts = [];
+    const vestMaterial = new THREE.MeshLambertMaterial({ color: 0x20252b });
+    head.add(leftEyeLine, rightEyeLine, leftBrow, rightBrow, nose, mouth, leftEar, rightEar);
+    hairParts.forEach(hairPart => {
+        head.add(hairPart);
+    });
+    if (custom.gearType === 'vest') {
+        const vest = new THREE.Mesh(new THREE.BoxGeometry(torsoWidth * 1.08, torsoHeight * 0.64, torsoDepth * 1.16), vestMaterial);
+        vest.position.y = torsoHeight * 0.02;
+        body.add(vest);
+        gearParts.push(vest);
+    }
+    const characterModel = new THREE.Group();
+    const allParts = [body, head, aimGroup, leftHip, rightHip, waist];
+    characterModel.add(...allParts);
+    
+    // 後で更新できるよう髪パーツを保持
+    characterModel.userData.hairParts = hairParts;
+    characterModel.userData.gearParts = gearParts;
+    characterModel.userData.parts = {
+        body: body,
+        head: head,
+        aimGroup: aimGroup,
+        gun: gun,
+        gunGrip: gunGrip,
+        leftArm: leftArm,
+        rightArm: rightArm,
+        leftElbow: leftElbow,
+        rightElbow: rightElbow,
+        leftForearm: leftForearm,
+        rightForearm: rightForearm,
+        leftHand: leftHand,
+        rightHand: rightHand,
+        leftHip: leftHip,
+        rightHip: rightHip,
+        leftKnee: leftKnee,
+        rightKnee: rightKnee,
+        leftFoot: leftFoot,
+        rightFoot: rightFoot,
+        waist: waist,
+        hairParts: hairParts,
+        baseTorsoY: torsoY,
+        baseHeadY: headY,
+        baseAimY: aimGroup.position.y,
+        baseLeftArmPos: leftArm.position.clone(),
+        baseRightArmPos: rightArm.position.clone(),
+        baseLeftArmRot: leftArm.rotation.clone(),
+        baseRightArmRot: rightArm.rotation.clone(),
+        baseLeftElbowRot: leftElbow.rotation.clone(),
+        baseRightElbowRot: rightElbow.rotation.clone(),
+        baseLeftHipPos: leftHip.position.clone(),
+        baseRightHipPos: rightHip.position.clone(),
+        baseLeftFootPos: leftFoot.position.clone(),
+        baseRightFootPos: rightFoot.position.clone()
+    };
+    characterModel.userData.footOffset = legSegmentHeight * 0.5;
+    return characterModel;
+}
+
+function getDefaultGunModelForWeapon(weaponType) {
+    const base = {
+        body: {
+            shape: 'box',
+            length: 1.2,
+            thickness: 0.12,
+            color: '#111111',
+            metalness: 0.3,
+            roughness: 0.5
+        },
+        scope: {
+            enabled: false,
+            radius: 0.04,
+            length: 0.24,
+            color: '#aaaaaa',
+            posX: 0,
+            posY: 0.11,
+            posZ: 0.2
+        },
+        magazine: {
+            enabled: false,
+            width: 0.08,
+            height: 0.22,
+            depth: 0.11,
+            color: '#222222',
+            posX: 0,
+            posY: -0.15,
+            posZ: 0.05
+        },
+        barrel: {
+            enabled: false,
+            shape: 'box',
+            width: 0.05,
+            height: 0.05,
+            depth: 0.85,
+            color: '#111111',
+            posX: 0,
+            posY: 0,
+            posZ: 0.35
+        }
+    };
+
+    switch (weaponType) {
+        case WEAPON_PISTOL:
+            base.body.length = 0.6;
+            base.body.thickness = 0.08;
+            base.body.color = '#222222';
+            base.body.metalness = 0.8;
+            base.body.roughness = 0.1;
+            break;
+        case WEAPON_MG:
+            base.body.length = 1.1;
+            base.body.thickness = 0.1;
+            base.body.color = '#111111';
+            base.body.metalness = 0.8;
+            base.body.roughness = 0.1;
+            base.magazine.enabled = true;
+            break;
+        case WEAPON_RR:
+            base.body.shape = 'cylinder';
+            base.body.length = 2.6;
+            base.body.thickness = 0.22;
+            base.body.color = '#6b4b1f';
+            base.body.metalness = 0.3;
+            base.body.roughness = 0.5;
+            break;
+        case WEAPON_SR:
+            base.body.length = 1.65;
+            base.body.thickness = 0.09;
+            base.body.color = '#cccccc';
+            base.scope.enabled = true;
+            base.scope.radius = base.body.thickness * 0.35;
+            base.scope.length = base.body.thickness * 2.6;
+            base.scope.posY = base.body.thickness * 0.9;
+            base.scope.posZ = base.body.length * 0.18;
+            break;
+        case WEAPON_SG:
+            base.body.length = 1.2;
+            base.body.thickness = 0.12;
+            base.body.color = '#444444';
+            break;
+        case WEAPON_MR:
+            base.body.length = 1.4;
+            base.body.thickness = 0.12;
+            base.body.color = '#8b4513';
+            base.barrel.enabled = true;
+            base.barrel.width = base.body.thickness * 0.5;
+            base.barrel.height = base.body.thickness * 0.5;
+            base.barrel.depth = base.body.length * 0.75;
+            base.barrel.posZ = base.body.length * 0.35;
+            break;
+    }
+    return base;
+}
+
+function deepCloneGunModel(model) {
+    return JSON.parse(JSON.stringify(model));
+}
+
+function mergeGunModel(target, source) {
+    if (!source || typeof source !== 'object') return target;
+    for (const key of Object.keys(source)) {
+        const value = source[key];
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+            if (!target[key] || typeof target[key] !== 'object') target[key] = {};
+            mergeGunModel(target[key], value);
+        } else {
+            target[key] = value;
+        }
+    }
+    return target;
+}
+
+function getEffectiveGunModel(weaponType) {
+    const defaultModel = getDefaultGunModelForWeapon(weaponType);
+    const custom = weaponCustomization && weaponCustomization[weaponType]
+        ? weaponCustomization[weaponType]
+        : (WEAPON_CUSTOMIZATION_RECOVERY_PRESET[weaponType]
+            ? WEAPON_CUSTOMIZATION_RECOVERY_PRESET[weaponType]
+            : null);
+    if (!custom) return defaultModel;
+    return mergeGunModel(defaultModel, deepCloneGunModel(custom));
+}
+
+function sanitizeGunModel(model, weaponType) {
+    const merged = mergeGunModel(getDefaultGunModelForWeapon(weaponType), deepCloneGunModel(model || {}));
+    const clamp = (v, min, max, fallback) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return fallback;
+        return Math.max(min, Math.min(max, n));
+    };
+    const normColor = (hex, fallback) => {
+        if (typeof hex !== 'string') return fallback;
+        const value = hex.trim();
+        if (!/^#([0-9a-fA-F]{6})$/.test(value)) return fallback;
+        return value.toLowerCase();
+    };
+    merged.body.shape = merged.body.shape === 'cylinder' ? 'cylinder' : 'box';
+    merged.body.length = clamp(merged.body.length, 0.3, 3.5, 1.2);
+    merged.body.thickness = clamp(merged.body.thickness, 0.03, 0.5, 0.12);
+    merged.body.color = normColor(merged.body.color, '#111111');
+    merged.body.metalness = clamp(merged.body.metalness, 0, 1, 0.3);
+    merged.body.roughness = clamp(merged.body.roughness, 0, 1, 0.5);
+
+    merged.scope.enabled = !!merged.scope.enabled;
+    merged.scope.radius = clamp(merged.scope.radius, 0.01, 0.4, 0.04);
+    merged.scope.length = clamp(merged.scope.length, 0.08, 1.5, 0.24);
+    merged.scope.color = normColor(merged.scope.color, '#aaaaaa');
+    merged.scope.posX = clamp(merged.scope.posX, -1.5, 1.5, 0);
+    merged.scope.posY = clamp(merged.scope.posY, -1.5, 1.5, 0.11);
+    merged.scope.posZ = clamp(merged.scope.posZ, -2.5, 2.5, 0.2);
+
+    merged.magazine.enabled = !!merged.magazine.enabled;
+    merged.magazine.width = clamp(merged.magazine.width, 0.02, 1.2, 0.08);
+    merged.magazine.height = clamp(merged.magazine.height, 0.02, 1.2, 0.22);
+    merged.magazine.depth = clamp(merged.magazine.depth, 0.02, 1.2, 0.11);
+    merged.magazine.color = normColor(merged.magazine.color, '#222222');
+    merged.magazine.posX = clamp(merged.magazine.posX, -1.5, 1.5, 0);
+    merged.magazine.posY = clamp(merged.magazine.posY, -1.5, 1.5, -0.15);
+    merged.magazine.posZ = clamp(merged.magazine.posZ, -2.5, 2.5, 0.05);
+
+    merged.barrel.enabled = !!merged.barrel.enabled;
+    merged.barrel.shape = merged.barrel.shape === 'cylinder' ? 'cylinder' : 'box';
+    merged.barrel.width = clamp(merged.barrel.width, 0.02, 1.2, 0.05);
+    merged.barrel.height = clamp(merged.barrel.height, 0.02, 1.2, 0.05);
+    merged.barrel.depth = clamp(merged.barrel.depth, 0.05, 2.5, 0.85);
+    merged.barrel.color = normColor(merged.barrel.color, '#111111');
+    merged.barrel.posX = clamp(merged.barrel.posX, -1.5, 1.5, 0);
+    merged.barrel.posY = clamp(merged.barrel.posY, -1.5, 1.5, 0);
+    merged.barrel.posZ = clamp(merged.barrel.posZ, -2.5, 2.5, 0.35);
+    return merged;
+}
+
+function loadWeaponCustomization() {
+    try {
+        const raw = localStorage.getItem(GUN_CUSTOMIZATION_STORAGE_KEY);
+        if (!raw) {
+            weaponCustomization = {};
+            return;
+        }
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') {
+            weaponCustomization = {};
+            return;
+        }
+        const next = {};
+        const weaponTypes = [WEAPON_PISTOL, WEAPON_MG, WEAPON_RR, WEAPON_SR, WEAPON_SG, WEAPON_MR];
+        for (const type of weaponTypes) {
+            if (parsed[type]) {
+                next[type] = sanitizeGunModel(parsed[type], type);
+            }
+        }
+        // これらの武器で以前使っていたカスタム外観を強制復元する。
+        for (const type of [WEAPON_MG, WEAPON_SR, WEAPON_SG, WEAPON_MR]) {
+            if (WEAPON_CUSTOMIZATION_RECOVERY_PRESET[type]) {
+                next[type] = sanitizeGunModel(WEAPON_CUSTOMIZATION_RECOVERY_PRESET[type], type);
+            }
+        }
+        weaponCustomization = next;
+        weaponCustomizationRevision++;
+        for (const key in runtimeGunModelCache) {
+            delete runtimeGunModelCache[key];
+        }
+    } catch (error) {
+        console.error('Failed to load weapon customization:', error);
+        weaponCustomization = {};
+        weaponCustomizationRevision++;
+        for (const key in runtimeGunModelCache) {
+            delete runtimeGunModelCache[key];
+        }
+    }
+}
+
+function saveWeaponCustomization() {
+    localStorage.setItem(GUN_CUSTOMIZATION_STORAGE_KEY, JSON.stringify(weaponCustomization));
+    weaponCustomizationRevision++;
+    for (const key in runtimeGunModelCache) {
+        delete runtimeGunModelCache[key];
+    }
+}
+
+function applyGunStylesToActiveCharacters() {
+    if (playerModel && playerModel.userData && playerModel.userData.parts && playerModel.userData.parts.gun) {
+        applyGunStyle(playerModel.userData.parts.gun, currentWeapon);
+    }
+    if (Array.isArray(ais)) {
+        for (const ai of ais) {
+            if (!ai || !ai.userData || !ai.userData.parts || !ai.userData.parts.gun) continue;
+            applyGunStyle(ai.userData.parts.gun, ai.currentWeapon || WEAPON_PISTOL);
+        }
+    }
+    if (previewCharacter && previewCharacter.userData && previewCharacter.userData.parts && previewCharacter.userData.parts.gun) {
+        applyGunStyle(previewCharacter.userData.parts.gun, currentWeapon || WEAPON_PISTOL);
+    }
+}
+
+function getRuntimeGunModel(weaponType) {
+    const cacheKey = `${weaponType}|${weaponCustomizationRevision}`;
+    if (!runtimeGunModelCache[cacheKey]) {
+        runtimeGunModelCache[cacheKey] = sanitizeGunModel(getEffectiveGunModel(weaponType), weaponType);
+    }
+    return runtimeGunModelCache[cacheKey];
+}
+
+function buildGunStyleKey(model, weaponType) {
+    const b = model.body;
+    const s = model.scope;
+    const m = model.magazine;
+    const br = model.barrel;
+    return [
+        weaponType,
+        b.shape, b.length, b.thickness, b.color, b.metalness, b.roughness,
+        s.enabled, s.radius, s.length, s.color, s.posX, s.posY, s.posZ,
+        m.enabled, m.width, m.height, m.depth, m.color, m.posX, m.posY, m.posZ,
+        br.enabled, br.shape, br.width, br.height, br.depth, br.color, br.posX, br.posY, br.posZ
+    ].join('|');
+}
+
+function addDefaultWeaponFurniture(gunMesh, model, weaponType) {
+    if (!gunMesh || !model || !model.body) return;
+    const bodyLength = Number(model.body.length) || 1.0;
+    const bodyThickness = Number(model.body.thickness) || 0.1;
+    const bodyColor = model.body.color || '#111111';
+    const furnitureMaterial = new THREE.MeshLambertMaterial({ color: bodyColor });
+
+    if (weaponType === WEAPON_PISTOL || weaponType === WEAPON_MG || weaponType === WEAPON_SG || weaponType === WEAPON_RR) {
+        const gripWidth = 0.06;
+        const gripHeight = 0.2;
+        const gripDepth = 0.08;
+        const grip = new THREE.Mesh(
+            new THREE.BoxGeometry(gripWidth, gripHeight, gripDepth),
+            furnitureMaterial
+        );
+        grip.position.set(
+            0,
+            -(bodyThickness * 0.5 + gripHeight * 0.5 - 0.01),
+            -bodyLength * 0.33
+        );
+        // 参照画像に合わせ、前バージョンと逆方向へ傾ける。
+        grip.rotation.x = THREE.MathUtils.degToRad(18);
+        gunMesh.add(grip);
+    }
+
+    if (weaponType === WEAPON_MR || weaponType === WEAPON_SR) {
+        const stockShape = new THREE.Shape();
+        // 大きい二等辺三角ストック: 後端下部付近から後方/下方へ延長。
+        stockShape.moveTo(0.2, 0.0);      // 頂点（銃本体側）
+        stockShape.lineTo(-0.44, -0.3);   // 後方下端
+        stockShape.lineTo(-0.44, 0.06);   // 後方上端
+        stockShape.lineTo(0.2, 0.0);
+        const stockGeometry = new THREE.ExtrudeGeometry(stockShape, {
+            depth: 0.08,
+            bevelEnabled: false
+        });
+        stockGeometry.translate(-0.2, 0, -0.04);
+        const stock = new THREE.Mesh(stockGeometry, furnitureMaterial);
+        stock.rotation.y = -Math.PI / 2;
+        stock.rotation.x = THREE.MathUtils.degToRad(-6);
+        stock.position.set(0, -(bodyThickness * 0.42), -bodyLength * 0.4);
+        gunMesh.add(stock);
+    }
+}
+
+function applyGunStyle(gunMesh, weaponType, overrideModel = null) {
+    if (gunMesh && gunMesh.userData.modernWeapon) {
+        const character = gunMesh.userData.armoryCharacter || 'player';
+        return GFACharacterModels.setWeapon(gunMesh, weaponType, getArmoryVariant(character, weaponType));
+    }
+    if (!gunMesh) return;
+    const model = overrideModel
+        ? sanitizeGunModel(overrideModel, weaponType)
+        : getRuntimeGunModel(weaponType);
+    const styleKey = buildGunStyleKey(model, weaponType);
+    if (gunMesh.userData && gunMesh.userData.gunStyleKey === styleKey) {
+        return;
+    }
+
+    // 既存のアタッチメント（マガジン/スコープ等）を削除
+    while (gunMesh.children.length > 0) {
+        const child = gunMesh.children[0];
+        gunMesh.remove(child);
+        if (child.geometry) child.geometry.dispose();
+        disposeMaterial(child.material); // 安全なマテリアル破棄を使用
+    }
+
+    if (gunMesh.geometry) gunMesh.geometry.dispose();
+    if (gunMesh.material) disposeMaterial(gunMesh.material);
+
+    if (model.body.shape === 'cylinder') {
+        const g = new THREE.CylinderGeometry(model.body.thickness / 2, model.body.thickness / 2, model.body.length, 18);
+        g.rotateX(Math.PI / 2);
+        gunMesh.geometry = g;
+    } else {
+        gunMesh.geometry = new THREE.BoxGeometry(model.body.thickness, model.body.thickness, model.body.length);
+    }
+
+    gunMesh.material = new THREE.MeshStandardMaterial({
+        color: model.body.color,
+        metalness: model.body.metalness,
+        roughness: model.body.roughness
+    });
+    gunMesh.userData.gunLength = model.body.length;
+    gunMesh.position.z = model.body.length / 2;
+
+    if (model.magazine.enabled) {
+        const mag = new THREE.Mesh(
+            new THREE.BoxGeometry(model.magazine.width, model.magazine.height, model.magazine.depth),
+            new THREE.MeshLambertMaterial({ color: model.magazine.color })
+        );
+        mag.position.set(model.magazine.posX, model.magazine.posY, model.magazine.posZ);
+        gunMesh.add(mag);
+    }
+
+    if (model.scope.enabled) {
+        const scope = new THREE.Mesh(
+            new THREE.CylinderGeometry(model.scope.radius, model.scope.radius, model.scope.length, 14),
+            new THREE.MeshLambertMaterial({ color: model.scope.color })
+        );
+        scope.rotation.x = Math.PI / 2;
+        scope.position.set(model.scope.posX, model.scope.posY, model.scope.posZ);
+        gunMesh.add(scope);
+    }
+
+    if (model.barrel.enabled) {
+        let barrelGeometry;
+        if (model.barrel.shape === 'cylinder') {
+            barrelGeometry = new THREE.CylinderGeometry(model.barrel.width / 2, model.barrel.width / 2, model.barrel.depth, 14);
+            barrelGeometry.rotateX(Math.PI / 2);
+        } else {
+            barrelGeometry = new THREE.BoxGeometry(model.barrel.width, model.barrel.height, model.barrel.depth);
+        }
+        const barrel = new THREE.Mesh(
+            barrelGeometry,
+            new THREE.MeshLambertMaterial({ color: model.barrel.color })
+        );
+        barrel.position.set(model.barrel.posX, model.barrel.posY, model.barrel.posZ);
+        gunMesh.add(barrel);
+    }
+    addDefaultWeaponFurniture(gunMesh, model, weaponType);
+    if (!gunMesh.userData) gunMesh.userData = {};
+    gunMesh.userData.gunStyleKey = styleKey;
+}
+
+function clampAngle(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function normalizeAngle(angle) {
+    let a = angle;
+    while (a > Math.PI) a -= Math.PI * 2;
+    while (a < -Math.PI) a += Math.PI * 2;
+    return a;
+}
+
+function lerpAngle(current, target, alpha) {
+    return current + normalizeAngle(target - current) * THREE.MathUtils.clamp(alpha, 0, 1);
+}
+
+function startKillCamPhysics(actor, parts, initialVelocity, clearance, options = {}) {
+    if (!actor) return;
+    killCamPhysics.active = true;
+    killCamPhysics.actor = actor;
+    killCamPhysics.parts = parts || null;
+    killCamPhysics.velocity.copy(initialVelocity || new THREE.Vector3());
+    killCamPhysics.clearance = Number.isFinite(clearance) ? clearance : 0.25;
+    killCamPhysics.lastBounceAt = 0;
+    killCamPhysics.fallingToGround = !!options.fallingToGround;
+    if (!actor.userData) actor.userData = {};
+    actor.userData.deathFallingToGround = killCamPhysics.fallingToGround;
+}
+
+function stopKillCamPhysics() {
+    clearDeathFallState(killCamPhysics.actor);
+    killCamPhysics.active = false;
+    killCamPhysics.actor = null;
+    killCamPhysics.parts = null;
+    killCamPhysics.velocity.set(0, 0, 0);
+    killCamPhysics.clearance = 0.25;
+    killCamPhysics.lastBounceAt = 0;
+    killCamPhysics.fallingToGround = false;
+}
+
+function stopKillCamPhysicsForActor(actor) {
+    if (killCamPhysics.active && killCamPhysics.actor === actor) {
+        stopKillCamPhysics();
+    }
+}
+
+function captureDeathGroundY(actor) {
+    if (!actor) return -FLOOR_HEIGHT;
+    if (!actor.userData) actor.userData = {};
+    const feetY = actor === player
+        ? actor.position.y - playerTargetHeight
+        : actor.position.y;
+    actor.userData.deathGroundY = Number.isFinite(feetY)
+        ? Math.max(-FLOOR_HEIGHT, feetY)
+        : -FLOOR_HEIGHT;
+    return actor.userData.deathGroundY;
+}
+
+function getDeathActorGroundY(actor) {
+    if (!actor) return -FLOOR_HEIGHT;
+    if (actor.userData && actor.userData.deathFallingToGround) return -FLOOR_HEIGHT;
+    if (actor.userData && Number.isFinite(actor.userData.deathGroundY)) {
+        return actor.userData.deathGroundY;
+    }
+    return actor === player
+        ? getGroundY(actor.position, playerTargetHeight * 2)
+        : getGroundSurfaceY(actor.position);
+}
+
+function clearDeathFallState(actor) {
+    if (actor && actor.userData) actor.userData.deathFallingToGround = false;
+}
+
+function liftKillCamActorAboveGround(actor, padding = 0.03) {
+    return actor === player
+        ? liftPlayerDeathModelAboveGround(padding)
+        : liftDeathActorAboveGround(actor, padding);
+}
+
+function shouldHoldDeathActorAboveGround(actor) {
+    if (!actor || !actor.userData || !actor.userData.deathFallingToGround) return true;
+    return actor.position.y <= (-FLOOR_HEIGHT + killCamPhysics.clearance + 0.08);
+}
+
+function getDeathBodyBox(parts, fallbackObject = null) {
+    if (parts && parts.modernRig) return GFACharacterModels.bodyBox(parts);
+    const box = new THREE.Box3();
+    let hasPart = false;
+    const bodyParts = parts ? [
+        parts.body,
+        parts.head,
+        parts.waist,
+        parts.leftArm,
+        parts.rightArm,
+        parts.leftForearm,
+        parts.rightForearm,
+        parts.leftHand,
+        parts.rightHand,
+        parts.leftHip,
+        parts.rightHip,
+        parts.leftKnee,
+        parts.rightKnee,
+        parts.leftFoot,
+        parts.rightFoot
+    ] : [];
+    for (const part of bodyParts) {
+        if (!part) continue;
+        part.updateMatrixWorld(true);
+        const partBox = new THREE.Box3().setFromObject(part);
+        if (partBox.isEmpty()) continue;
+        box.union(partBox);
+        hasPart = true;
+    }
+    if (!hasPart && fallbackObject) {
+        fallbackObject.updateMatrixWorld(true);
+        box.setFromObject(fallbackObject);
+        hasPart = !box.isEmpty();
+    }
+    return hasPart ? box : null;
+}
+
+function liftDeathActorAboveGround(actor, padding = 0.03) {
+    if (!actor) return false;
+    const groundY = getDeathActorGroundY(actor);
+    actor.updateMatrixWorld(true);
+    const parts = actor && actor.userData ? actor.userData.parts : null;
+    const actorBox = getDeathBodyBox(parts, actor);
+    if (!actorBox) return false;
+    const lift = (groundY + padding) - actorBox.min.y;
+    if (!Number.isFinite(lift) || lift <= 0) return false;
+    actor.position.y += lift;
+    actor.updateMatrixWorld(true);
+    return true;
+}
+
+function liftPlayerDeathModelAboveGround(padding = 0.03) {
+    if (!player || !playerModel) return false;
+    const groundY = getDeathActorGroundY(player);
+    player.updateMatrixWorld(true);
+    playerModel.updateMatrixWorld(true);
+    const parts = playerModel.userData ? playerModel.userData.parts : null;
+    const modelBox = getDeathBodyBox(parts, playerModel);
+    if (!modelBox) return false;
+    const lift = (groundY + padding) - modelBox.min.y;
+    if (!Number.isFinite(lift) || lift <= 0) return false;
+    player.position.y += lift;
+    player.updateMatrixWorld(true);
+    return true;
+}
+
+function ensurePauseButtonVisible() {
+    const pauseBtn = document.getElementById('pause-button');
+    if (pauseBtn && shouldShowTouchControls()) {
+        pauseBtn.style.display = 'block';
+    }
+}
+
+function restoreRightButtonsDefault() {
+    if (!shouldShowTouchControls()) return;
+    const fire = document.getElementById('fire-button');
+    const crouch = document.getElementById('crouch-button');
+    const zoom = document.getElementById('zoom-button');
+    const followBtn = document.getElementById('follow-button');
+    const canShowGameplayControls = isGameRunning && !isPaused && !isSettingsScreenVisible();
+    if (!canShowGameplayControls) {
+        if (fire) fire.style.display = 'none';
+        if (crouch) crouch.style.display = 'none';
+        if (zoom) zoom.style.display = 'none';
+        if (followBtn) followBtn.style.display = 'none';
+        return;
+    }
+    if (fire) fire.style.display = 'flex';
+    if (crouch) crouch.style.display = 'flex';
+    if (zoom) zoom.style.display = currentWeapon === WEAPON_SR ? 'none' : 'flex';
+    const shouldShowFollow = isTeamBasedAIMode();
+    if (followBtn) followBtn.style.display = shouldShowFollow ? 'flex' : 'none';
+    if (isRifleZoomed) setRifleZoom(false);
+    cancelScope();
+}
+
+function updateMobileWeaponButtonVisibility() {
+    const zoom = document.getElementById('zoom-button');
+    const shouldShowZoom = shouldShowTouchControls()
+        && isGameRunning
+        && !isPaused
+        && currentWeapon !== WEAPON_SR;
+    if (zoom) {
+        zoom.style.display = shouldShowZoom ? 'flex' : 'none';
+        zoom.style.pointerEvents = shouldShowZoom ? 'auto' : 'none';
+    }
+    syncFollowButtonVisibility();
+    if (currentWeapon === WEAPON_SR && isRifleZoomed) setRifleZoom(false);
+}
+
+function syncFollowButtonVisibility() {
+    const followBtn = document.getElementById('follow-button');
+    if (!followBtn) return;
+    const shouldShowFollow = shouldShowTouchControls()
+        && isGameRunning
+        && !isPaused
+        && !isPlayerDeathPlaying
+        && !isAIDeathPlaying
+        && isTeamBasedAIMode()
+        && !document.body.classList.contains('settings-screen-active');
+    const display = shouldShowFollow ? 'flex' : 'none';
+    if (followBtn.style.display !== display) followBtn.style.display = display;
+    followBtn.style.pointerEvents = shouldShowFollow ? 'auto' : 'none';
+}
+
+function applyKillCamRagdollImpulse(parts, impactVelocity = null) {
+    if (!parts) return;
+    if (parts.modernRig) return GFACharacterModels.nudge(parts, impactVelocity);
+    applyDeathLoosePose(parts);
+}
+
+function getDirectionalDeathRotation(object, impactVelocity, hitPoint = null) {
+    const target = object.rotation.clone();
+    object.updateWorldMatrix(true, true);
+    const force = impactVelocity && impactVelocity.lengthSq && impactVelocity.lengthSq() > 1e-6
+        ? impactVelocity.clone().setY(0)
+        : new THREE.Vector3(0, 0, 1);
+    if (force.lengthSq() < 1e-6) force.set(0, 0, 1);
+    force.normalize();
+    const inverseWorld = object.getWorldQuaternion(new THREE.Quaternion()).invert();
+    const localForce = force.applyQuaternion(inverseWorld).setY(0).normalize();
+    let hitHeight = 1.5;
+    let hitSide = 0;
+    if (hitPoint) {
+        const localHit = object.worldToLocal(hitPoint.clone());
+        hitHeight = localHit.y;
+        hitSide = THREE.MathUtils.clamp(localHit.x, -0.8, 0.8);
+    }
+    const lateralVariation = hitSide * 0.32 + (Math.random() - 0.5) * 0.34;
+    if (Math.abs(localForce.z) > 0.35) localForce.x += lateralVariation;
+    else localForce.z += lateralVariation * 0.45;
+    localForce.normalize();
+    const heightFactor = hitHeight > 2.35 ? 0.035 : (hitHeight < 1.15 ? -0.035 : 0);
+    const fallAngle = Math.PI * (0.455 + heightFactor + Math.random() * 0.055);
+    target.x += localForce.z * fallAngle;
+    target.z -= localForce.x * fallAngle;
+    target.x += (Math.random() - 0.5) * 0.16;
+    target.z += (Math.random() - 0.5) * 0.16;
+    return target;
+}
+
+function getReliableDeathImpactVelocity(projectile, victim) {
+    if (projectile && projectile.shooter && victim) {
+        const shooterPos = projectile.shooter.getWorldPosition
+            ? projectile.shooter.getWorldPosition(new THREE.Vector3())
+            : projectile.shooter.position;
+        const victimPos = victim.getWorldPosition
+            ? victim.getWorldPosition(new THREE.Vector3())
+            : victim.position;
+        if (shooterPos && victimPos) {
+            const fromShooter = new THREE.Vector3().subVectors(victimPos, shooterPos);
+            if (fromShooter.lengthSq() > 1e-6) return fromShooter.normalize();
+        }
+    }
+    if (projectile && projectile.velocity && projectile.velocity.lengthSq() > 1e-6) {
+        return projectile.velocity.clone().normalize();
+    }
+    return new THREE.Vector3(0, 0, 1);
+}
+
+function facePlayerDeathModelTowardImpactSource(impactVelocity) {
+    if (!player || !playerModel || !impactVelocity) return;
+    const towardSource = impactVelocity.clone().setY(0).multiplyScalar(-1);
+    if (towardSource.lengthSq() < 1e-6) return;
+    towardSource.normalize();
+    const sourceYaw = Math.atan2(towardSource.x, towardSource.z);
+    playerModel.rotation.y = normalizeAngle(sourceYaw - player.rotation.y);
+    player.updateMatrixWorld(true);
+    playerModel.updateMatrixWorld(true);
+}
+
+function createDeathPhysicsVelocity(impactVelocity, fallInfo = null, baseSpeed = 4.5) {
+    const velocity = new THREE.Vector3();
+    if (impactVelocity && impactVelocity.lengthSq && impactVelocity.lengthSq() > 1e-6) {
+        velocity.copy(impactVelocity).setY(0).normalize().multiplyScalar(baseSpeed);
+    } else {
+        const angle = Math.random() * Math.PI * 2;
+        velocity.set(Math.cos(angle) * baseSpeed * 0.45, 0, Math.sin(angle) * baseSpeed * 0.45);
+    }
+    velocity.y = 1.2;
+    if (fallInfo && fallInfo.outward) {
+        const outwardSpeed = Math.max(baseSpeed, 5.2);
+        velocity.copy(fallInfo.outward).multiplyScalar(outwardSpeed);
+        velocity.y = 0.35;
+    }
+    return velocity;
+}
+
+function pushDeathActorOffTowerEdge(actor, fallInfo) {
+    if (!actor || !fallInfo || !fallInfo.tower || !fallInfo.outward) return;
+    const tower = fallInfo.tower;
+    const geometry = tower.geometry || (tower.children && tower.children[0] ? tower.children[0].geometry : null);
+    const width = geometry && geometry.parameters && geometry.parameters.width ? geometry.parameters.width : 6;
+    const depth = geometry && geometry.parameters && geometry.parameters.depth ? geometry.parameters.depth : 6;
+    const dx = Math.abs(fallInfo.outward.x);
+    const dz = Math.abs(fallInfo.outward.z);
+    const edgeDistanceX = dx > 0.001 ? (width * 0.5) / dx : Infinity;
+    const edgeDistanceZ = dz > 0.001 ? (depth * 0.5) / dz : Infinity;
+    const edgeDistance = Math.min(edgeDistanceX, edgeDistanceZ);
+    if (!Number.isFinite(edgeDistance)) return;
+    const target = tower.position.clone().add(fallInfo.outward.clone().multiplyScalar(edgeDistance + 0.45));
+    actor.position.x = target.x;
+    actor.position.z = target.z;
+}
+
+function resolveKillCamObstacleBounce(actor, velocity, obstacle) {
+    if (!actor || !velocity || !obstacle) return false;
+    if (obstacle.userData && obstacle.userData.isRooftop && !obstacle.userData.isHouseRoof && !obstacle.userData.isRooftopCover) return false;
+    if (obstacle.userData && obstacle.userData.isLadder) return false;
+    const bounce = 0.55;
+    const tangentialDamping = 0.82;
+    const separationPadding = 0.04;
+    let collided = false;
+
+    // 障害物内部に残らないよう、貫通解消を繰り返す。
+    for (let i = 0; i < 3; i++) {
+        actor.updateMatrixWorld(true);
+        const actorParts = (killCamPhysics.active && killCamPhysics.actor === actor && killCamPhysics.parts)
+            || (actor.userData ? actor.userData.parts : null)
+            || (actor === player && playerModel && playerModel.userData ? playerModel.userData.parts : null);
+        const actorBox = getDeathBodyBox(actorParts, actor);
+        if (!actorBox) break;
+        obstacle.updateMatrixWorld(true);
+        const obstacleBox = new THREE.Box3();
+        if (obstacle.isMesh && obstacle.geometry) {
+            if (!obstacle.geometry.boundingBox) obstacle.geometry.computeBoundingBox();
+            obstacleBox.copy(obstacle.geometry.boundingBox).applyMatrix4(obstacle.matrixWorld);
+        } else {
+            obstacleBox.setFromObject(obstacle);
+        }
+        if (!actorBox.intersectsBox(obstacleBox)) break;
+
+        const overlapX = Math.min(actorBox.max.x - obstacleBox.min.x, obstacleBox.max.x - actorBox.min.x);
+        const overlapZ = Math.min(actorBox.max.z - obstacleBox.min.z, obstacleBox.max.z - actorBox.min.z);
+        if (!Number.isFinite(overlapX) || !Number.isFinite(overlapZ) || overlapX <= 0 || overlapZ <= 0) break;
+
+        const actorCenterX = (actorBox.min.x + actorBox.max.x) * 0.5;
+        const actorCenterZ = (actorBox.min.z + actorBox.max.z) * 0.5;
+        const obstacleCenterX = (obstacleBox.min.x + obstacleBox.max.x) * 0.5;
+        const obstacleCenterZ = (obstacleBox.min.z + obstacleBox.max.z) * 0.5;
+
+        if (overlapX <= overlapZ) {
+            const dir = (actorCenterX < obstacleCenterX) ? -1 : 1;
+            actor.position.x += dir * (overlapX + separationPadding);
+            velocity.x = -velocity.x * bounce;
+            velocity.z *= tangentialDamping;
+        } else {
+            const dir = (actorCenterZ < obstacleCenterZ) ? -1 : 1;
+            actor.position.z += dir * (overlapZ + separationPadding);
+            velocity.z = -velocity.z * bounce;
+            velocity.x *= tangentialDamping;
+        }
+        collided = true;
+    }
+
+    if (collided) {
+        const groundY = getDeathActorGroundY(actor);
+        const minY = groundY + killCamPhysics.clearance;
+        let touchedGround = false;
+        if (actor.position.y < minY) {
+            actor.position.y = minY;
+            touchedGround = true;
+        }
+        if (shouldHoldDeathActorAboveGround(actor) && liftKillCamActorAboveGround(actor, 0.03)) touchedGround = true;
+        if (touchedGround && velocity.y < 0) {
+            velocity.y = Math.abs(velocity.y) * 0.35;
+        }
+    }
+    return collided;
+}
+
+function keepDeathActorOutsideObstacles(actor, impactVelocity = null) {
+    if (!actor) return;
+    const correctionVelocity = impactVelocity && impactVelocity.lengthSq && impactVelocity.lengthSq() > 1e-6
+        ? impactVelocity.clone().setY(0).normalize()
+        : new THREE.Vector3(0, 0, 1);
+    for (const obstacle of obstacles) {
+        if (!obstacle || obstacle === actor) continue;
+        resolveKillCamObstacleBounce(actor, correctionVelocity, obstacle);
+    }
+}
+
+function updateKillCamPhysics(delta) {
+    if (!killCamPhysics.active || !killCamPhysics.actor) return;
+    const actor = killCamPhysics.actor;
+    const velocity = killCamPhysics.velocity;
+    const parts = killCamPhysics.parts;
+    const bounce = 0.45;
+
+    velocity.y -= GRAVITY * delta;
+    actor.position.add(velocity.clone().multiplyScalar(delta));
+
+    const groundY = getDeathActorGroundY(actor);
+    const minY = groundY + killCamPhysics.clearance;
+    let touchedGround = false;
+    if (actor.position.y < minY) {
+        actor.position.y = minY;
+        touchedGround = true;
+        clearDeathFallState(actor);
+    }
+    if (shouldHoldDeathActorAboveGround(actor) && liftKillCamActorAboveGround(actor, 0.03)) touchedGround = true;
+    if (touchedGround) {
+        if (velocity.y < 0) velocity.y = Math.abs(velocity.y) * bounce;
+        velocity.x *= 0.85;
+        velocity.z *= 0.85;
+    }
+
+    if (isBillBattleMode()) {
+        const beforeX = actor.position.x;
+        const beforeZ = actor.position.z;
+        if (enforceBillBattleInsideActor(actor, 1.2, false)) {
+            const normal = new THREE.Vector3(beforeX - actor.position.x, 0, beforeZ - actor.position.z);
+            if (normal.lengthSq() > 1e-6) {
+                normal.normalize();
+                const dot = velocity.x * normal.x + velocity.z * normal.z;
+                if (dot > 0) {
+                    velocity.x = (velocity.x - 2 * dot * normal.x) * bounce;
+                    velocity.z = (velocity.z - 2 * dot * normal.z) * bounce;
+                }
+            }
+            velocity.x *= 0.65;
+            velocity.z *= 0.65;
+            if (shouldHoldDeathActorAboveGround(actor)) liftKillCamActorAboveGround(actor, 0.03);
+            applyKillCamRagdollImpulse(parts, velocity);
+        }
+    } else {
+        const actorR = Math.sqrt(actor.position.x * actor.position.x + actor.position.z * actor.position.z);
+        const arenaLimit = ARENA_PLAY_AREA_RADIUS - 0.5;
+        if (actorR > arenaLimit) {
+            const nx = actor.position.x / actorR;
+            const nz = actor.position.z / actorR;
+            actor.position.x = nx * arenaLimit;
+            actor.position.z = nz * arenaLimit;
+            const dot = velocity.x * nx + velocity.z * nz;
+            if (dot > 0) {
+                velocity.x = (velocity.x - 2 * dot * nx) * bounce;
+                velocity.z = (velocity.z - 2 * dot * nz) * bounce;
+            }
+            applyKillCamRagdollImpulse(parts, velocity);
+        }
+    }
+
+    for (const obstacle of obstacles) {
+        if (!obstacle || obstacle === actor) continue;
+        if (resolveKillCamObstacleBounce(actor, velocity, obstacle)) {
+            applyKillCamRagdollImpulse(parts, velocity);
+        }
+    }
+
+    if (isBillBattleMode() && enforceBillBattleInsideActor(actor, 1.2, false)) {
+        velocity.x *= 0.5;
+        velocity.z *= 0.5;
+        if (shouldHoldDeathActorAboveGround(actor)) liftKillCamActorAboveGround(actor, 0.03);
+    }
+
+    if (Math.abs(velocity.x) + Math.abs(velocity.z) < 0.02 && Math.abs(velocity.y) < 0.02) {
+        velocity.set(0, 0, 0);
+    }
+}
+
+function applyAimConstraints(parts, ownerYaw, targetWorldPos, smoothing = 1.0) {
+    if (!parts || !parts.aimGroup) return;
+    const ownerPos = new THREE.Vector3();
+    // The modern weapon sits above its aim pivot, so calculate pitch from the gun.
+    if (parts.modernRig && parts.gun) parts.gun.getWorldPosition(ownerPos);
+    else parts.aimGroup.getWorldPosition(ownerPos);
+    const dir = new THREE.Vector3().subVectors(targetWorldPos, ownerPos);
+    const flat = new THREE.Vector3(dir.x, 0, dir.z);
+    const desiredYaw = Math.atan2(flat.x, flat.z);
+    const desiredPitch = Math.atan2(dir.y, flat.length());
+    const relYaw = normalizeAngle(desiredYaw - ownerYaw);
+    const clampedRelYaw = clampAngle(relYaw, -Math.PI / 3, Math.PI / 3); // ±60度
+    // このリグでは+Xピッチで銃口が下を向くため、符号を反転する。
+    // 目標の上を狙いにくくするため、下方向の許容幅を広くする。
+    const clampedPitch = clampAngle(-desiredPitch, -0.6, 1.2);
+    const alpha = THREE.MathUtils.clamp(smoothing, 0, 1);
+    parts.aimGroup.rotation.y += normalizeAngle(clampedRelYaw - parts.aimGroup.rotation.y) * alpha;
+    parts.aimGroup.rotation.x = THREE.MathUtils.lerp(parts.aimGroup.rotation.x, clampedPitch, alpha);
+}
+
+function syncHeadToAimDirection(parts) {
+    if (parts && parts.modernRig) return;
+    if (!parts || !parts.head || !parts.aimGroup) return;
+    // 顔向きは常に銃口方向（aimGroup）へ追従させる。
+    const yaw = THREE.MathUtils.clamp(parts.aimGroup.rotation.y * 0.95, -0.95, 0.95);
+    const pitch = THREE.MathUtils.clamp(-parts.aimGroup.rotation.x * 0.6, -0.55, 0.45);
+    parts.head.rotation.x = pitch;
+    parts.head.rotation.y = yaw;
+    parts.head.rotation.z = 0;
+}
+
+function clampArmJoints(parts) {
+    if (parts && parts.modernRig) return;
+    if (!parts) return;
+    if (parts.leftArm) {
+        parts.leftArm.rotation.x = clampAngle(parts.leftArm.rotation.x, -0.6, 0.2);
+        parts.leftArm.rotation.y = clampAngle(parts.leftArm.rotation.y, -0.7, 0.7);
+    }
+    if (parts.rightArm) {
+        parts.rightArm.rotation.x = clampAngle(parts.rightArm.rotation.x, -0.8, 0.2);
+        parts.rightArm.rotation.y = clampAngle(parts.rightArm.rotation.y, -0.7, 0.7);
+    }
+    if (parts.leftElbow) {
+        parts.leftElbow.rotation.x = clampAngle(parts.leftElbow.rotation.x, -0.8, 0.1);
+    }
+    if (parts.rightElbow) {
+        parts.rightElbow.rotation.x = clampAngle(parts.rightElbow.rotation.x, 0, 1.0);
+        parts.rightElbow.rotation.z = clampAngle(parts.rightElbow.rotation.z || 0, -1.0, 1.0);
+    }
+}
+
+function resetLegBasePositions(parts) {
+    if (!parts) return;
+    if (parts.leftHip && parts.baseLeftHipPos) parts.leftHip.position.copy(parts.baseLeftHipPos);
+    if (parts.rightHip && parts.baseRightHipPos) parts.rightHip.position.copy(parts.baseRightHipPos);
+    if (parts.leftFoot && parts.baseLeftFootPos) parts.leftFoot.position.copy(parts.baseLeftFootPos);
+    if (parts.rightFoot && parts.baseRightFootPos) parts.rightFoot.position.copy(parts.baseRightFootPos);
+}
+
+function applyIdleLegStance(parts) {
+    if (!parts) return;
+    resetLegBasePositions(parts);
+    const baseLeftHipX = (parts.baseLeftHipPos && Number.isFinite(parts.baseLeftHipPos.x)) ? parts.baseLeftHipPos.x : -0.18;
+    const baseRightHipX = (parts.baseRightHipPos && Number.isFinite(parts.baseRightHipPos.x)) ? parts.baseRightHipPos.x : 0.18;
+    const baseLeftHipZ = (parts.baseLeftHipPos && Number.isFinite(parts.baseLeftHipPos.z)) ? parts.baseLeftHipPos.z : 0;
+    const baseRightHipZ = (parts.baseRightHipPos && Number.isFinite(parts.baseRightHipPos.z)) ? parts.baseRightHipPos.z : 0;
+    const baseLeftFootZ = (parts.baseLeftFootPos && Number.isFinite(parts.baseLeftFootPos.z)) ? parts.baseLeftFootPos.z : 0;
+    const baseRightFootZ = (parts.baseRightFootPos && Number.isFinite(parts.baseRightFootPos.z)) ? parts.baseRightFootPos.z : 0;
+    const baseX = Math.max(Math.abs(baseLeftHipX), Math.abs(baseRightHipX), 0.12);
+    const open = Math.max(0.01, baseX * 0.15);
+    const stagger = Math.max(0.02, baseX * 0.25);
+
+    if (parts.leftHip) {
+        parts.leftHip.position.x = baseLeftHipX - open;
+        parts.leftHip.position.z = baseLeftHipZ + stagger * 0.6;
+    }
+    if (parts.rightHip) {
+        parts.rightHip.position.x = baseRightHipX + open;
+        parts.rightHip.position.z = baseRightHipZ - stagger * 0.6;
+    }
+    if (parts.leftFoot) parts.leftFoot.position.z = baseLeftFootZ + stagger;
+    if (parts.rightFoot) parts.rightFoot.position.z = baseRightFootZ - stagger;
+}
+
+function applyLowerBodyTurn(parts, lowerYaw) {
+    if (!parts) return;
+    const maxYaw = Math.PI / 4;
+    const clamped = Math.max(-maxYaw, Math.min(maxYaw, lowerYaw || 0));
+    if (parts.leftHip) parts.leftHip.rotation.y = clamped;
+    if (parts.rightHip) parts.rightHip.rotation.y = clamped;
+    if (parts.waist) parts.waist.rotation.y = clamped;
+}
+
+function resetLowerBodyYaw(parts) {
+    if (!parts) return;
+    applyLowerBodyTurn(parts, 0);
+}
+
+function applyCrouchPose(parts, isCrouching, timeElapsed, isMoving, lowerBodyYaw = 0) {
+    if (parts && parts.modernRig) return GFACharacterModels.pose(parts,isCrouching,timeElapsed,isMoving,lowerBodyYaw);
+    if (!parts) return;
+    if (isCrouching && isMoving) {
+        resetLegBasePositions(parts);
+        resetLowerBodyYaw(parts);
+        // しゃがみ歩行アニメーション
+        const hipBend = Math.PI / 4.2;
+        const kneeBend = Math.PI / 2.6;
+        const walkSpeed = 8; // しゃがみ中は歩行を遅くする
+        const hipAmplitude = Math.PI / 8; // しゃがみ歩行用に振幅を小さくする
+        const kneeAmplitude = Math.PI / 6; // しゃがみ歩行用に振幅を小さくする
+        
+        // しゃがみ基本ポーズ
+        parts.leftHip.rotation.x = -hipBend;
+        parts.rightHip.rotation.x = -hipBend;
+        parts.leftKnee.rotation.x = kneeBend;
+        parts.rightKnee.rotation.x = kneeBend;
+        parts.body.rotation.x = -0.22;
+        parts.head.position.y = parts.baseHeadY - 0.05;
+        
+        // しゃがみポーズに歩行アニメを重ねる
+        const swing = Math.sin(timeElapsed * walkSpeed) * hipAmplitude;
+        parts.leftHip.rotation.x += swing;
+        parts.rightHip.rotation.x -= swing;
+        parts.leftKnee.rotation.x += Math.max(0, (Math.cos(timeElapsed * walkSpeed) + 1) / 2 * kneeAmplitude);
+        parts.rightKnee.rotation.x += Math.max(0, (Math.cos(timeElapsed * walkSpeed + Math.PI) + 1) / 2 * kneeAmplitude);
+        
+        // しゃがみ歩行中の頭部動作
+        const headBobOffset = Math.sin(timeElapsed * walkSpeed) * 0.02;
+        parts.head.position.y += headBobOffset;
+    } else if (isCrouching) {
+        resetLegBasePositions(parts);
+        resetLowerBodyYaw(parts);
+        const hipBend = Math.PI / 4.2;
+        const kneeBend = Math.PI / 2.6;
+        // 前に出した手の方向へ脚を曲げる（人間らしいしゃがみ）
+        parts.leftHip.rotation.x = -hipBend;
+        parts.rightHip.rotation.x = -hipBend;
+        parts.leftKnee.rotation.x = kneeBend;
+        parts.rightKnee.rotation.x = kneeBend;
+        parts.body.rotation.x = -0.22;
+        parts.head.position.y = parts.baseHeadY - 0.05;
+    } else if (isMoving) {
+        resetLegBasePositions(parts);
+        const walkSpeed = 10;
+        const hipAmplitude = Math.PI / 4;
+        const kneeAmplitude = Math.PI / 3;
+        const swing = Math.sin(timeElapsed * walkSpeed) * hipAmplitude;
+        parts.leftHip.rotation.x = swing;
+        parts.rightHip.rotation.x = -swing;
+        parts.leftKnee.rotation.x = Math.max(0, (Math.cos(timeElapsed * walkSpeed) + 1) / 2 * kneeAmplitude);
+        parts.rightKnee.rotation.x = Math.max(0, (Math.cos(timeElapsed * walkSpeed + Math.PI) + 1) / 2 * kneeAmplitude);
+        parts.body.rotation.x = -0.15;
+        const headBobOffset = Math.sin(timeElapsed * walkSpeed) * 0.05;
+        parts.head.position.y = parts.baseHeadY + headBobOffset;
+        applyLowerBodyTurn(parts, lowerBodyYaw);
+    } else {
+        parts.leftHip.rotation.x = 0;
+        parts.rightHip.rotation.x = 0;
+        parts.leftKnee.rotation.x = 0;
+        parts.rightKnee.rotation.x = 0;
+        parts.body.rotation.x = 0;
+        parts.head.position.y = parts.baseHeadY;
+        applyLowerBodyTurn(parts, 0);
+        applyIdleLegStance(parts);
+    }
+}
+
+function getGunMuzzleInfo(parts) {
+    if (parts && parts.modernRig) return GFACharacterModels.muzzle(parts);
+    if (!parts || !parts.gun || !parts.gun.geometry || !parts.gun.geometry.parameters) return null;
+    const gun = parts.gun;
+    const gunLength = gun.userData && gun.userData.gunLength ? gun.userData.gunLength : (gun.geometry.parameters.depth || gun.geometry.parameters.height || 0.5);
+    const localMuzzle = new THREE.Vector3(0, 0, gunLength / 2);
+    const worldMuzzle = gun.localToWorld(localMuzzle.clone());
+    const gunQuat = new THREE.Quaternion();
+    gun.getWorldQuaternion(gunQuat);
+    const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(gunQuat).normalize();
+    return { position: worldMuzzle, direction: dir };
+}
+
+function alignGunGripToHands(parts, alpha = 1.0) {
+    if (parts && parts.modernRig) return;
+    if (!parts || !parts.leftHand || !parts.rightHand || !parts.gunGrip || !parts.aimGroup) return;
+    const leftWorld = new THREE.Vector3();
+    const rightWorld = new THREE.Vector3();
+    parts.leftHand.getWorldPosition(leftWorld);
+    parts.rightHand.getWorldPosition(rightWorld);
+    const mid = leftWorld.add(rightWorld).multiplyScalar(0.5);
+    const localMid = parts.aimGroup.worldToLocal(mid);
+    if (alpha >= 1.0) {
+        parts.gunGrip.position.copy(localMid);
+    } else {
+        parts.gunGrip.position.lerp(localMid, alpha);
+    }
+}
+
+function alignGunGripToRightHand(parts) {
+    if (parts && parts.modernRig) return;
+    if (!parts || !parts.leftHand || !parts.gunGrip || !parts.aimGroup) return;
+    const leftWorld = new THREE.Vector3();
+    parts.leftHand.getWorldPosition(leftWorld);
+    const localLeft = parts.aimGroup.worldToLocal(leftWorld);
+    parts.gunGrip.position.copy(localLeft);
+    parts.gunGrip.rotation.set(0, 0, 0);
+    // デス姿勢ではもう片方の手を銃から離して力を抜く
+    if (parts.rightArm) {
+        parts.rightArm.rotation.set(-0.4, -0.8, 0.2);
+    }
+    if (parts.rightElbow) {
+        parts.rightElbow.rotation.set(0.8, -0.2, -0.1);
+    }
+}
+
+function getPlayerNeckPos() {
+    const b = getPlayerCombatBounds();
+    const p = player.position.clone();
+    p.y = b.topY - b.height * 0.22;
+    return p;
+}
+
+function getPlayerBodyPos() {
+    const b = getPlayerCombatBounds();
+    const p = player.position.clone();
+    p.y = b.topY - b.height * 0.62;
+    return p;
+}
+
+function getPlayerFootPos() {
+    const b = getPlayerCombatBounds();
+    const p = player.position.clone();
+    p.y = b.bottomY + 0.1;
+    return p;
+}
+
+function getPlayerUpperTorsoPos() {
+    const b = getPlayerCombatBounds();
+    const p = player.position.clone();
+    p.y = b.topY - b.height * 0.45;
+    return p;
+}
+
+function getPlayerHeadPos() {
+    const b = getPlayerCombatBounds();
+    const p = player.position.clone();
+    // 頭上へ行き過ぎないようヒットボックス上端より少し下にする。
+    p.y = b.topY - b.height * 0.16;
+    return p;
+}
+
+function getPlayerCombatBounds() {
+    // 実際のゲーム中の体範囲を使う（上端=player.position.y、下端=上端-playerTargetHeight）
+    // さらに小さなマージンを加えて端付近のすり抜けを減らす。
+    const topY = player.position.y + 0.06;
+    let bottomY = player.position.y - playerTargetHeight - 0.06;
+    if (bottomY < -FLOOR_HEIGHT) bottomY = -FLOOR_HEIGHT;
+    const height = topY - bottomY;
+    return { topY, bottomY, height };
+}
+
+// パフォーマンス最適化用の再利用テンポラリベクトル
+const tempVector1 = new THREE.Vector3();
+const tempVector2 = new THREE.Vector3();
+const tempVector3 = new THREE.Vector3();
+const tempBox1 = new THREE.Box3();
+
+function doesSegmentHitBox(start, end, box) {
+    if (!start || !end || !box) return false;
+    const segment = new THREE.Vector3().subVectors(end, start);
+    const length = segment.length();
+    if (length <= 0.0001) return box.containsPoint(start);
+    const direction = segment.multiplyScalar(1 / length);
+    const ray = new THREE.Ray(start, direction);
+    const hitPoint = ray.intersectBox(box, new THREE.Vector3());
+    return !!(hitPoint && start.distanceTo(hitPoint) <= length);
+}
+
+// 軽量テクスチャキャッシュとローダー
+const textureCache = new Map();
+const textureLoader = new THREE.TextureLoader();
+
+// パフォーマンス向上のため手続き型テクスチャを生成
+function createBrickTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    
+    // レンガの基本色
+    ctx.fillStyle = '#8B4513';
+    ctx.fillRect(0, 0, 256, 256);
+    
+    // レンガパターン
+    ctx.strokeStyle = '#654321';
+    ctx.lineWidth = 2;
+    
+    // レンガを描画
+    for (let y = 0; y < 256; y += 32) {
+        for (let x = 0; x < 256; x += 64) {
+            const offsetX = (y / 32) % 2 === 0 ? 0 : 32;
+            ctx.strokeRect(x + offsetX, y, 64, 32);
+        }
+    }
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(2, 2);
+    return texture;
+}
+
+function createConcreteTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    
+    // コンクリートの基本色
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, 256, 256);
+    
+    // テクスチャ用ノイズを追加
+    for (let i = 0; i < 1000; i++) {
+        const x = Math.random() * 256;
+        const y = Math.random() * 256;
+        const brightness = Math.random() * 40 - 20;
+        ctx.fillStyle = `rgba(128, 128, 128, ${Math.random() * 0.3})`;
+        ctx.fillRect(x, y, 2, 2);
+    }
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(4, 4);
+    return texture;
+}
+
+function createObjectSurfaceTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#7b776d';
+    ctx.fillRect(0, 0, 256, 256);
+
+    for (let y = 0; y < 256; y += 4) {
+        for (let x = 0; x < 256; x += 4) {
+            const shade = 105 + Math.floor(Math.random() * 45);
+            const alpha = 0.18 + Math.random() * 0.22;
+            ctx.fillStyle = `rgba(${shade}, ${shade - 3}, ${shade - 10}, ${alpha})`;
+            ctx.fillRect(x, y, 4, 4);
+        }
+    }
+
+    ctx.strokeStyle = 'rgba(70, 66, 58, 0.18)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 48; i++) {
+        const x = Math.random() * 256;
+        const y = Math.random() * 256;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + (Math.random() * 42 - 21), y + (Math.random() * 42 - 21));
+        ctx.stroke();
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(3, 3);
+    texture.anisotropy = renderer.capabilities.getMaxAnisotropy ? Math.min(4, renderer.capabilities.getMaxAnisotropy()) : 1;
+    return texture;
+}
+
+function findNearbyCover(position, obstacles) {
+    const coverSearchRadius = 3.0; // 3m以内の障害物を探索
+    let nearestCover = null;
+    let nearestDistance = coverSearchRadius;
+    
+    // パフォーマンス最適化：まず距離でフィルタリング
+    const positionSquared = position.x * position.x + position.z * position.z;
+    
+    for (let i = 0; i < obstacles.length; i++) {
+        const obstacle = obstacles[i];
+        tempBox1.setFromObject(obstacle);
+        const obstacleCenter = tempBox1.getCenter(tempVector1);
+        
+        // まず簡単な距離チェックで除外
+        const dx = obstacleCenter.x - position.x;
+        const dz = obstacleCenter.z - position.z;
+        const distanceSquared = dx * dx + dz * dz;
+        
+        if (distanceSquared < nearestDistance * nearestDistance) {
+            const distance = Math.sqrt(distanceSquared);
+            
+            // 障害物がプレイヤーからの射線を遮る位置にあるかチェック
+            tempVector2.copy(player.position).sub(position);
+            tempVector3.copy(obstacleCenter).sub(position);
+            
+            // 障害物がプレイヤー方向にあるか
+            if (tempVector3.dot(tempVector2) > 0) {
+                nearestCover = obstacle;
+                nearestDistance = distance;
+            }
+        }
+    }
+    
+    return nearestCover;
+}
+
+function getAIUpperTorsoPos(targetAI) {
+    if (targetAI.userData.parts && targetAI.userData.parts.modernRig) return new THREE.Box3().setFromObject(targetAI.userData.parts.body).getCenter(new THREE.Vector3());
+    const p = targetAI.position.clone();
+    const h = targetAI.isCrouching ? BODY_HEIGHT * 0.45 : BODY_HEIGHT * 0.58;
+    p.y += h;
+    return p;
+}
+
+function getAIHeadPos(targetAI) {
+    if (!targetAI) return null;
+    if (targetAI.userData && targetAI.userData.parts && targetAI.userData.parts.head) {
+        return targetAI.userData.parts.head.getWorldPosition(new THREE.Vector3());
+    }
+    if (targetAI.children && targetAI.children[1]) {
+        return targetAI.children[1].getWorldPosition(new THREE.Vector3());
+    }
+    return targetAI.position.clone().add(new THREE.Vector3(0, BODY_HEIGHT + HEAD_RADIUS * 0.4, 0));
+}
+function getAILowerTorsoPos(targetAI) {
+    if (targetAI.userData.parts && targetAI.userData.parts.modernRig) return targetAI.userData.parts.waist.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0,0.12,0));
+    const p = targetAI.position.clone();
+    const h = targetAI.isCrouching ? BODY_HEIGHT * 0.3 : BODY_HEIGHT * 0.42;
+    p.y += h;
+    return p;
+}
+
+function getAISniperHitBoxes(targetAI) {
+    if (targetAI.userData.parts && targetAI.userData.parts.modernRig) return GFACharacterModels.boxes(targetAI.userData.parts);
+    const crouched = !!(targetAI && targetAI.isCrouching);
+    const bodyHeight = crouched ? 1.1 : 1.45;
+    const bodyWidth = crouched ? 0.68 : 0.72;
+    const centerY = targetAI.position.y + (crouched ? 0.55 : 0.82);
+    const boxes = [new THREE.Box3().setFromCenterAndSize(
+        new THREE.Vector3(targetAI.position.x, centerY, targetAI.position.z),
+        new THREE.Vector3(bodyWidth, bodyHeight, bodyWidth)
+    )];
+    const headPos = getAIHeadPos(targetAI);
+    if (headPos) {
+        const headSize = HEAD_RADIUS * 1.25;
+        boxes.push(new THREE.Box3().setFromCenterAndSize(
+            headPos,
+            new THREE.Vector3(headSize, headSize, headSize)
+        ));
+    }
+    return boxes;
+}
+function applyWeaponPose(parts, weaponType) {
+    if (parts && parts.modernRig) return applyGunStyle(parts.gun, weaponType);
+    if (!parts || !parts.leftArm || !parts.rightArm || !parts.gun || !parts.aimGroup) return;
+    // 既定値へリセット
+    parts.aimGroup.position.y = parts.baseAimY;
+    parts.leftArm.position.copy(parts.baseLeftArmPos || new THREE.Vector3(-0.28, 0, 0.2));
+    parts.rightArm.position.copy(parts.baseRightArmPos || new THREE.Vector3(0.28, 0, 0.7));
+    if (parts.baseLeftArmRot) parts.leftArm.rotation.copy(parts.baseLeftArmRot);
+    else parts.leftArm.rotation.set(0, Math.PI / 6, 0);
+    if (parts.baseRightArmRot) parts.rightArm.rotation.copy(parts.baseRightArmRot);
+    else parts.rightArm.rotation.set(0, -Math.PI / 6, 0);
+    if (parts.leftElbow) {
+        if (parts.baseLeftElbowRot) parts.leftElbow.rotation.copy(parts.baseLeftElbowRot);
+        else parts.leftElbow.rotation.set(0, 0, 0);
+    }
+    if (parts.rightElbow) {
+        if (parts.baseRightElbowRot) parts.rightElbow.rotation.copy(parts.baseRightElbowRot);
+        else parts.rightElbow.rotation.set(0, 0, 0);
+    }
+    parts.gun.position.y = 0;
+    parts.gun.position.z = parts.gun.geometry.parameters.depth / 2;
+    if (parts.gunGrip) {
+        parts.gunGrip.position.set(0, 0, 0);
+    }
+
+    if (weaponType === WEAPON_PISTOL) {
+        // JSONスロット: ピストル
+        parts.aimGroup.position.y = parts.baseAimY;
+        parts.leftArm.position.set(-0.45, 0.3132, 0.0);
+        parts.rightArm.position.set(0.45, 0.3132, 0.0);
+        // ピストル握りに合わせて両手をより近づける
+        parts.leftArm.rotation.set(-0.06, 0.44, 0.0021478930549691387);
+        parts.rightArm.rotation.set(-0.05, -0.44, -0.003943059002281813);
+        if (parts.leftElbow) parts.leftElbow.rotation.set(0.06, 0.0020761553815649442, 0.05233736454354215);
+        if (parts.rightElbow) parts.rightElbow.rotation.set(-0.02, 0.0, -0.017453292519943295);
+        // ピストルを両手の中心付近に寄せる（グリップ中心）。
+        parts.gun.position.set(0.0, 0.18, 0.36);
+        parts.gun.rotation.set(0.0, 0.0, 0.0);
+    } else if (weaponType === WEAPON_SR) {
+        // JSONスロット: スナイパー
+        parts.aimGroup.position.y = parts.baseAimY;
+        parts.leftArm.position.set(-0.45, 0.3132, 0.0);
+        parts.rightArm.position.set(0.45, 0.3132, 0.0);
+        parts.leftArm.rotation.set(0.6618416930961246, -0.3597994143825173, 2.0595783476597678);
+        parts.rightArm.rotation.set(0.24274440027514796, -0.5401874416309049, 0.024265044376310912);
+        if (parts.leftElbow) parts.leftElbow.rotation.set(1.753517159651292, 0.2856199806570641, -0.4952400535591467);
+        if (parts.rightElbow) parts.rightElbow.rotation.set(-0.23748038772965996, -0.09328549730483378, 0.6873193048891241);
+        // スナイパーを肩/頬側へ引き寄せる。
+        parts.gun.position.set(-0.12, 0.22, 0.44);
+        parts.gun.rotation.set(0.0, 0.0, 0.0);
+    } else if (weaponType === WEAPON_RR) {
+        // JSONスロット: ロケット
+        parts.aimGroup.position.y = parts.baseAimY;
+        parts.leftArm.position.set(-0.45, 0.3132, 0.0);
+        parts.rightArm.position.set(0.45, 0.3132, 0.0);
+        parts.leftArm.rotation.set(0.23506191003562008, -1.2406321520450616, 0.07328647962446797);
+        parts.rightArm.rotation.set(0.27004295572984904, -0.27777150302432024, -0.23935315585356648);
+        if (parts.leftElbow) parts.leftElbow.rotation.set(-2.951909014214923, 0.9012344301742208, 2.6785501380109666);
+        if (parts.rightElbow) parts.rightElbow.rotation.set(-0.0887078442944804, -0.8044137392457578, 2.695042877288731);
+        // ロケットは肩周辺に配置し、前方へ浮かせない。
+        parts.gun.position.set(-0.22, 0.24, 0.34);
+        parts.gun.rotation.set(0.0, 0.0, 0.0);
+    } else if (weaponType === WEAPON_SG || weaponType === WEAPON_MG || weaponType === WEAPON_MR) {
+        // JSONスロット: ライフル（MG/SGで使用）
+        parts.aimGroup.position.y = parts.baseAimY;
+        parts.leftArm.position.set(-0.45, 0.22, 0.0);
+        parts.rightArm.position.set(0.45, 0.3132, 0.0);
+        parts.leftArm.rotation.set(1.0661433898131165, -0.6857123545620026, 0.9750821801277433);
+        parts.rightArm.rotation.set(0.3611548453545697, -0.521485165467918, -0.09787351043009526);
+        if (parts.leftElbow) parts.leftElbow.rotation.set(-2.9325187133696122, 0.9525931111876489, 3.0153732832397564);
+        if (parts.rightElbow) parts.rightElbow.rotation.set(-0.30553800194860886, -0.2667850827551789, 1.604154961353316);
+        // ライフル/MG/SGのグリップを両手の中央付近へ。
+        parts.gun.position.set(-0.16, 0.18, 0.44);
+        parts.gun.rotation.set(0.0, 0.0, 0.06981317007977318);
+    }
+}
+
+function createAI(color, customization = null) {
+    const aiObject = createCharacterModel(color, customization);
+    createCharacterBlobShadow(aiObject, 'ai');
+
+    // AI専用プロパティ
+    aiObject.position.y = -FLOOR_HEIGHT + 0.2; // 靴の沈み込み防止のためキャラを少し高くする
+    aiObject.lastHiddenTime = 0;
+    aiObject.lastAttackTime = 0;
+    aiObject.currentAttackTime = 0;
+    aiObject.state = 'HIDING';
+    aiObject.currentObstacle = null;
+    aiObject.avoiding = false;
+    aiObject.currentWeapon = WEAPON_PISTOL;
+    aiObject.ammoMG = 0;
+    aiObject.ammoRR = 0;
+    aiObject.ammoSR = 0;
+    aiObject.ammoMR = 0;
+    aiObject.targetWeaponPickup = null;
+    aiObject.hp = 3;
+    aiObject.strafeDirection = (Math.random() > 0.5 ? 1 : -1);
+    aiObject.targetPosition = new THREE.Vector3();
+    aiObject.isCrouching = false;
+    aiObject.crouchUntilTime = null; // 戦術的しゃがみのタイマー
+    aiObject.lastCoverSearchTime = 0; // カバー探索のクールダウン
+    aiObject.aggression = Math.random();
+    aiObject.flankAggression = Math.random();
+    aiObject.lastFlankTime = 0;
+    aiObject.lastPosition = new THREE.Vector3(); // <= これを追加
+    aiObject.lastUnderFireTime = -999;
+    aiObject.lastSeenEnemyTime = -999;
+    aiObject.lastKnownEnemyPos = null;
+    aiObject.lastKnownThreatPos = null;
+    aiObject.isElevating = false;
+    aiObject.userData.baseColor = color;
+    aiObject.userData.customization = customization;
+    aiObject.userData.pistolClipAmmo = MAX_AMMO_PISTOL_CLIP;
+    aiObject.userData.pistolReloadUntil = 0;
+    aiObject.userData.rooftopIntent = false;
+    aiObject.userData.onRooftop = false;
+    aiObject.userData.rooftopSensor = null;
+    aiObject.userData.rooftopObstacle = null;
+    aiObject.userData.rooftopLadderPos = null;
+    aiObject.userData.rooftopTargetY = -FLOOR_HEIGHT;
+    aiObject.userData.elevatingDirection = 0;
+    aiObject.userData.nextRooftopDecisionAt = 0;
+    aiObject.userData.rooftopDecisionMade = false;
+    aiObject.userData.rooftopStateSince = 0;
+    aiObject.userData.rooftopPhase = 'none';
+    aiObject.userData.nextHouseInteriorMoveAt = 0;
+    aiObject.userData.stallStartTime = 0;
+    aiObject.userData.searchPulseAt = 0;
+    aiObject.userData.nextPerceptionTime = 0;
+    aiObject.userData.cachedVisibleOpponentInfo = null;
+    aiObject.userData.cachedIsAISeen = false;
+    aiObject.userData.groundIdleSince = 0;
+    aiObject.userData.nextAmbushAt = 3.5 + Math.random() * 4.5;
+    aiObject.userData.ambushUntil = 0;
+    aiObject.userData.ambushStartedAt = 0;
+    aiObject.userData.ambushPosition = null;
+    aiObject.userData.ambushCrouch = false;
+
+
+
+    return aiObject;
+}
+
+const raycaster = new THREE.Raycaster();
+
+function isVisibleToPlayer(ai) {
+    const playerPos = new THREE.Vector3();
+    player.getWorldPosition(playerPos);
+    const aiHeadPos = getAIHeadPos(ai);
+    const direction = new THREE.Vector3().subVectors(aiHeadPos, playerPos).normalize();
+    raycaster.set(playerPos, direction);
+    const intersects = raycaster.intersectObjects(obstacles, true);
+    const distanceToAI = playerPos.distanceTo(aiHeadPos);
+    if (intersects.length > 0) {
+        if (intersects[0].distance < distanceToAI - 0.1) {
+            ai.currentObstacle = intersects[0].object;
+            return false;
+        }
+    }
+    ai.currentObstacle = null;
+    return true;
+}
+
+function getOpponentTargetsForAI(ai) {
+    const targets = [];
+    if (isTeamBasedAIMode()) {
+        if (ai.team === 'player') {
+            for (const other of ais) {
+                if (other !== ai && other.team === 'enemy' && other.hp > 0) targets.push(other);
+            }
+        } else if (ai.team === 'enemy') {
+            if (playerHP > 0) targets.push(player);
+            for (const other of ais) {
+                if (other !== ai && other.team === 'player' && other.hp > 0) targets.push(other);
+            }
+        }
+        return targets;
+    }
+    if (isBillBattleMode()) {
+        if (playerHP > 0) targets.push(player);
+        return targets;
+    }
+    if (gameSettings.gameMode === 'ffa') {
+        if (playerHP > 0) targets.push(player);
+        for (const other of ais) {
+            if (other !== ai && other.hp > 0) targets.push(other);
+        }
+        return targets;
+    }
+    if (gameSettings.gameMode === 'arcade') {
+        // Outdoor PvAI: AI同士は敵対せず、プレイヤーのみを狙う。
+        if (playerHP > 0) targets.push(player);
+        return targets;
+    }
+    // 非チームモードではプレイヤーだけでなく近くのAIも標的候補に含める
+    if (playerHP > 0) targets.push(player);
+    for (const other of ais) {
+        if (other !== ai && other.hp > 0) targets.push(other);
+    }
+    return targets;
+}
+
+function getClosestOpponentPosition(ai) {
+    const opponents = getOpponentTargetsForAI(ai);
+    let bestPos = null;
+    let bestDist = Infinity;
+    for (const t of opponents) {
+        const tPos = t === player ? player.position : t.position;
+        const d = ai.position.distanceTo(tPos);
+        if (d < bestDist) {
+            bestDist = d;
+            bestPos = tPos.clone();
+        }
+    }
+    return bestPos;
+}
+
+function canAISeeAnyOpponent(ai) {
+    const aiHeadPos = getAIHeadPos(ai);
+    const opponents = getOpponentTargetsForAI(ai);
+    for (const t of opponents) {
+        if (t === player) {
+            const pHead = getPlayerHeadPos();
+            const pUpper = getPlayerUpperTorsoPos();
+            const pBody = getPlayerBodyPos();
+            if (checkLineOfSight(aiHeadPos, pHead, obstacles) || checkLineOfSight(aiHeadPos, pUpper, obstacles) || checkLineOfSight(aiHeadPos, pBody, obstacles)) {
+                return true;
+            }
+        } else {
+            const h = getAIUpperTorsoPos(t);
+            const b = getAILowerTorsoPos(t);
+            if (checkLineOfSight(aiHeadPos, h, obstacles) || checkLineOfSight(aiHeadPos, b, obstacles)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+function checkLineOfSight(startPosition, endPosition, objectsToAvoid) {
+    const direction = new THREE.Vector3().subVectors(endPosition, startPosition).normalize();
+    const distance = startPosition.distanceTo(endPosition);
+    raycaster.set(startPosition, direction);
+    raycaster.far = distance;
+    return !getFirstProjectileHit(raycaster, objectsToAvoid);
+}
+
+function getFirstProjectileHit(ray, objects) {
+    const intersects = ray.intersectObjects(objects, true);
+    let bestHit = null;
+    for (const hit of intersects) {
+        if (hit.object && hit.object.userData && hit.object.userData.blocksProjectiles === false) continue;
+        if (isHouseProjectilePassThrough(hit)) continue;
+        bestHit = hit;
+        break;
+    }
+    const houseHit = getHouseRayHit(ray.ray.origin, ray.ray.direction, ray.far);
+    if (houseHit && (!bestHit || houseHit.distance < bestHit.distance)) {
+        return houseHit;
+    }
+    return bestHit;
+}
+
+function isHouseProjectilePassThrough(hit) {
+    if (!hit || !hit.object || !hit.object.userData) return false;
+    const face = hit.object.userData.houseFace;
+    const house = hit.object.userData.houseRef;
+    if (!face || !house || !house.userData) return false;
+    const spec = house.userData.windowSpec;
+    if (!spec) return false;
+    const dims = house.userData;
+    const local = house.worldToLocal(hit.point.clone());
+    const height = dims.height || 5;
+    const depth = dims.depth || 8;
+    const width = dims.width || 8;
+    const windowBottom = (win) => (-height / 2 + win.y);
+    const inWindow = (win, axisVal) => {
+        const centerY = windowBottom(win) + win.h / 2;
+        if (local.y < centerY - win.h / 2 || local.y > centerY + win.h / 2) return false;
+        if (axisVal < win.x - win.w / 2 || axisVal > win.x + win.w / 2) return false;
+        return true;
+    };
+    if (face === 'back') {
+        if (Math.abs(local.z + depth / 2) > 0.4) return false;
+        for (const win of spec.back) {
+            if (inWindow(win, local.x)) return true;
+        }
+    }
+    if (face === 'left') {
+        if (Math.abs(local.x + width / 2) > 0.4) return false;
+        for (const win of spec.side) {
+            if (inWindow(win, local.z)) return true;
+        }
+    }
+    if (face === 'right') {
+        if (Math.abs(local.x - width / 2) > 0.4) return false;
+        for (const win of spec.side) {
+            if (inWindow(win, local.z)) return true;
+        }
+    }
+    return false;
+}
+
+function getHouseRayHit(origin, direction, maxDist) {
+    let best = null;
+    for (const house of houses) {
+        if (!house || !house.parent || !house.userData) continue;
+        const w = house.userData.width || 8;
+        const h = house.userData.height || 5;
+        const totalHeight = house.userData.totalHeight || h;
+        const d = house.userData.depth || 8;
+        const frontDoors = house.userData.frontDoors || [{ x: 0, y: 0, w: Math.min(2.5, w * 0.6), h }];
+        const winBack = house.userData.windowSpec?.back || [];
+        const winSide = house.userData.windowSpec?.side || [];
+
+        const q = new THREE.Quaternion();
+        house.getWorldQuaternion(q);
+        const invQ = q.clone().invert();
+        const localOrigin = house.worldToLocal(origin.clone());
+        const localDir = direction.clone().applyQuaternion(invQ).normalize();
+
+        const tryPlane = (t, face) => {
+            if (t <= 0 || t > maxDist) return;
+            const p = localOrigin.clone().add(localDir.clone().multiplyScalar(t));
+            if (p.y < -h / 2 || p.y > -h / 2 + totalHeight) return;
+            if (face === 'front') {
+                if (p.x < -w / 2 || p.x > w / 2) return;
+                const inDoor = frontDoors.some(door => {
+                    const bottom = -h / 2 + door.y;
+                    return p.x >= door.x - door.w / 2 && p.x <= door.x + door.w / 2 &&
+                        p.y >= bottom && p.y <= bottom + door.h;
+                });
+                if (inDoor) return;
+            }
+            if (face === 'back') {
+                if (p.x < -w / 2 || p.x > w / 2) return;
+                for (const win of winBack) {
+                    const cy = -h / 2 + win.y + win.h / 2;
+                    if (p.x >= win.x - win.w / 2 && p.x <= win.x + win.w / 2 &&
+                        p.y >= cy - win.h / 2 && p.y <= cy + win.h / 2) {
+                        return;
+                    }
+                }
+            }
+            if (face === 'left') {
+                if (p.z < -d / 2 || p.z > d / 2) return;
+                for (const win of winSide) {
+                    const cy = -h / 2 + win.y + win.h / 2;
+                    if (p.z >= win.x - win.w / 2 && p.z <= win.x + win.w / 2 &&
+                        p.y >= cy - win.h / 2 && p.y <= cy + win.h / 2) {
+                        return;
+                    }
+                }
+            }
+            if (face === 'right') {
+                if (p.z < -d / 2 || p.z > d / 2) return;
+                for (const win of winSide) {
+                    const cy = -h / 2 + win.y + win.h / 2;
+                    if (p.z >= win.x - win.w / 2 && p.z <= win.x + win.w / 2 &&
+                        p.y >= cy - win.h / 2 && p.y <= cy + win.h / 2) {
+                        return;
+                    }
+                }
+            }
+            const worldPoint = house.localToWorld(p.clone());
+            if (!best || t < best.distance) {
+                best = {
+                    object: { userData: { isHouseWall: true, isHouseHitProxy: true } },
+                    point: worldPoint,
+                    distance: t
+                };
+            }
+        };
+
+        if (Math.abs(localDir.z) > 1e-6) {
+            tryPlane((d / 2 - localOrigin.z) / localDir.z, 'front');
+            tryPlane((-d / 2 - localOrigin.z) / localDir.z, 'back');
+        }
+        if (Math.abs(localDir.x) > 1e-6) {
+            tryPlane((-w / 2 - localOrigin.x) / localDir.x, 'left');
+            tryPlane((w / 2 - localOrigin.x) / localDir.x, 'right');
+        }
+
+        // Keep the second-floor slab as ballistic cover even if its visual mesh
+        // is temporarily rebuilt or omitted by rooftop maintenance.
+        const deckSpec = house.userData.deckSpec;
+        if (house.userData.twoStory && deckSpec && Math.abs(localDir.y) > 1e-6) {
+            const floorY = Number.isFinite(deckSpec.localSurfaceY)
+                ? deckSpec.localSurfaceY
+                : h / 2 + 0.1;
+            const t = (floorY - localOrigin.y) / localDir.y;
+            if (t > 0 && t <= maxDist) {
+                const p = localOrigin.clone().add(localDir.clone().multiplyScalar(t));
+                if (Math.abs(p.x) <= w / 2 && Math.abs(p.z) <= d / 2 && (!best || t < best.distance)) {
+                    best = {
+                        object: {
+                            userData: {
+                                isHouseDeck: true,
+                                isHouseHitProxy: true,
+                                isIndestructibleSurface: true,
+                                houseRef: house
+                            }
+                        },
+                        point: house.localToWorld(p.clone()),
+                        distance: t
+                    };
+                }
+            }
+        }
+    }
+    return best;
+}
+
+const characterWallClipRaycaster = new THREE.Raycaster();
+const characterWallClipDirections = [
+    new THREE.Vector3(0, 0, 1),
+    new THREE.Vector3(0, 0, -1),
+    new THREE.Vector3(1, 0, 0),
+    new THREE.Vector3(-1, 0, 0)
+];
+
+function setCharacterWallClipPlanes(actor, planeSpecs) {
+    if (!actor) return;
+    if (!actor.userData.wallClipPlanes) {
+        actor.userData.wallClipPlanes = Array.from({ length: 3 }, () => new THREE.Plane());
+        actor.userData.wallClipPlaneSets = [
+            null,
+            actor.userData.wallClipPlanes.slice(0, 1),
+            actor.userData.wallClipPlanes.slice(0, 2),
+            actor.userData.wallClipPlanes.slice(0, 3)
+        ];
+        actor.userData.wallClipPlaneCount = -1;
+    }
+    const planes = actor.userData.wallClipPlanes;
+    const count = Math.min(planes.length, planeSpecs.length);
+    for (let i = 0; i < count; i++) {
+        planes[i].setFromNormalAndCoplanarPoint(planeSpecs[i].normal, planeSpecs[i].point);
+    }
+    const activePlanes = actor.userData.wallClipPlaneSets[count];
+    const countChanged = actor.userData.wallClipPlaneCount !== count;
+    const materials = new Set();
+    actor.traverse(child => {
+        if (!child.isMesh || !child.material) return;
+        const childMaterials = Array.isArray(child.material) ? child.material : [child.material];
+        for (const material of childMaterials) materials.add(material);
+    });
+    for (const material of materials) {
+        const materialChanged = material.clippingPlanes !== activePlanes;
+        material.clippingPlanes = activePlanes;
+        material.clipShadows = count > 0;
+        if (countChanged || materialChanged) material.needsUpdate = true;
+    }
+    actor.userData.wallClipPlaneCount = count;
+}
+
+function getCharacterWallClipSpecs(actor) {
+    if (!actor || !actor.userData || !actor.userData.parts || !actor.visible || actor.hp <= 0) return [];
+    actor.updateWorldMatrix(true, true);
+    const core = actor.localToWorld(new THREE.Vector3(0, 1.45, 0));
+    const candidates = [];
+    const addHit = (origin, direction, distance) => {
+        if (distance <= 0.01) return;
+        characterWallClipRaycaster.set(origin, direction);
+        characterWallClipRaycaster.near = 0.015;
+        characterWallClipRaycaster.far = distance;
+        const hit = getFirstProjectileHit(characterWallClipRaycaster, obstacles);
+        if (!hit || hit.distance > distance) return;
+        const normal = origin.clone().sub(hit.point);
+        normal.y = 0;
+        if (normal.lengthSq() < 1e-6) return;
+        normal.normalize();
+        const duplicate = candidates.some(candidate => candidate.normal.dot(normal) > 0.94);
+        if (!duplicate) {
+            candidates.push({
+                normal,
+                point: hit.point.clone().addScaledVector(normal, 0.015),
+                distance: hit.distance
+            });
+        }
+    };
+
+    const parts = actor.userData.parts;
+    const muzzleInfo = getGunMuzzleInfo(parts);
+    if (muzzleInfo && muzzleInfo.position) {
+        const toMuzzle = muzzleInfo.position.clone().sub(core);
+        const muzzleDistance = toMuzzle.length();
+        if (muzzleDistance > 0.05) addHit(core, toMuzzle.normalize(), muzzleDistance + 0.03);
+    }
+
+    const worldQuaternion = actor.getWorldQuaternion(new THREE.Quaternion());
+    for (const localDirection of characterWallClipDirections) {
+        const direction = localDirection.clone().applyQuaternion(worldQuaternion).setY(0).normalize();
+        addHit(core, direction, localDirection.x && localDirection.z ? 0.62 : 0.5);
+    }
+    candidates.sort((a, b) => a.distance - b.distance);
+    return candidates.slice(0, 3);
+}
+
+function updateCharacterWallClipping() {
+    const now = performance.now();
+    for (const ai of ais) {
+        const active = ai && ai.visible && ai.hp > 0 && isGameRunning && !isPlayerDeathPlaying;
+        if (!active) {
+            if (ai && ai.userData && ai.userData.wallClipPlaneCount !== 0) setCharacterWallClipPlanes(ai, []);
+            continue;
+        }
+        if (now >= (ai.userData.nextWallClipCheckAt || 0)) {
+            ai.userData.nextWallClipCheckAt = now + 50;
+            setCharacterWallClipPlanes(ai, getCharacterWallClipSpecs(ai));
+        }
+    }
+    // The player body is normally hidden in first person. Clear stale planes
+    // before a death camera or respawn makes it visible again.
+    if (playerModel && (!playerModel.visible || !isGameRunning || isPlayerDeathPlaying)) {
+        setCharacterWallClipPlanes(playerModel, []);
+    }
+}
+
+function getObjectAABBForCollision(object) {
+    const pos = object.position;
+    const box = new THREE.Box3();
+    if (ais.includes(object)) {
+        const aiBodyHeight = BODY_HEIGHT + (HEAD_RADIUS * 2); 
+        const aiCollisionHeight = object.isCrouching ? aiBodyHeight * 0.7 : aiBodyHeight; 
+        box.min.set(pos.x - 0.3, pos.y - aiCollisionHeight, pos.z - 0.3);
+        box.max.set(pos.x + 0.3, pos.y, pos.z + 0.3);
+    } else {
+        box.min.set(pos.x - 0.2, pos.y - playerTargetHeight, pos.z - 0.2);
+        box.max.set(pos.x + 0.2, pos.y, pos.z + 0.2);
+    }
+    return box;
+}
+
+function checkHouseCollisionBox(objectBox) {
+    const corners = [
+        new THREE.Vector3(objectBox.min.x, objectBox.min.y, objectBox.min.z),
+        new THREE.Vector3(objectBox.min.x, objectBox.min.y, objectBox.max.z),
+        new THREE.Vector3(objectBox.min.x, objectBox.max.y, objectBox.min.z),
+        new THREE.Vector3(objectBox.min.x, objectBox.max.y, objectBox.max.z),
+        new THREE.Vector3(objectBox.max.x, objectBox.min.y, objectBox.min.z),
+        new THREE.Vector3(objectBox.max.x, objectBox.min.y, objectBox.max.z),
+        new THREE.Vector3(objectBox.max.x, objectBox.max.y, objectBox.min.z),
+        new THREE.Vector3(objectBox.max.x, objectBox.max.y, objectBox.max.z)
+    ];
+    for (const house of houses) {
+        if (!house || !house.userData) continue;
+        const w = house.userData.width || 8;
+        const h = house.userData.height || 5;
+        const totalHeight = house.userData.totalHeight || h;
+        const d = house.userData.depth || 8;
+        const frontDoors = house.userData.frontDoors || [{ x: 0, y: 0, w: Math.min(2.5, w * 0.6), h }];
+        const localMin = new THREE.Vector3(Infinity, Infinity, Infinity);
+        const localMax = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+        for (const c of corners) {
+            const lc = house.worldToLocal(c.clone());
+            localMin.min(lc);
+            localMax.max(lc);
+        }
+        const t = 0.15;
+        const wallBottom = -h / 2;
+        const wallTop = wallBottom + totalHeight;
+        // 前面壁（ドア開口あり）
+        if (localMax.z >= d / 2 - t && localMin.z <= d / 2 + t &&
+            localMax.y >= wallBottom && localMin.y <= wallTop &&
+            localMax.x >= -w / 2 && localMin.x <= w / 2) {
+            const insideDoor = frontDoors.some(door => {
+                const bottom = wallBottom + door.y;
+                return localMin.x >= door.x - door.w / 2 && localMax.x <= door.x + door.w / 2 &&
+                    localMax.y >= bottom - 0.15 && localMax.y <= bottom + door.h + 0.15;
+            });
+            if (!insideDoor) return true;
+        }
+        // 背面の壁
+        if (localMax.z >= -d / 2 - t && localMin.z <= -d / 2 + t &&
+            localMax.y >= wallBottom && localMin.y <= wallTop &&
+            localMax.x >= -w / 2 && localMin.x <= w / 2) {
+            return true;
+        }
+        // 左側の壁
+        if (localMax.x >= -w / 2 - t && localMin.x <= -w / 2 + t &&
+            localMax.y >= wallBottom && localMin.y <= wallTop &&
+            localMax.z >= -d / 2 && localMin.z <= d / 2) {
+            return true;
+        }
+        // 右側の壁
+        if (localMax.x >= w / 2 - t && localMin.x <= w / 2 + t &&
+            localMax.y >= wallBottom && localMin.y <= wallTop &&
+            localMax.z >= -d / 2 && localMin.z <= d / 2) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function normalizeRegisteredMapData(rawMapData) {
+    let mapData = rawMapData;
+    for (let attempt = 0; attempt < 2 && typeof mapData === 'string'; attempt++) {
+        try {
+            mapData = JSON.parse(mapData);
+        } catch (error) {
+            return null;
+        }
+    }
+    return mapData && typeof mapData === 'object' ? mapData : null;
+}
+
+function resolveCustomMapSelection() {
+    if (gameSettings.mapType === 'random') {
+        let allCustomMaps = {};
+        try {
+            allCustomMaps = JSON.parse(localStorage.getItem('allCustomMaps') || '{}');
+        } catch (error) {
+            console.warn('Could not read registered maps for RANDOM MAP.', error);
+        }
+        if (!activeRandomMapData) {
+            const names = Object.keys(allCustomMaps).filter(name => normalizeRegisteredMapData(allCustomMaps[name]));
+            if (names.length === 0) {
+                activeRandomMapName = '';
+                return { allCustomMaps, mapName: null, mapData: null };
+            }
+            let previousMapName = activeRandomMapName;
+            if (!previousMapName) {
+                try {
+                    previousMapName = localStorage.getItem(LAST_REGISTERED_RANDOM_MAP_STORAGE_KEY) || '';
+                } catch (error) {
+                    console.warn('Could not read the previous RANDOM MAP selection.', error);
+                }
+            }
+            const candidates = names.length > 1
+                ? names.filter(name => name !== previousMapName)
+                : names;
+            const randomIndex = window.crypto && window.crypto.getRandomValues
+                ? window.crypto.getRandomValues(new Uint32Array(1))[0] % candidates.length
+                : Math.floor(Math.random() * candidates.length);
+            activeRandomMapName = candidates[randomIndex];
+            activeRandomMapData = normalizeRegisteredMapData(allCustomMaps[activeRandomMapName]);
+            try {
+                localStorage.setItem(LAST_REGISTERED_RANDOM_MAP_STORAGE_KEY, activeRandomMapName);
+            } catch (error) {
+                console.warn('Could not save the RANDOM MAP selection.', error);
+            }
+            debugLog('RANDOM MAP selected registered map:', activeRandomMapName);
+        }
+        return {
+            allCustomMaps,
+            mapName: activeRandomMapName,
+            mapData: activeRandomMapData
+        };
+    }
+    const allCustomMaps = JSON.parse(localStorage.getItem('allCustomMaps') || '{}');
+    const names = Object.keys(allCustomMaps);
+    if (names.length === 0) return { allCustomMaps, mapName: null, mapData: null };
+
+    // mapTypeが'custom'でない場合はnullを返す
+    if (gameSettings.mapType !== 'custom') {
+        return { allCustomMaps, mapName: null, mapData: null };
+    }
+
+    let mapName = gameSettings.customMapName;
+    const selector = document.getElementById('unified-map-selector');
+    if ((!mapName || !allCustomMaps[mapName]) && selector && selector.value && allCustomMaps[selector.value]) {
+        mapName = selector.value;
+    }
+    if (!mapName || !allCustomMaps[mapName]) {
+        mapName = names[0];
+    }
+    return { allCustomMaps, mapName, mapData: normalizeRegisteredMapData(allCustomMaps[mapName]) };
+}
+
+function getCompatibleCustomSpawnPoints(mapData) {
+    const candidates = mapData && (mapData.spawnPoints || mapData.spawnpoints || mapData.spawns);
+    const parsed = Array.isArray(candidates)
+        ? candidates.map(point => {
+            const x = Number(point && point.x);
+            const z = Number(point && point.z);
+            return Number.isFinite(x) && Number.isFinite(z) ? new THREE.Vector3(x, 2.0, z) : null;
+        }).filter(Boolean)
+        : [];
+    const requiredCount = Math.max(2, (Number(gameSettings.aiCount) || 3) + 1);
+    if (parsed.length >= requiredCount) return parsed;
+    const fallbackRadius = Math.min(40, ARENA_PLAY_AREA_RADIUS * 0.62);
+    for (let i = parsed.length; i < requiredCount; i++) {
+        const angle = (i / requiredCount) * Math.PI * 2;
+        parsed.push(new THREE.Vector3(
+            Math.sin(angle) * fallbackRadius,
+            2.0,
+            Math.cos(angle) * fallbackRadius
+        ));
+    }
+    return parsed;
+}
+
+function findNearestLadder(ai, playerPosition) {
+    let nearestLadder = null;
+    let minDistance = Infinity;
+    const aiPos = ai.position.clone();
+
+    // プレイヤーが地上より十分に高い位置にいるかを単純な高さで判定する
+    // これにより、どの屋上にいるかの複雑な判定を避け、ロバスト性を高める
+    const playerIsSignificantlyHigher = playerPosition.y > (DEFAULT_OBSTACLE_HEIGHT * 0.8);
+
+    if (playerIsSignificantlyHigher) {
+        for (const sensorArea of ladderSwitches) {
+            // どの建物かは問わず、単純に最も近いラダーセンサーを探す
+            const distanceToLadder = aiPos.distanceTo(sensorArea.position);
+            if (distanceToLadder < minDistance) {
+                minDistance = distanceToLadder;
+                nearestLadder = sensorArea;
+            }
+        }
+    }
+    return nearestLadder;
+}
+
+function getAIRooftopClimbChance(ai, distanceToLadder = Infinity, isTower = false) {
+    if (!ai || !ai.currentWeapon) return 0.0;
+    // AIが自然に梯子付き建物へ近づいたときのみ発動。
+    if (!Number.isFinite(distanceToLadder) || distanceToLadder > 12.0) return 0.0;
+    let distanceChance = 0.0;
+    if (distanceToLadder <= 5.0) distanceChance = 0.92;
+    else if (distanceToLadder <= 8.0) distanceChance = 0.82;
+    else distanceChance = 0.68;
+
+    let weaponMul = 1.0;
+    switch (ai.currentWeapon) {
+        case WEAPON_SR: weaponMul = 1.0; break;
+        case WEAPON_MG: weaponMul = 0.96; break;
+        case WEAPON_MR: weaponMul = 0.94; break;
+        case WEAPON_RR: weaponMul = 0.93; break;
+        case WEAPON_PISTOL: weaponMul = 0.85; break;
+        case WEAPON_SG: weaponMul = 0.8; break;
+        default: weaponMul = 0.88; break;
+    }
+
+    let chance = distanceChance * weaponMul;
+    if (isTower) chance += 0.05;
+    return THREE.MathUtils.clamp(chance, 0, 0.95);
+}
+
+function findNearbyTwoStoryHouseLadder(ai, maxDistance = 12.0) {
+    if (!ai || !ladderSwitches || ladderSwitches.length === 0) return null;
+    let best = null;
+    let bestDistance = Infinity;
+    for (const sensor of ladderSwitches) {
+        const obstacle = sensor.userData?.obstacle;
+        const ladderPos = sensor.userData?.ladderPos || sensor.position;
+        if (!isTwoStoryHouseObstacle(obstacle) || !ladderPos) continue;
+        const distance = ai.position.distanceTo(ladderPos);
+        if (distance > maxDistance || distance >= bestDistance) continue;
+        if (countActiveRooftopAIsOnObstacle(obstacle, ai) >= 2) continue;
+        if (hasSameTeamRooftopAIOnObstacle(ai, obstacle)) continue;
+        best = sensor;
+        bestDistance = distance;
+    }
+    return best;
+}
+
+function isAIWeaponOutOfAmmo(ai) {
+    if (!ai) return false;
+    switch (ai.currentWeapon) {
+        case WEAPON_MG: return !isInfiniteDefaultWeaponActiveForAI(ai, WEAPON_MG) && ai.ammoMG <= 0;
+        case WEAPON_RR: return !isInfiniteDefaultWeaponActiveForAI(ai, WEAPON_RR) && ai.ammoRR <= 0;
+        case WEAPON_SR: return !isInfiniteDefaultWeaponActiveForAI(ai, WEAPON_SR) && ai.ammoSR <= 0;
+        case WEAPON_SG: return !isInfiniteDefaultWeaponActiveForAI(ai, WEAPON_SG) && ai.ammoSG <= 0;
+        case WEAPON_MR: return !isInfiniteDefaultWeaponActiveForAI(ai, WEAPON_MR) && ai.ammoMR <= 0;
+        default: return false;
+    }
+}
+
+function isOutdoorPvAIMode() {
+    return gameSettings.gameMode === 'arcade';
+}
+
+function aiHasUsableSniperRifle(ai) {
+    return !!ai
+        && ai.currentWeapon === WEAPON_SR
+        && (isInfiniteDefaultWeaponActiveForAI(ai, WEAPON_SR) || ai.ammoSR > 0);
+}
+
+function isEnemySniperDefeatTarget(ai) {
+    if (!ai) return false;
+    return ai.currentWeapon === WEAPON_SR;
+}
+
+function isTeamBasedAIMode() {
+    return gameSettings.gameMode === 'team' || gameSettings.gameMode === 'teamArcade' || isIndoorTeamDeathmatchMode();
+}
+
+function isAIRooftopFlowActive(ai) {
+    if (!ai || ai.hp <= 0) return false;
+    const phase = ai.userData?.rooftopPhase || 'none';
+    if (phase !== 'none') return true;
+    if (ai.userData?.rooftopIntent || ai.userData?.onRooftop) return true;
+    return (
+        ai.state === 'MOVING_TO_LADDER' ||
+        ai.state === 'CLIMBING' ||
+        ai.state === 'ROOFTOP_COMBAT' ||
+        ai.state === 'DESCENDING'
+    );
+}
+
+function getActiveRooftopAIs(excludeAI = null) {
+    const list = [];
+    for (const other of ais) {
+        if (!other || other === excludeAI) continue;
+        if (isAIRooftopFlowActive(other)) list.push(other);
+    }
+    return list;
+}
+
+function countActiveRooftopAIsOnObstacle(obstacle, excludeAI = null) {
+    if (!obstacle) return 0;
+    let count = 0;
+    for (const other of getActiveRooftopAIs(excludeAI)) {
+        if (other.userData?.rooftopObstacle === obstacle) count++;
+    }
+    return count;
+}
+
+function hasSameTeamRooftopAIOnObstacle(requesterAI, obstacle) {
+    if (!requesterAI || !obstacle) return false;
+    for (const other of getActiveRooftopAIs(requesterAI)) {
+        if (other.team === requesterAI.team && other.userData?.rooftopObstacle === obstacle) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function getActorOccupiedRooftopObstacle(actor) {
+    if (!actor) return null;
+    if (actor === player) {
+        if (playerHP <= 0 || !player.userData || !player.userData.onRooftop) return null;
+        const obstacle = player.userData.lastClimbedTower;
+        return obstacle && obstacle.parent ? obstacle : null;
+    }
+    if (actor.hp <= 0 || !actor.userData || !actor.userData.onRooftop) return null;
+    const obstacle = actor.userData.rooftopObstacle;
+    return obstacle && obstacle.parent ? obstacle : null;
+}
+
+function getHorizontalDistanceToObstacle(aiPosition, obstacle) {
+    if (!aiPosition || !obstacle) return Infinity;
+    const box = new THREE.Box3().setFromObject(obstacle);
+    const nearestX = THREE.MathUtils.clamp(aiPosition.x, box.min.x, box.max.x);
+    const nearestZ = THREE.MathUtils.clamp(aiPosition.z, box.min.z, box.max.z);
+    return Math.hypot(aiPosition.x - nearestX, aiPosition.z - nearestZ);
+}
+
+function findElevatedOpponentLadderOpportunity(ai, maxBuildingDistance = 8.0) {
+    if (!ai || !ladderSwitches || ladderSwitches.length === 0) return null;
+    let best = null;
+    let bestScore = Infinity;
+    for (const opponent of getOpponentTargetsForAI(ai)) {
+        const obstacle = getActorOccupiedRooftopObstacle(opponent);
+        if (!obstacle) continue;
+        const sensor = ladderSwitches.find(candidate => candidate.userData?.obstacle === obstacle);
+        if (!sensor) continue;
+        const ladderPos = sensor.userData?.ladderPos || sensor.position;
+        const flatDistance = Math.hypot(ai.position.x - ladderPos.x, ai.position.z - ladderPos.z);
+        const buildingDistance = getHorizontalDistanceToObstacle(ai.position, obstacle);
+        if (buildingDistance > maxBuildingDistance) continue;
+        const alliedPursuers = getActiveRooftopAIs(ai).filter(other =>
+            other.team === ai.team && other.userData?.rooftopObstacle === obstacle
+        ).length;
+        if (alliedPursuers >= 2) continue;
+        const score = flatDistance + buildingDistance * 0.5 + alliedPursuers * 4.0;
+        if (score < bestScore) {
+            bestScore = score;
+            best = { sensor, obstacle, opponent, distance: flatDistance };
+        }
+    }
+    return best;
+}
+
+function isAIRooftopPursuitStillValid(ai) {
+    if (!ai || !ai.userData || !ai.userData.rooftopPursuit) return false;
+    const obstacle = ai.userData.rooftopObstacle;
+    if (!obstacle || !obstacle.parent) return false;
+    return getOpponentTargetsForAI(ai).some(opponent => getActorOccupiedRooftopObstacle(opponent) === obstacle);
+}
+
+function refreshAIRooftopPursuit(ai, timeElapsed) {
+    if (!ai || !ai.userData || !ai.userData.rooftopPursuit) return false;
+    if (isAIRooftopPursuitStillValid(ai)) {
+        ai.userData.rooftopLeaveAt = Math.max(ai.userData.rooftopLeaveAt || 0, timeElapsed + 6.0);
+        return true;
+    }
+    ai.userData.rooftopPursuit = false;
+    ai.userData.rooftopPursuitTarget = null;
+    return false;
+}
+
+function canTeamAssignAnotherRooftopAI(requesterAI) {
+    if (!requesterAI) return false;
+    if (!isTeamBasedAIMode()) return true;
+    const aliveTeamAIs = ais.filter(other => other && other.hp > 0 && other.team === requesterAI.team);
+    if (aliveTeamAIs.length <= 0) return false;
+    const activeTeamRooftop = getActiveRooftopAIs(requesterAI).filter(other => other.team === requesterAI.team).length;
+    // プレイヤーチームに生存中の人間プレイヤーがいれば、地上担当要件はプレイヤーで満たせる。
+    const playerCanHoldGround = requesterAI.team === 'player' && playerHP > 0;
+    const maxTeamRooftopAI = playerCanHoldGround
+        ? aliveTeamAIs.length
+        : Math.max(0, aliveTeamAIs.length - 1);
+    return activeTeamRooftop < maxTeamRooftopAI;
+}
+
+function shouldForceGroundRole(ai) {
+    if (!ai || !isTeamBasedAIMode()) return false;
+    if (!isAIRooftopFlowActive(ai)) return false;
+    const aliveTeamAIs = ais.filter(other => other && other.hp > 0 && other.team === ai.team);
+    if (aliveTeamAIs.length <= 1) return true;
+    const activeTeamRooftop = getActiveRooftopAIs(null).filter(other => other.team === ai.team).length;
+    const maxAllowed = Math.max(0, aliveTeamAIs.length - 1);
+    return activeTeamRooftop > maxAllowed;
+}
+
+function chooseLadderForAI(ai, maxDistance = 12.0) {
+    if (!ladderSwitches || ladderSwitches.length === 0) return null;
+    const targetPos = getClosestOpponentPosition(ai) || player.position.clone();
+    let best = null;
+    let bestScore = Infinity;
+    for (const sensor of ladderSwitches) {
+        const ladderPos = sensor.userData?.ladderPos;
+        const obstacle = sensor.userData?.obstacle;
+        if (!ladderPos || !obstacle) continue;
+        const dAI = ai.position.distanceTo(ladderPos);
+        if (dAI > maxDistance) continue;
+        const activeOnObstacle = countActiveRooftopAIsOnObstacle(obstacle, ai);
+        // 強制上限: 建物ごとの屋上フローは最大2AI。
+        if (activeOnObstacle >= 2) continue;
+        // 味方AIは同じ建物に同時集中しない。
+        if (hasSameTeamRooftopAIOnObstacle(ai, obstacle)) continue;
+        const dEnemy = targetPos.distanceTo(obstacle.position);
+        const towerBias = isTowerObstacle(obstacle) ? 0.8 : (isTwoStoryHouseObstacle(obstacle) ? 0.85 : 1.0);
+        const occupancyPenalty = activeOnObstacle * 6.0;
+        const score = (dAI * 0.6 + dEnemy * 0.4 + occupancyPenalty) * towerBias;
+        if (score < bestScore) {
+            bestScore = score;
+            best = sensor;
+        }
+    }
+    return best;
+}
+
+function chooseTowerLadderForSniperAI(ai) {
+    if (!ai || !ladderSwitches || ladderSwitches.length === 0) return null;
+    const targetPos = getClosestOpponentPosition(ai) || player.position.clone();
+    let best = null;
+    let bestScore = Infinity;
+    for (const sensor of ladderSwitches) {
+        const ladderPos = sensor.userData?.ladderPos || sensor.position;
+        const obstacle = sensor.userData?.obstacle;
+        if (!ladderPos || !obstacle || !isTowerObstacle(obstacle)) continue;
+        const dAI = ai.position.distanceTo(ladderPos);
+        const dEnemy = targetPos.distanceTo(obstacle.position);
+        const activeOnObstacle = countActiveRooftopAIsOnObstacle(obstacle, ai);
+        const sameTeamPenalty = hasSameTeamRooftopAIOnObstacle(ai, obstacle) ? 4.0 : 0.0;
+        const score = dAI * 0.72 + dEnemy * 0.18 + activeOnObstacle * 5.0 + sameTeamPenalty;
+        if (score < bestScore) {
+            bestScore = score;
+            best = sensor;
+        }
+    }
+    return best;
+}
+
+function getObstacleHeight(obstacle) {
+    if (!obstacle) return 0;
+    const geometry = obstacle.geometry || (obstacle.children && obstacle.children[0] ? obstacle.children[0].geometry : null);
+    return geometry && geometry.parameters && geometry.parameters.height ? geometry.parameters.height : 0;
+}
+
+function isTwoStoryHouseObstacle(obstacle) {
+    return !!(obstacle && obstacle.userData && obstacle.userData.type === 'house' && obstacle.userData.twoStory);
+}
+
+function getRooftopSurfaceY(obstacle, sensor = null) {
+    if (sensor && sensor.userData && Number.isFinite(sensor.userData.targetY)) return sensor.userData.targetY;
+    if (isTwoStoryHouseObstacle(obstacle)) {
+        return obstacle.position.y + (obstacle.userData.height || 5) / 2 + 0.1;
+    }
+    return obstacle.position.y + (getObstacleHeight(obstacle) || 4) / 2;
+}
+
+function setAIRandomRooftopTarget(ai, scale = 0.32) {
+    const obstacle = ai && ai.userData ? ai.userData.rooftopObstacle : null;
+    if (!ai || !obstacle) return;
+    if (isTwoStoryHouseObstacle(obstacle)) {
+        const width = (obstacle.userData.width || 8) + 4;
+        const depth = (obstacle.userData.depth || 8) + 4;
+        const local = new THREE.Vector3(
+            (Math.random() - 0.5) * width * Math.min(scale, 0.36),
+            (obstacle.userData.height || 5) / 2 + 0.1,
+            (Math.random() - 0.5) * depth * Math.min(scale, 0.36)
+        );
+        ai.targetPosition.copy(obstacle.localToWorld(local));
+        ai.targetPosition.y = ai.position.y;
+        return;
+    }
+    const geometry = obstacle.geometry;
+    if (!geometry || !geometry.parameters) return;
+    const c = obstacle.position;
+    const halfW = (geometry.parameters.width || 6) * scale;
+    const halfD = (geometry.parameters.depth || 6) * scale;
+    ai.targetPosition.set(
+        c.x + (Math.random() - 0.5) * halfW,
+        ai.position.y,
+        c.z + (Math.random() - 0.5) * halfD
+    );
+}
+
+function setAIHouseInteriorTarget(ai) {
+    const house = ai?.userData?.rooftopObstacle;
+    if (!ai || !isTwoStoryHouseObstacle(house)) return false;
+    const width = house.userData.width || 8;
+    const depth = house.userData.depth || 8;
+    const height = house.userData.height || 5;
+    const margin = 1.0;
+    const local = new THREE.Vector3(
+        (Math.random() - 0.5) * Math.max(0.5, width - margin * 2),
+        height / 2 + 0.1,
+        (Math.random() - 0.5) * Math.max(0.5, depth - margin * 2)
+    );
+    ai.targetPosition.copy(house.localToWorld(local));
+    ai.targetPosition.y = getRooftopSurfaceY(house, ai.userData.rooftopSensor);
+    return true;
+}
+
+function isTowerObstacle(obstacle) {
+    if (!obstacle) return false;
+    if (obstacle.userData && obstacle.userData.isTower) return true;
+    return getObstacleHeight(obstacle) >= DEFAULT_OBSTACLE_HEIGHT * 2.2;
+}
+
+function findNearbyLadderSensor(ai, maxDist) {
+    if (!ladderSwitches || ladderSwitches.length === 0) return null;
+    let best = null;
+    let bestDist = Infinity;
+    for (const sensor of ladderSwitches) {
+        const ladderPos = sensor.userData?.ladderPos || sensor.position;
+        if (!ladderPos) continue;
+        const d = ai.position.distanceTo(ladderPos);
+        if (d < maxDist && d < bestDist) {
+            bestDist = d;
+            best = sensor;
+        }
+    }
+    return best;
+}
+
+function findSafeRooftopLanding(ai, obstacle, ladderPos, sensor = null) {
+    if (!ai || !obstacle) return null;
+    if (isTwoStoryHouseObstacle(obstacle) && sensor && sensor.userData && sensor.userData.landingPos) {
+        const landing = sensor.userData.landingPos.clone();
+        landing.y = getRooftopSurfaceY(obstacle, sensor);
+        return landing;
+    }
+    const geometry = obstacle.geometry || (obstacle.children && obstacle.children[0] ? obstacle.children[0].geometry : null);
+    const width = geometry && geometry.parameters && geometry.parameters.width ? geometry.parameters.width : 6;
+    const depth = geometry && geometry.parameters && geometry.parameters.depth ? geometry.parameters.depth : 6;
+    const height = geometry && geometry.parameters && geometry.parameters.height ? geometry.parameters.height : 4;
+    const center = obstacle.position.clone();
+    const halfW = Math.max(1.0, width / 2 - 0.7);
+    const halfD = Math.max(1.0, depth / 2 - 0.7);
+    const roofY = obstacle.position.y + height / 2;
+    const dir = center.clone().sub(ladderPos || center);
+    dir.y = 0;
+    if (dir.lengthSq() < 1e-6) dir.set(0, 0, 1);
+    dir.normalize();
+
+    const candidates = [];
+    // 屋上から押し出されないよう中央優先で着地する。
+    candidates.push(center.clone());
+    const base = (ladderPos ? ladderPos.clone() : center.clone()).add(dir.clone().multiplyScalar(0.8));
+    base.x = THREE.MathUtils.clamp(base.x, center.x - halfW, center.x + halfW);
+    base.z = THREE.MathUtils.clamp(base.z, center.z - halfD, center.z + halfD);
+    candidates.push(base);
+    candidates.push(center.clone().add(new THREE.Vector3(halfW * 0.35, 0, halfD * 0.35)));
+    candidates.push(center.clone().add(new THREE.Vector3(-halfW * 0.35, 0, halfD * 0.35)));
+    candidates.push(center.clone().add(new THREE.Vector3(halfW * 0.35, 0, -halfD * 0.35)));
+    candidates.push(center.clone().add(new THREE.Vector3(-halfW * 0.35, 0, -halfD * 0.35)));
+
+    const originalPos = ai.position.clone();
+    for (const c of candidates) {
+        c.y = roofY;
+        ai.position.copy(c);
+        if (!checkCollision(ai, obstacles)) {
+            ai.position.copy(originalPos);
+            return c;
+        }
+    }
+    ai.position.copy(originalPos);
+    const fallback = center.clone();
+    fallback.y = roofY;
+    return fallback;
+}
+
+function clampAIToRooftop(ai) {
+    if (!ai || !ai.userData || !ai.userData.onRooftop || !ai.userData.rooftopObstacle) return;
+    const phase = ai.userData.rooftopPhase || 'none';
+    const mayHoldRooftop = phase === 'on_roof' || phase === 'to_ground' || ai.state === 'ROOFTOP_COMBAT';
+    if (!mayHoldRooftop) return;
+    const obstacle = ai.userData.rooftopObstacle;
+    if (isTwoStoryHouseObstacle(obstacle)) {
+        const local = obstacle.worldToLocal(ai.position.clone());
+        const halfW = Math.max(1, ((obstacle.userData.width || 8) + 4) / 2 - 0.55);
+        const halfD = Math.max(1, ((obstacle.userData.depth || 8) + 4) / 2 - 0.55);
+        local.x = THREE.MathUtils.clamp(local.x, -halfW, halfW);
+        local.z = THREE.MathUtils.clamp(local.z, -halfD, halfD);
+        local.y = (obstacle.userData.height || 5) / 2 + 0.1;
+        ai.position.copy(obstacle.localToWorld(local));
+        return;
+    }
+    const geometry = obstacle.geometry || (obstacle.children && obstacle.children[0] ? obstacle.children[0].geometry : null);
+    if (!geometry || !geometry.parameters) return;
+    const width = geometry.parameters.width || 6;
+    const depth = geometry.parameters.depth || 6;
+    const height = geometry.parameters.height || DEFAULT_OBSTACLE_HEIGHT;
+    const center = obstacle.position;
+    const margin = 0.6;
+    const halfW = Math.max(0.5, width / 2 - margin);
+    const halfD = Math.max(0.5, depth / 2 - margin);
+    ai.position.x = THREE.MathUtils.clamp(ai.position.x, center.x - halfW, center.x + halfW);
+    ai.position.z = THREE.MathUtils.clamp(ai.position.z, center.z - halfD, center.z + halfD);
+    ai.position.y = center.y + height / 2;
+}
+
+function isAIUsingAuthorizedElevation(ai) {
+    if (!ai || !ai.userData || !ai.userData.rooftopObstacle) return false;
+    const phase = ai.userData.rooftopPhase || 'none';
+    return !!ai.isElevating || phase === 'climbing' || phase === 'on_roof'
+        || phase === 'entering_house' || phase === 'inside_house' || phase === 'exiting_house'
+        || phase === 'to_ground' || phase === 'descending';
+}
+
+function enforceAIGroundOnly(ai) {
+    if (!ai || isBillBattleMode() || isAIUsingAuthorizedElevation(ai)) return false;
+    const groundY = -FLOOR_HEIGHT;
+    const corrected = Math.abs(ai.position.y - groundY) > 0.025;
+    ai.position.y = groundY;
+    if (ai.targetPosition) ai.targetPosition.y = groundY;
+    if ((ai.state === 'CLIMBING' || ai.state === 'ROOFTOP_COMBAT' || ai.state === 'DESCENDING')
+        && !ai.userData.rooftopObstacle) {
+        ai.state = 'ATTACKING';
+        ai.isElevating = false;
+    }
+    return corrected;
+}
+
+function tryAssignAIRooftopGoal(ai, timeElapsed, isFollowLockedTeammate, isAISeen = false) {
+    if (!ai || ai.hp <= 0 || !ai.userData) return false;
+    if (ladderSwitches.length === 0) return false;
+    const elevatedPursuit = findElevatedOpponentLadderOpportunity(ai, 8.0);
+    const pursuitSensor = elevatedPursuit ? elevatedPursuit.sensor : null;
+    const followHouseObstacle = player.userData && player.userData.onRooftop
+        && isTwoStoryHouseObstacle(player.userData.lastClimbedTower)
+        ? player.userData.lastClimbedTower
+        : null;
+    const shouldFollowPlayerUpstairs = !!(isFollowLockedTeammate && followHouseObstacle);
+    if (isFollowLockedTeammate && !shouldFollowPlayerUpstairs && !pursuitSensor) return false;
+    const nearbyHouseSensor = shouldFollowPlayerUpstairs
+        ? ladderSwitches.find(sensor => sensor.userData?.obstacle === followHouseObstacle)
+        : findNearbyTwoStoryHouseLadder(ai, 12.0);
+    const nearbyHouseOpportunity = !!nearbyHouseSensor;
+    const sniperTowerPriority = !pursuitSensor && !nearbyHouseOpportunity && aiHasUsableSniperRifle(ai) && !!chooseTowerLadderForSniperAI(ai);
+    if (sniperTowerPriority && ai.userData.rooftopPhase === 'to_ladder' && !ai.isElevating && !ai.userData.onRooftop) {
+        const sensor = ai.userData.rooftopSensor || chooseTowerLadderForSniperAI(ai);
+        if (sensor && sensor.userData) {
+            ai.userData.rooftopSensor = sensor;
+            ai.userData.rooftopObstacle = sensor.userData.obstacle;
+            ai.userData.rooftopLadderPos = sensor.position.clone();
+            ai.userData.rooftopLadderSnap = (sensor.userData.ladderPos || sensor.position).clone();
+            ai.state = 'MOVING_TO_LADDER';
+            ai.targetPosition.copy(ai.userData.rooftopLadderPos);
+            ai.userData.nextRooftopDecisionAt = timeElapsed + 0.5;
+            return true;
+        }
+    }
+    if (ai.userData.onRooftop || ai.userData.rooftopIntent || ai.isElevating) return false;
+    if ((ai.userData.rooftopPhase || 'none') !== 'none') return false;
+    // 屋上計画が近接戦闘/ユーティリティ状態を妨げないようにする。
+    if (!pursuitSensor && !shouldFollowPlayerUpstairs && !sniperTowerPriority && !nearbyHouseOpportunity && ai.state !== 'ATTACKING' && ai.state !== 'MOVING') return false;
+    if (!pursuitSensor && !shouldFollowPlayerUpstairs && !sniperTowerPriority && !nearbyHouseOpportunity && isAISeen && ai.state === 'ATTACKING') return false;
+    // 全体上限: 屋上フローへ同時参加できるAIは最大2体。
+    if (!pursuitSensor && !sniperTowerPriority && getActiveRooftopAIs(ai).length >= 2) return false;
+    if (!pursuitSensor && !sniperTowerPriority && !canTeamAssignAnotherRooftopAI(ai)) return false;
+    if (!FORCE_AI_ROOFTOP_TEST) {
+        if (!pursuitSensor && !sniperTowerPriority && (ai.userData.nextRooftopDecisionAt || 0) > timeElapsed) return false;
+        ai.userData.nextRooftopDecisionAt = sniperTowerPriority
+            ? timeElapsed + 1.0
+            : (pursuitSensor ? timeElapsed + 0.2 : timeElapsed + 0.35 + Math.random() * 0.35);
+    }
+
+    const nearbySensor = pursuitSensor || (shouldFollowPlayerUpstairs
+        ? ladderSwitches.find(sensor => sensor.userData?.obstacle === followHouseObstacle)
+        : (sniperTowerPriority ? chooseTowerLadderForSniperAI(ai) : (nearbyHouseSensor || chooseLadderForAI(ai, 12.0))));
+    if (!nearbySensor) return false;
+    const nearbyLadderPos = nearbySensor.userData?.ladderPos || nearbySensor.position;
+    const nearbyObstacle = nearbySensor.userData?.obstacle || null;
+    const distToNearby = nearbyLadderPos ? ai.position.distanceTo(nearbyLadderPos) : Infinity;
+    const nearbyTower = isTowerObstacle(nearbyObstacle);
+
+    if (!FORCE_AI_ROOFTOP_TEST && !pursuitSensor && !sniperTowerPriority && !shouldFollowPlayerUpstairs) {
+        let chance = getAIRooftopClimbChance(ai, distToNearby, nearbyTower);
+        if (isTwoStoryHouseObstacle(nearbyObstacle)) {
+            chance = Math.max(chance, distToNearby <= 8.0 ? 0.9 : 0.78);
+        }
+        if (isAISeen) chance *= isTwoStoryHouseObstacle(nearbyObstacle) ? 0.85 : 0.55;
+        if (chance <= 0 || Math.random() >= chance) return false;
+    }
+
+    const sensor = nearbySensor;
+    if (!sensor) return false;
+    const ladderPos = sensor.userData?.ladderPos;
+    const obstacle = sensor.userData?.obstacle;
+    if (!ladderPos || !obstacle) return false;
+
+    ai.userData.rooftopIntent = true;
+    ai.userData.rooftopSensor = sensor;
+    ai.userData.rooftopObstacle = obstacle;
+    // センサー領域（壁外）へ移動し、登攀開始時に梯子ラインへスナップする。
+    ai.userData.rooftopLadderPos = sensor.position.clone();
+    ai.userData.rooftopLadderSnap = ladderPos.clone();
+    ai.userData.rooftopTargetY = getRooftopSurfaceY(obstacle, sensor);
+    ai.userData.rooftopDecisionMade = false;
+    ai.userData.nextRooftopDecisionAt = timeElapsed + 4.0;
+    ai.userData.rooftopPhase = 'to_ladder';
+    ai.userData.rooftopStateSince = timeElapsed;
+    ai.userData.rooftopSniperPriority = sniperTowerPriority;
+    ai.userData.rooftopPursuit = !!pursuitSensor;
+    ai.userData.rooftopPursuitTarget = elevatedPursuit ? elevatedPursuit.opponent : null;
+    ai.state = 'MOVING_TO_LADDER';
+    ai.targetPosition.copy(ai.userData.rooftopLadderPos);
+    ai.targetPosition.y = getGroundSurfaceY(ai.targetPosition);
+    return true;
+}
+
+function isBehindObstacle(ai) {
+    const aiHeadPos = getAIHeadPos(ai);
+    const playerPos = player.position.clone();
+    const directionToPlayer = new THREE.Vector3().subVectors(playerPos, aiHeadPos).normalize();
+    const directionFromPlayer = directionToPlayer.negate();
+    const rayOrigin = aiHeadPos.clone().add(directionFromPlayer.clone().multiplyScalar(1.0));
+    raycaster.set(rayOrigin, directionFromPlayer);
+    const intersects = raycaster.intersectObjects(obstacles, true);
+    if (intersects.length > 0) {
+        const hitObstacle = intersects[0].object;
+        const obstacleBox = new THREE.Box3().setFromObject(hitObstacle);
+        const obstacleHeight = obstacleBox.max.y - obstacleBox.min.y;
+        const aiStandingHeight = BODY_HEIGHT + HEAD_RADIUS * 2;
+        if (obstacleHeight >= aiStandingHeight * 0.8) {
+            return !isVisibleToPlayer(ai);
+        }
+    }
+    return false;
+}
+
+function findEvasionSpot(ai) {
+    const playerPos = getClosestOpponentPosition(ai) || player.position.clone();
+    let bestObstacle = null;
+    if (ai.currentObstacle) {
+        bestObstacle = ai.currentObstacle.parent;
+    } else if (obstacles.length > 0) {
+        bestObstacle = obstacles[0];
+        for (let i = 1; i < obstacles.length; i++) {
+            const current = obstacles[i];
+            if (current.position.distanceTo(ai.position) < bestObstacle.position.distanceTo(ai.position)) {
+                bestObstacle = current;
+            }
+        }
+    } else {
+        return false;
+    }
+    if (bestObstacle) {
+        const obsPos = bestObstacle.position.clone();
+        const directionToPlayer = new THREE.Vector3().subVectors(playerPos, obsPos).normalize();
+        const target = obsPos.sub(directionToPlayer.multiplyScalar(EVASION_RANGE));
+        target.y = 0;
+        ai.state = 'EVADING';
+        ai.targetPosition.copy(target);
+        ai.avoiding = false;
+        return true;
+    }
+    return false;
+}
+
+function getVisibleOpponentInfo(ai) {
+    const aiHeadPos = getAIHeadPos(ai);
+    const opponents = getOpponentTargetsForAI(ai);
+    let best = null;
+    for (const t of opponents) {
+        const dist = ai.position.distanceTo(t === player ? player.position : t.position);
+        if (t === player) {
+            const pHead = getPlayerHeadPos();
+            const pUpper = getPlayerUpperTorsoPos();
+            const pBody = getPlayerBodyPos();
+            let targetPos = null;
+            if (checkLineOfSight(aiHeadPos, pHead, obstacles)) targetPos = pHead;
+            else if (checkLineOfSight(aiHeadPos, pUpper, obstacles)) targetPos = pUpper;
+            else if (checkLineOfSight(aiHeadPos, pBody, obstacles)) targetPos = pBody;
+            if (targetPos && (!best || dist < best.distance)) best = { target: t, targetPos, distance: dist };
+        } else {
+            const tUpper = getAIUpperTorsoPos(t);
+            const tLower = getAILowerTorsoPos(t);
+            let targetPos = null;
+            if (checkLineOfSight(aiHeadPos, tUpper, obstacles)) targetPos = tUpper;
+            else if (checkLineOfSight(aiHeadPos, tLower, obstacles)) targetPos = tLower;
+            if (targetPos && (!best || dist < best.distance)) best = { target: t, targetPos, distance: dist };
+        }
+    }
+    return best;
+}
+
+function findSmartCoverPosition(ai, threatPos) {
+    if (!threatPos) return null;
+    let best = null;
+    let bestScore = Infinity;
+    const aiPos = ai.position.clone();
+    for (const obs of obstacles) {
+        // 空洞建物の場合、床のジオメトリーから高さを取得
+        const geometry = obs.geometry || (obs.children && obs.children[0] ? obs.children[0].geometry : null);
+        if (!geometry || !geometry.parameters || obs.userData.isRooftop) continue;
+        const box = new THREE.Box3().setFromObject(obs);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const radius = Math.max(size.x, size.z) * 0.6 + 1.0;
+        const away = center.clone().sub(threatPos).setY(0);
+        if (away.lengthSq() < 1e-6) continue;
+        away.normalize();
+        const candidate = center.clone().add(away.multiplyScalar(radius));
+        candidate.y = getGroundSurfaceY(candidate);
+        const d = candidate.distanceTo(aiPos);
+        if (d > 22) continue;
+
+        const candidateEye = candidate.clone().add(new THREE.Vector3(0, 1.2, 0));
+        const threatEye = threatPos.clone().add(new THREE.Vector3(0, 1.2, 0));
+        const blocked = !checkLineOfSight(threatEye, candidateEye, obstacles);
+        if (!blocked) continue;
+
+        const oldPos = ai.position.clone();
+        ai.position.copy(candidate);
+        const collides = checkCollision(ai, obstacles, obs);
+        ai.position.copy(oldPos);
+        if (collides) continue;
+
+        const score = d + center.distanceTo(aiPos) * 0.35;
+        if (score < bestScore) {
+            bestScore = score;
+            best = candidate;
+        }
+    }
+    return best;
+}
+
+function getAIAmbushOccluderRoot(obstacle) {
+    if (!obstacle) return null;
+    if (obstacle.userData && obstacle.userData.parentBuildingRef) return obstacle.userData.parentBuildingRef;
+    let root = obstacle;
+    while (root.parent && root.parent !== scene) {
+        root = root.parent;
+        if (root.userData && root.userData.type === 'house') break;
+    }
+    return root;
+}
+
+function getAIAmbushClutterProfile(ai) {
+    if (!ai || isIndoorModeValue(gameSettings.gameMode) || isBillBattleMode()) {
+        return { dense: false, totalScore: 0, localScore: 0, blockerCount: 0 };
+    }
+    const roots = new Set();
+    let totalScore = 0;
+    let localScore = 0;
+    let blockerCount = 0;
+    for (const obstacle of obstacles) {
+        if (!obstacle || !obstacle.parent || !obstacle.userData) continue;
+        if (obstacle.userData.blocksProjectiles === false || obstacle.userData.isStaticObjectShadow) continue;
+        if (obstacle.userData.type === 'floor' || obstacle.userData.type === 'ceiling' || obstacle.userData.type === 'billLight') continue;
+        if (obstacle.userData.isHouseRoof || (obstacle.userData.isRooftop && !obstacle.userData.isRooftopCover)) continue;
+        const root = getAIAmbushOccluderRoot(obstacle);
+        if (!root || roots.has(root) || !root.parent) continue;
+        roots.add(root);
+        const box = new THREE.Box3().setFromObject(root);
+        const size = box.getSize(new THREE.Vector3());
+        if (size.y < 0.8 || Math.max(size.x, size.z) < 0.45) continue;
+        const center = box.getCenter(new THREE.Vector3());
+        const isHouse = root.userData && root.userData.type === 'house';
+        const isBarrel = root.userData && root.userData.type === 'barrel';
+        const weight = isHouse
+            ? 3.5
+            : isBarrel
+                ? 0.35
+                : THREE.MathUtils.clamp(Math.max(size.x, size.z) / 3.5, 0.75, 2.5);
+        totalScore += weight;
+        blockerCount++;
+        if (center.distanceTo(ai.position) <= 18) localScore += weight;
+    }
+    const liveHouseCount = houses.filter(house => house && house.parent).length;
+    const dense = ((blockerCount >= 12 && totalScore >= 20) || liveHouseCount >= 3)
+        && localScore >= 4.5;
+    return { dense, totalScore, localScore, blockerCount };
+}
+
+function getActiveAIAmbushCount(excludeAI = null) {
+    let count = 0;
+    for (const other of ais) {
+        if (!other || other === excludeAI || other.hp <= 0) continue;
+        if (other.state === 'MOVING_TO_AMBUSH' || other.state === 'AMBUSH') count++;
+    }
+    return count;
+}
+
+function tryStartAIAmbush(ai, timeElapsed, isAISeen, isFollowLockedTeammate) {
+    if (!ai || !ai.userData || ai.hp <= 0 || isAISeen || isFollowLockedTeammate) return false;
+    if (isIndoorModeValue(gameSettings.gameMode) || isBillBattleMode()) return false;
+    if (isTeamBasedAIMode() && ai.team === 'player') return false;
+    if (ai.isElevating || ai.userData.onRooftop || ai.userData.rooftopSniperPriority) return false;
+    if (ai.targetWeaponPickup || (timeElapsed - (ai.lastUnderFireTime || -999)) < 1.5) return false;
+    if (ai.state === 'MOVING_TO_AMBUSH' || ai.state === 'AMBUSH') return true;
+    if (!['HIDING', 'MOVING', 'ATTACKING'].includes(ai.state)) return false;
+    if (timeElapsed < (ai.userData.nextAmbushAt || 0)) return false;
+
+    ai.userData.nextAmbushAt = timeElapsed + 4.0 + Math.random() * 4.0;
+    const clutter = getAIAmbushClutterProfile(ai);
+    if (!clutter.dense) return false;
+    const eligibleEnemies = ais.filter(other => other && other.hp > 0 && !(isTeamBasedAIMode() && other.team === 'player')).length;
+    const maxAmbushers = Math.max(1, Math.floor(Math.max(1, eligibleEnemies) * 0.5));
+    if (getActiveAIAmbushCount(ai) >= maxAmbushers) return false;
+    const ambushChance = 0.28 + (1.0 - (ai.aggression || 0.5)) * 0.32;
+    if (Math.random() > ambushChance) return false;
+
+    const threatPos = player && playerHP > 0
+        ? player.position.clone()
+        : (ai.lastKnownEnemyPos || getClosestOpponentPosition(ai));
+    if (!threatPos) return false;
+    const coverPos = findSmartCoverPosition(ai, threatPos);
+    if (!coverPos) return false;
+    const travelDistance = ai.position.distanceTo(coverPos);
+    if (travelDistance < 1.0 || travelDistance > 20) return false;
+
+    ai.state = 'MOVING_TO_AMBUSH';
+    ai.targetPosition.copy(coverPos);
+    ai.userData.ambushPosition = coverPos.clone();
+    ai.userData.ambushStartedAt = timeElapsed;
+    ai.userData.ambushUntil = 0;
+    ai.userData.ambushCrouch = Math.random() < 0.68;
+    ai.userData.stallStartTime = 0;
+    ai.avoiding = false;
+    return true;
+}
+
+function releaseAIAmbush(ai, timeElapsed) {
+    if (!ai || !ai.userData) return;
+    const huntPos = (ai.lastKnownEnemyPos || (player && player.position) || getClosestOpponentPosition(ai));
+    if (huntPos) {
+        const direction = new THREE.Vector3().subVectors(huntPos, ai.position).setY(0);
+        if (direction.lengthSq() < 1e-6) direction.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+        direction.normalize();
+        const side = new THREE.Vector3(direction.z, 0, -direction.x).multiplyScalar((Math.random() < 0.5 ? -1 : 1) * 2.0);
+        ai.targetPosition.copy(ai.position).add(direction.multiplyScalar(5.0)).add(side);
+        ai.targetPosition.y = getGroundSurfaceY(ai.targetPosition);
+        ai.state = 'MOVING';
+    } else {
+        ai.state = 'ATTACKING';
+        ai.currentAttackTime = timeElapsed;
+    }
+    ai.userData.ambushUntil = 0;
+    ai.userData.ambushPosition = null;
+    ai.userData.nextAmbushAt = timeElapsed + 6.0 + Math.random() * 5.0;
+    ai.userData.stallStartTime = 0;
+    ai.isCrouching = false;
+}
+
+function findNewHidingSpot(ai) {
+    const currentAIPos = ai.position.clone();
+    let bestSpot = null;
+    let maxDistanceToPlayer = -Infinity;
+    if (HIDING_SPOTS.length === 0) return false;
+    const aiStandingHeight = BODY_HEIGHT + HEAD_RADIUS * 2;
+    const aiCrouchingHeight = aiStandingHeight * 0.7;
+    const viableCrouchSpots = [];
+    const regularSpots = [];
+    for (const spotInfo of HIDING_SPOTS) {
+        const spotPosition = spotInfo.position;
+        const obstacle = spotInfo.obstacle;
+        if (!obstacle || !obstacle.parent) continue;
+        const obstacleBox = new THREE.Box3().setFromObject(obstacle);
+        const obstacleHeight = obstacleBox.max.y - obstacleBox.min.y;
+        if (obstacleHeight < aiStandingHeight && obstacleHeight >= aiCrouchingHeight * 0.8) {
+            viableCrouchSpots.push(spotInfo);
+        } else {
+            regularSpots.push(spotInfo);
+        }
+    }
+    let spotsToConsider = viableCrouchSpots;
+    if (spotsToConsider.length === 0) {
+        spotsToConsider = regularSpots;
+    }
+    if (spotsToConsider.length === 0) return false;
+    for (const spotInfo of spotsToConsider) {
+        const spotPosition = spotInfo.position;
+        if (spotPosition.distanceTo(currentAIPos) < ARRIVAL_THRESHOLD) continue;
+        let isSpotOccupiedOrTargetedByOtherAI = false;
+        for (const otherAI of ais) {
+            if (otherAI === ai) continue;
+            if (otherAI.position.distanceTo(spotPosition) < MIN_DISTANCE_BETWEEN_AIS_AT_SPOT) {
+                isSpotOccupiedOrTargetedByOtherAI = true;
+                break;
+            }
+            if ((otherAI.state === 'MOVING' || otherAI.state === 'FLANKING') && otherAI.targetPosition.distanceTo(spotPosition) < MIN_DISTANCE_BETWEEN_AIS_AT_SPOT / 2) {
+                isSpotOccupiedOrTargetedByOtherAI = true;
+                break;
+            }
+        }
+        if (isSpotOccupiedOrTargetedByOtherAI) continue;
+        const distanceToPlayer = spotPosition.distanceTo(player.position);
+        if (distanceToPlayer > maxDistanceToPlayer) {
+            maxDistanceToPlayer = distanceToPlayer;
+            bestSpot = spotInfo;
+        }
+    }
+    if (bestSpot) {
+        ai.state = 'MOVING';
+        ai.targetPosition.copy(bestSpot.position);
+        ai.avoiding = false;
+        return true;
+    }
+    return false;
+}
+
+function findObstacleAvoidanceSpot(ai, currentMoveDirection, originalTargetPosition) {
+    const currentAIPos = ai.position.clone();
+    const perpendicularDirectionLeft = new THREE.Vector3(-currentMoveDirection.z, 0, currentMoveDirection.x).normalize();
+    const perpendicularDirectionRight = new THREE.Vector3(currentMoveDirection.z, 0, -currentMoveDirection.x).normalize();
+    const now = clock.getElapsedTime();
+    const preferredSide = (ai.userData && ai.userData.lastAvoidSide) ? -ai.userData.lastAvoidSide : (Math.random() > 0.5 ? 1 : -1);
+    const sides = preferredSide > 0
+        ? [perpendicularDirectionLeft, perpendicularDirectionRight]
+        : [perpendicularDirectionRight, perpendicularDirectionLeft];
+    const sideSigns = preferredSide > 0 ? [1, -1] : [-1, 1];
+    const sideDistance = AVOIDANCE_RAY_DISTANCE * 2.2;
+    const forwardDistance = AVOIDANCE_RAY_DISTANCE * 1.4;
+    const aiHeadPos = currentAIPos.clone().add(new THREE.Vector3(0, 1.0, 0));
+    let bestCandidate = null;
+    let bestScore = Infinity;
+
+    for (let i = 0; i < sides.length; i++) {
+        const sideDir = sides[i];
+        const candidate = currentAIPos.clone()
+            .add(sideDir.clone().multiplyScalar(sideDistance))
+            .add(currentMoveDirection.clone().multiplyScalar(forwardDistance));
+        candidate.y = 0;
+
+        const candidateHeadPos = candidate.clone().add(new THREE.Vector3(0, 1.0, 0));
+        if (!checkLineOfSight(aiHeadPos, candidateHeadPos, obstacles)) continue;
+
+        const score = candidate.distanceTo(originalTargetPosition);
+        if (score < bestScore) {
+            bestScore = score;
+            bestCandidate = { pos: candidate, side: sideSigns[i] };
+        }
+    }
+
+    if (!bestCandidate) {
+        const fallbackSide = sides[0];
+        bestCandidate = {
+            pos: currentAIPos.clone().add(fallbackSide.multiplyScalar(sideDistance)),
+            side: sideSigns[0]
+        };
+        bestCandidate.pos.y = 0;
+    }
+
+    ai.avoiding = true;
+    ai.targetPosition.copy(bestCandidate.pos);
+    ai.userData.lastAvoidSide = bestCandidate.side;
+    ai.userData.avoidUntil = now + 0.45;
+}
+
+function findAndTargetWeapon(ai) {
+    // 全AIが武器をより積極的に拾う
+    const isTeammate = isTeamBasedAIMode() && ai.team === 'player';
+    const isFollowTeammate = isTeammate && isFollowingPlayerMode && ai.userData && ai.userData.followActive !== false;
+    const lowAmmo = isTeammate
+        ? ((ai.currentWeapon === WEAPON_MG && ai.ammoMG < 30)
+            || (ai.currentWeapon === WEAPON_RR && ai.ammoRR < 3)
+            || (ai.currentWeapon === WEAPON_SR && ai.ammoSR < 3)
+            || (ai.currentWeapon === WEAPON_SG && ai.ammoSG < 4)
+            || (ai.currentWeapon === WEAPON_MR && ai.ammoMR < 4))
+        : ((ai.currentWeapon === WEAPON_MG && ai.ammoMG < 12)
+            || (ai.currentWeapon === WEAPON_RR && ai.ammoRR < 2)
+            || (ai.currentWeapon === WEAPON_SR && ai.ammoSR < 2)
+            || (ai.currentWeapon === WEAPON_SG && ai.ammoSG < 2)
+            || (ai.currentWeapon === WEAPON_MR && ai.ammoMR < 2));
+    const aggressivePickup = ai.currentWeapon === WEAPON_PISTOL || lowAmmo || Math.random() < 0.25;
+    const needsUpgrade = weaponPickups.length > 0 && (isFollowTeammate || aggressivePickup);
+    if (!needsUpgrade || ai.targetWeaponPickup) {
+        return false;
+    }
+    let bestVisiblePickup = null;
+    let minVisibleDistance = Infinity;
+    let bestAnyPickup = null;
+    let minAnyDistance = Infinity;
+    const aiHeadPos = getAIHeadPos(ai);
+    for (const pickup of weaponPickups) {
+        const distance = ai.position.distanceTo(pickup.position);
+        if (distance < minAnyDistance) {
+            minAnyDistance = distance;
+            bestAnyPickup = pickup;
+        }
+        if (checkLineOfSight(aiHeadPos, pickup.position, obstacles) && distance < minVisibleDistance) {
+            minVisibleDistance = distance;
+            bestVisiblePickup = pickup;
+        }
+    }
+    const bestPickup = bestVisiblePickup || bestAnyPickup;
+    if (bestPickup) {
+        ai.targetWeaponPickup = bestPickup;
+        ai.targetPosition.copy(bestPickup.position);
+        ai.state = 'MOVING';
+        return true;
+    }
+    return false;
+}
+
+const projectiles = [];
+const rocketTrails = [];
+const debris = [];
+const pendingExplosionClears = [];
+const projectileSpeed = 50;
+const MAX_PROJECTILES = 180;
+const ROCKET_EXPLOSION_RADIUS = 5;
+const BARREL_EXPLOSION_RADIUS = ROCKET_EXPLOSION_RADIUS * 1.5;
+
+function createRuntimeGroundFlashTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const context = canvas.getContext('2d');
+    const gradient = context.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gradient.addColorStop(0, 'rgba(255,255,255,1)');
+    gradient.addColorStop(0.7, 'rgba(255,255,255,0.7)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 64, 64);
+    return new THREE.CanvasTexture(canvas);
+}
+
+const RUNTIME_EFFECT_GEOMETRIES = {
+    projectile: new THREE.CylinderGeometry(0.5, 0.5, 1, 8),
+    muzzleCore: new THREE.SphereGeometry(0.12, 8, 6),
+    muzzleCone: new THREE.ConeGeometry(0.22, 0.75, 8, 1, true),
+    groundFlash: new THREE.PlaneGeometry(2, 2),
+    explosion: new THREE.SphereGeometry(0.1, 12, 10),
+    smoke: new THREE.SphereGeometry(0.1, 6, 5),
+    spark: new THREE.BoxGeometry(0.035, 0.035, 1),
+    dust: new THREE.SphereGeometry(0.12, 6, 4),
+    rocketTrail: new THREE.SphereGeometry(0.1, 4, 4)
+};
+const RUNTIME_GROUND_FLASH_TEXTURE = createRuntimeGroundFlashTexture();
+const projectileMaterialCache = new Map();
+
+function getProjectileMaterial(color) {
+    const key = new THREE.Color(color).getHex();
+    if (!projectileMaterialCache.has(key)) {
+        const material = new THREE.MeshBasicMaterial({ color: key });
+        material.userData.gfaSharedRuntime = true;
+        projectileMaterialCache.set(key, material);
+    }
+    return projectileMaterialCache.get(key);
+}
+
+function disposeProjectileMeshResources(mesh) {
+    if (!mesh) return;
+    if (mesh.geometry && mesh.geometry !== RUNTIME_EFFECT_GEOMETRIES.projectile) mesh.geometry.dispose();
+    if (mesh.material && !mesh.material.userData?.gfaSharedRuntime) disposeMaterial(mesh.material);
+}
+
+function createProjectile(startPos, direction, color, size = 0.1, isRocket = false, source = 'unknown', speed = projectileSpeed, isSniper = false, weaponType = null, shooter = null) {
+    if (projectiles.length >= MAX_PROJECTILES) {
+        return;
+    }
+    const finalSpeed = speed * getEffectiveProjectileSpeedMultiplier();
+    const now = clock ? clock.getElapsedTime() : 0;
+    const bulletLength = size * 5;
+    const bulletRadius = size / 2;
+    const bulletGeometry = RUNTIME_EFFECT_GEOMETRIES.projectile;
+    const bulletMaterial = getProjectileMaterial(color);
+    const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+    bullet.scale.set(bulletRadius * 2, bulletLength, bulletRadius * 2);
+    bullet.userData.isProjectile = true;
+    bullet.userData.source = source;
+    bullet.userData.shooter = shooter || null;
+    bullet.position.copy(startPos).add(direction.clone().multiplyScalar(0.5));
+    const axis = new THREE.Vector3(0, 1, 0);
+    const quaternion = new THREE.Quaternion();
+    quaternion.setFromUnitVectors(axis, direction.normalize());
+    bullet.applyQuaternion(quaternion);
+    scene.add(bullet);
+    const velocity = direction.clone().normalize().multiplyScalar(finalSpeed);
+    const projectileLife = (weaponType === WEAPON_SG) ? SHOTGUN_RANGE / finalSpeed : Infinity;
+    projectiles.push({
+        mesh: bullet,
+        velocity: velocity,
+        isRocket: isRocket,
+        source: source,
+        isSniper: isSniper,
+        weaponType: weaponType,
+        life: projectileLife,
+        shooter: shooter,
+        spawnTime: now,
+        lastPos: bullet.position.clone(),
+        stuckTime: 0,
+        nearMissPlayed: false,
+        prevPlayerDist: Infinity,
+        lastTrailTime: -Infinity
+    });
+}
+
+function createExplosionEffect(position) {
+    createTransientPointLight(position, 0xffffff, 300, 15, 500);
+    const explosionGeometry = RUNTIME_EFFECT_GEOMETRIES.explosion;
+    const explosionMaterial = new THREE.MeshBasicMaterial({ color: 0xffa500, transparent: true, opacity: 1.0 });
+    const explosionMesh = new THREE.Mesh(explosionGeometry, explosionMaterial);
+    explosionMesh.position.copy(position);
+    scene.add(explosionMesh);
+    const scaleTarget = 40;
+    const duration = 0.8;
+    new TWEEN.Tween(explosionMesh.scale).to({ x: scaleTarget, y: scaleTarget, z: scaleTarget }, duration * 1000).easing(TWEEN.Easing.Exponential.Out).start();
+    new TWEEN.Tween(explosionMaterial).to({ opacity: 0 }, duration * 1000).easing(TWEEN.Easing.Quadratic.Out).onComplete(() => {
+        scene.remove(explosionMesh);
+        disposeMaterial(explosionMesh.material); // 安全なマテリアル破棄を使用
+    }).start();
+    for (let i = 0; i < 3; i++) {
+        createSmokeEffect(position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 5, (Math.random() - 0.5) * 10)));
+    }
+}
+
+function immediateRooftopCleanup() {
+    debugLog('Performing safe rooftop cleanup...');
+    let removedCount = 0;
+    
+    // より安全なクリーンアップ：obstacles配列をベースに処理
+    const objectsToRemove = [];
+    
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+        const obj = obstacles[i];
+        if (!obj) continue;
+        
+        // 屋根パーツのみを対象にする
+        if (obj.userData.isRooftop || obj.userData.isHouseRoof) {
+            // obstacles配列に含まれるが、親が存在しない孤立オブジェクトを削除
+            if (!obj.parent || obj.parent === scene) {
+                objectsToRemove.push(obj);
+            }
+        }
+    }
+    
+    // オブジェクトを削除
+    for (const obj of objectsToRemove) {
+        scene.remove(obj);
+        const index = obstacles.indexOf(obj);
+        if (index > -1) {
+            obstacles.splice(index, 1);
+        }
+        if (obj.geometry) obj.geometry.dispose();
+        disposeMaterial(obj.material); // 安全なマテリアル破棄を使用
+        removedCount++;
+    }
+    
+    debugLog(`Safe cleanup removed ${removedCount} rooftop parts`);
+    return removedCount;
+}
+
+// 建築物専用強制クリーンアップ関数
+function forceBuildingCleanup() {
+    debugLog('FORCING BUILDING CLEANUP - removing all ungrouped building remnants...');
+    let removedCount = 0;
+    
+    // シーンからすべての建築物を検索して削除
+    const objectsToRemove = [];
+    scene.traverse(child => {
+        // 建築物の条件をチェック
+        if (child.isMesh && (
+            child.userData.isHollow ||
+            child.userData.type === 'hollow_obstacle' ||
+            child.userData.type === 'floor' ||
+            child.userData.type === 'ceiling' ||
+            (child.userData.isWall && !child.userData.isHouseWall) // 家の壁ではない一般の壁
+        )) {
+            debugLog('Found building remnant:', child.name || 'unnamed', 'type:', child.userData.type, 'position:', child.position);
+            objectsToRemove.push(child);
+        }
+        
+        // グループ内もチェック
+        if (child.isObject3D && child.children && child.children.length > 0) {
+            child.children.forEach(grandchild => {
+                if (grandchild.isMesh && (
+                    grandchild.userData.isHollow ||
+                    grandchild.userData.type === 'hollow_obstacle' ||
+                    grandchild.userData.type === 'floor' ||
+                    grandchild.userData.type === 'ceiling' ||
+                    (grandchild.userData.isWall && !grandchild.userData.isHouseWall)
+                )) {
+                    debugLog('Found building in group:', grandchild.name || 'unnamed', 'type:', grandchild.userData.type, 'parent:', child.name || 'group');
+                    objectsToRemove.push(grandchild);
+                }
+            });
+        }
+    });
+    
+    // 建築物を削除
+    for (const building of objectsToRemove) {
+        scene.remove(building);
+        if (building.parent) {
+            building.parent.remove(building); // 親からも削除
+        }
+        if (building.geometry) building.geometry.dispose();
+        disposeMaterial(building.material);
+        removedCount++;
+    }
+    
+    // obstacles配列からも削除
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+        const obj = obstacles[i];
+        if (obj.isMesh && (
+            obj.userData.isHollow ||
+            obj.userData.type === 'hollow_obstacle' ||
+            obj.userData.type === 'floor' ||
+            obj.userData.type === 'ceiling' ||
+            (obj.userData.isWall && !obj.userData.isHouseWall)
+        )) {
+            obstacles.splice(i, 1);
+            debugLog('Removed building from obstacles array');
+        }
+    }
+    
+    debugLog(`Building cleanup removed ${removedCount} building remnants`);
+    return removedCount;
+}
+
+// 屋根専用強制クリーンアップ関数
+function forceRoofCleanup() {
+    debugLog('FORCING ROOF CLEANUP - removing all roof remnants...');
+    let removedCount = 0;
+    
+    // シーンからすべての屋根を検索して削除
+    const objectsToRemove = [];
+    scene.traverse(child => {
+        // 屋根の条件をチェック（より広範囲に）
+        if (child.isMesh && (
+            child.userData.isRoof || 
+            child.userData.isHouseRoof ||
+            child.name === 'roof' ||
+            (child.position && child.position.y > 4 && child.geometry && 
+             child.geometry.parameters && 
+             (child.geometry.parameters.width > 5 || child.geometry.parameters.depth > 5)) // 大きくて高い位置のメッシュ
+        )) {
+            debugLog('Found roof remnant:', child.name || 'unnamed', 'position:', child.position, 'userData:', child.userData);
+            objectsToRemove.push(child);
+        }
+        
+        // 家のグループ内もチェック
+        if (child.isObject3D && child.children && child.children.length > 0) {
+            child.children.forEach(grandchild => {
+                if (grandchild.isMesh && (
+                    grandchild.userData.isRoof || 
+                    grandchild.userData.isHouseRoof ||
+                    grandchild.name === 'roof' ||
+                    (grandchild.position && grandchild.position.y > 4 && grandchild.geometry && 
+                     grandchild.geometry.parameters && 
+                     (grandchild.geometry.parameters.width > 5 || grandchild.geometry.parameters.depth > 5))
+                )) {
+                    debugLog('Found roof in house group:', grandchild.name || 'unnamed', 'parent:', child.name || 'house', 'position:', grandchild.position);
+                    objectsToRemove.push(grandchild);
+                }
+            });
+        }
+    });
+    
+    // 屋根を削除
+    for (const roof of objectsToRemove) {
+        scene.remove(roof);
+        if (roof.parent) {
+            roof.parent.remove(roof); // 親からも削除
+        }
+        if (roof.geometry) roof.geometry.dispose();
+        disposeMaterial(roof.material);
+        removedCount++;
+    }
+    
+    // obstacles配列からも削除
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+        const obj = obstacles[i];
+        if (obj.isMesh && (
+            obj.userData.isRoof || 
+            obj.userData.isHouseRoof ||
+            obj.name === 'roof' ||
+            (obj.position && obj.position.y > 4 && obj.geometry && 
+             obj.geometry.parameters && 
+             (obj.geometry.parameters.width > 5 || obj.geometry.parameters.depth > 5))
+        )) {
+            obstacles.splice(i, 1);
+            debugLog('Removed roof from obstacles array');
+        }
+    }
+    
+    debugLog(`Roof cleanup removed ${removedCount} roof remnants`);
+    return removedCount;
+}
+
+// 家オブジェクト専用の強制クリーンアップ関数
+function forceHouseCleanup() {
+    debugLog('FORCING HOUSE CLEANUP - removing all house remnants...');
+    let removedCount = 0;
+    const objectsToRemove = new Set();
+
+    // シーンから家グループ・家パーツを検索
+    scene.traverse(child => {
+        if (!child) return;
+
+        const isHouseGroup = child.isGroup && child.userData && child.userData.type === 'house';
+        const isHousePart = child.isMesh && (child.userData.isHouseWall || child.userData.isHouseRoof);
+
+        let hasHouseAncestor = false;
+        if (child.parent) {
+            let p = child.parent;
+            while (p) {
+                if (p.userData && p.userData.type === 'house') {
+                    hasHouseAncestor = true;
+                    break;
+                }
+                p = p.parent;
+            }
+        }
+
+        if (isHouseGroup || isHousePart || (child.isMesh && hasHouseAncestor)) {
+            objectsToRemove.add(child);
+        }
+    });
+
+    // メッシュを先に削除
+    for (const obj of objectsToRemove) {
+        if (!obj.isMesh) continue;
+        if (obj.parent) {
+            obj.parent.remove(obj);
+        } else {
+            scene.remove(obj);
+        }
+        const index = obstacles.indexOf(obj);
+        if (index > -1) {
+            obstacles.splice(index, 1);
+        }
+        if (obj.geometry) obj.geometry.dispose();
+        disposeMaterial(obj.material);
+        removedCount++;
+    }
+
+    // 家グループを最後に削除
+    for (const obj of objectsToRemove) {
+        if (!obj.isGroup || !obj.userData || obj.userData.type !== 'house') continue;
+        if (obj.parent) {
+            obj.parent.remove(obj);
+        } else {
+            scene.remove(obj);
+        }
+        removedCount++;
+    }
+
+    debugLog(`House cleanup removed ${removedCount} house remnants`);
+    return removedCount;
+}
+
+// 強制シーンリセット関数
+function forceSceneReset() {
+    debugLog('FORCING COMPLETE SCENE RESET (protecting ground)...');
+    
+    // 屋根を先にクリーンアップ
+    forceRoofCleanup();
+    
+    // シーンからすべてのメッシュを削除（地面を除く）
+    const objectsToRemove = [];
+    if (scene && scene.traverse) {
+        scene.traverse((child) => {
+            if (child && child.isMesh) {
+                // 地面は保護
+                if (child.userData.isGround) {
+                    return;
+                }
+                objectsToRemove.push(child);
+            }
+        });
+    }
+    
+    objectsToRemove.forEach(obj => {
+        debugLog('Removing object:', obj.name || 'unnamed', 'type:', obj.userData.type, 'position:', obj.position);
+        scene.remove(obj);
+        if (obj.geometry) obj.geometry.dispose();
+        disposeMaterial(obj.material); // 安全なマテリアル破棄を使用
+    });
+    
+    // obstacles配列から地面以外のオブジェクトを削除
+    const remainingObstacles = obstacles.filter(obj => {
+        const isGround = obj.userData.isGround || (obj.position && obj.position.y <= 0);
+        if (!isGround) {
+            debugLog('Removing from obstacles:', obj.userData.type);
+        }
+        return isGround;
+    });
+    
+    // 配列をクリアして地面のみを再設定
+    obstacles.length = 0;
+    obstacles.push(...remainingObstacles);
+    
+    debugLog(`Force reset removed ${objectsToRemove.length} objects (protected ground)`);
+}
+
+function cleanupFloatingRooftopParts() {
+    let removedCount = 0;
+    
+    // すべてのマップタイプで屋根をクリーンアップ
+    // デフォルトマップかカスタムマップかに関わらず、すべての屋根オブジェクトを削除
+    
+    // シーン内のすべての子オブジェクトを直接スキャン
+    const objectsToRemove = [];
+    
+    scene.traverse((child) => {
+        // Meshオブジェクトのみを処理
+        if (child.isMesh) {
+            // 地面は保護
+            if (child.userData.isGround || child.position && child.position.y <= 0) {
+                return; // 地面は削除しない
+            }
+            
+    // 屋根パーツの特徴を持つオブジェクトを検出
+    const isRooftopPart = (
+        child.userData.isRooftop ||
+        child.userData.isHouseRoof ||
+        child.userData.parentBuildingRef ||
+        (child.material && child.material.color && child.material.color.getHex() === 0x880000) // 赤レンガ色
+    );
+    
+    if (!isRooftopPart) return;
+
+    // 本当に孤立した屋上パーツのみ削除する。
+    const parentRef = child.userData.parentBuildingRef;
+    if (parentRef) {
+        const parentAlive = parentRef.parent && obstacles.includes(parentRef);
+        if (!parentAlive) {
+            objectsToRemove.push(child);
+        }
+        return;
+    }
+
+    // 親参照がない場合でも、稼働中屋上の誤削除を防ぐため既定で有効扱いにする。
+        }
+    });
+    
+    // 削除対象のオブジェクトを一括で削除
+    for (const obj of objectsToRemove) {
+        scene.remove(obj);
+        
+        // obstacles配列から削除
+        const index = obstacles.indexOf(obj);
+        if (index > -1) {
+            obstacles.splice(index, 1);
+        }
+        
+        // メモリ解放
+        if (obj.geometry) obj.geometry.dispose();
+        disposeMaterial(obj.material); // 安全なマテリアル破棄を使用
+        
+        removedCount++;
+    }
+    
+    if (removedCount > 0) {
+        debugLog(`Removed ${removedCount} floating rooftop parts`);
+    }
+    
+    return removedCount;
+}
+
+function removeHouseCompletely(house) {
+    if (!house || !house.userData || house.userData.type !== 'house') return false;
+
+    const houseParts = [];
+    house.traverse(child => {
+        if (child && child.isMesh) houseParts.push(child);
+    });
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+        const obstacle = obstacles[i];
+        let belongsToHouse = obstacle === house
+            || (obstacle && obstacle.userData && (
+                obstacle.userData.houseRef === house
+                || obstacle.userData.parentBuildingRef === house
+            ));
+        let parent = obstacle && obstacle.parent;
+        while (!belongsToHouse && parent) {
+            if (parent === house) belongsToHouse = true;
+            parent = parent.parent;
+        }
+        if (belongsToHouse) obstacles.splice(i, 1);
+    }
+
+    for (let i = ladderSwitches.length - 1; i >= 0; i--) {
+        const sensor = ladderSwitches[i];
+        if (sensor && sensor.userData && sensor.userData.obstacle === house) {
+            if (sensor.parent) sensor.parent.remove(sensor);
+            if (sensor.geometry) sensor.geometry.dispose();
+            disposeMaterial(sensor.material);
+            ladderSwitches.splice(i, 1);
+        }
+    }
+
+    const houseIndex = houses.indexOf(house);
+    if (houseIndex > -1) houses.splice(houseIndex, 1);
+    if (house.parent) house.parent.remove(house);
+    for (const part of houseParts) {
+        if (part.geometry) part.geometry.dispose();
+        disposeMaterial(part.material);
+    }
+    return true;
+}
+
+  function destroyObstacle(obstacle, explosionPosition) {
+      if (obstacle && obstacle.userData && obstacle.userData.type === 'billLight') {
+          if (explosionPosition) {
+              createExplosionEffect(explosionPosition.clone());
+          }
+          const lightRef = obstacle.userData.lightRef;
+          if (lightRef) scene.remove(lightRef);
+          const lightIndex = obstacles.indexOf(obstacle);
+          if (lightIndex > -1) obstacles.splice(lightIndex, 1);
+          scene.remove(obstacle);
+          if (obstacle.geometry) obstacle.geometry.dispose();
+          disposeMaterial(obstacle.material);
+          billBattleLights = billBattleLights.filter(entry => entry && entry.mesh !== obstacle);
+          updateBillBattleGlobalLighting();
+          return;
+      }
+      if (obstacle && obstacle.userData && obstacle.userData.type === 'house') {
+          removeHouseCompletely(obstacle);
+          if (explosionPosition) createExplosionEffect(explosionPosition.clone());
+          return;
+      }
+      const obstacleIndex = obstacles.indexOf(obstacle);
+      if (obstacleIndex > -1) {
+          obstacles.splice(obstacleIndex, 1);
+      } else {
+          return;
+      }
+    if (obstacle.userData.rooftopParts && Array.isArray(obstacle.userData.rooftopParts)) {
+        for (const part of obstacle.userData.rooftopParts) {
+            const partIndex = obstacles.indexOf(part);
+            if (partIndex > -1) {
+                obstacles.splice(partIndex, 1);
+            }
+            scene.remove(part);
+            if (part.geometry) part.geometry.dispose();
+            disposeMaterial(part.material); // 安全なマテリアル破棄を使用
+        }
+    }
+    const ladderGroup = obstacle.children.find(child => child.name === 'ladder');
+    if (ladderGroup) {
+        obstacle.remove(ladderGroup);
+    }
+    for (let i = ladderSwitches.length - 1; i >= 0; i--) {
+        const sensorArea = ladderSwitches[i];
+        if (sensorArea.userData.obstacle === obstacle) {
+            scene.remove(sensorArea);
+            ladderSwitches.splice(i, 1);
+            if (sensorArea.geometry) sensorArea.geometry.dispose();
+            disposeMaterial(sensorArea.material); // 安全なマテリアル破棄を使用
+        }
+    }
+    scene.remove(obstacle);
+    const NUM_FRAGMENTS_PER_AXIS = 2;
+    // 空洞建物の場合、床のジオメトリーから寸法を取得
+    const geometry = obstacle.geometry || (obstacle.children && obstacle.children[0] ? obstacle.children[0].geometry : null);
+    const width = geometry ? geometry.parameters.width : 6;
+    const height = geometry ? geometry.parameters.height : 4;
+    const depth = geometry ? geometry.parameters.depth : 6;
+    const fragmentSize = new THREE.Vector3(width / NUM_FRAGMENTS_PER_AXIS, height / NUM_FRAGMENTS_PER_AXIS, depth / NUM_FRAGMENTS_PER_AXIS);
+    const fragmentGeometry = new THREE.BoxGeometry(fragmentSize.x, fragmentSize.y, fragmentSize.z);
+    const fragmentMaterial = obstacle.material;
+    for (let i = 0; i < NUM_FRAGMENTS_PER_AXIS; i++) {
+        for (let j = 0; j < NUM_FRAGMENTS_PER_AXIS; j++) {
+            for (let k = 0; k < NUM_FRAGMENTS_PER_AXIS; k++) {
+                const fragment = new THREE.Mesh(fragmentGeometry, fragmentMaterial);
+                const relativePos = new THREE.Vector3((i - (NUM_FRAGMENTS_PER_AXIS - 1) / 2) * fragmentSize.x, (j - (NUM_FRAGMENTS_PER_AXIS - 1) / 2) * fragmentSize.y, (k - (NUM_FRAGMENTS_PER_AXIS - 1) / 2) * fragmentSize.z);
+                fragment.position.copy(obstacle.position).add(relativePos);
+                scene.add(fragment);
+                const forceDirection = new THREE.Vector3().subVectors(fragment.position, explosionPosition).normalize();
+                const forceMagnitude = 10 + Math.random() * 15;
+                const velocity = forceDirection.multiplyScalar(forceMagnitude);
+                velocity.y += Math.random() * 10;
+                const angularVelocity = new THREE.Vector3((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10);
+                debris.push({ mesh: fragment, velocity: velocity, angularVelocity: angularVelocity, life: 3 + Math.random() * 2 });
+            }
+        }
+    }
+    obstacle.geometry.dispose();
+}
+
+function destroyBarrel(barrel, explosionPosition) {
+    const barrelIndex = obstacles.indexOf(barrel);
+    if (barrelIndex > -1) {
+        obstacles.splice(barrelIndex, 1);
+    }
+    scene.remove(barrel);
+    const radius = barrel.userData.radius || 0.75;
+    const height = barrel.userData.height || 1.2;
+    const fragmentCount = shouldShowTouchControls() ? 8 : 12;
+    const fragmentSize = Math.max(0.1, radius * 0.35);
+    const fragmentGeometry = new THREE.BoxGeometry(fragmentSize, fragmentSize, fragmentSize);
+    const fragmentMaterial = barrel.material;
+    for (let i = 0; i < fragmentCount; i++) {
+        const fragment = new THREE.Mesh(fragmentGeometry, fragmentMaterial);
+        const offset = new THREE.Vector3(
+            (Math.random() - 0.5) * radius * 1.6,
+            (Math.random() - 0.5) * height,
+            (Math.random() - 0.5) * radius * 1.6
+        );
+        fragment.position.copy(barrel.position).add(offset);
+        scene.add(fragment);
+        const forceDirection = new THREE.Vector3().subVectors(fragment.position, explosionPosition).normalize();
+        const forceMagnitude = 12 + Math.random() * 16;
+        const velocity = forceDirection.multiplyScalar(forceMagnitude);
+        velocity.y += Math.random() * 8;
+        const angularVelocity = new THREE.Vector3((Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12);
+        debris.push({ mesh: fragment, velocity: velocity, angularVelocity: angularVelocity, life: 2 + Math.random() * 2 });
+    }
+    // ドラム缶ラベル等の子メッシュを明示的に破棄
+    barrel.traverse((child) => {
+        if (!child || child === barrel || !child.isMesh) return;
+        if (child.geometry) child.geometry.dispose();
+        const material = child.material;
+        if (Array.isArray(material)) {
+            material.forEach((mat) => {
+                if (mat && mat.map) mat.map.dispose();
+            });
+        } else if (material && material.map) {
+            material.map.dispose();
+        }
+        disposeMaterial(material);
+    });
+    if (barrel.geometry) barrel.geometry.dispose();
+    disposeMaterial(barrel.material);
+}
+
+function applyBarrelKillScoring(victimAI, source, shooter) {
+    if (source === 'player') {
+        if (isTeamBasedAIMode()) {
+            if (victimAI.team === 'enemy') addPlayerTeamKillScore();
+            if (victimAI.team === 'player') addEnemyTeamKillScore();
+        } else if (gameSettings.gameMode === 'ffa' || gameSettings.gameMode === 'arcade') {
+            playerKills++;
+        }
+        registerPlayerEnemyKillForCombo(victimAI);
+        return;
+    }
+    if (source === 'ai' && shooter) {
+        if (shooter.kills !== undefined) shooter.kills++;
+        if (isTeamBasedAIMode()) {
+            if (shooter.team === 'player' && victimAI.team === 'enemy') addPlayerTeamKillScore();
+            if (shooter.team === 'enemy' && victimAI.team === 'player') addEnemyTeamKillScore();
+        }
+    }
+}
+
+function explodeBarrel(barrel, source = 'unknown', shooter = null) {
+    if (!barrel || (barrel.userData && barrel.userData.exploding)) return;
+    if (barrel.userData) barrel.userData.exploding = true;
+    const explosionPos = barrel.position.clone();
+    if (gameSettings.barrelRespawn) {
+        const spawnPos = (barrel.userData && barrel.userData.spawnPos) ? barrel.userData.spawnPos : barrel.position;
+        respawningBarrels.push({
+            x: spawnPos.x,
+            z: spawnPos.z,
+            color: barrel.userData?.color ?? barrel.material?.color?.getHex?.() ?? 0xe74c3c,
+            radius: barrel.userData?.radius ?? 0.75,
+            height: barrel.userData?.height ?? 2.4,
+            respawnTime: clock.getElapsedTime() + 30
+        });
+    }
+    destroyBarrel(barrel, explosionPos);
+    if (explosionSound) {
+        playSpatialSound(explosionSound, explosionPos, {
+            distanceScale: 48,
+            gainBoost: 1.35,
+            behindGain: 1.0
+        });
+    }
+    createExplosionEffect(explosionPos);
+    applyExplosionEffectsToBillLights(explosionPos, BARREL_EXPLOSION_RADIUS);
+    const allowBarrelDamage = !isBillBattleMode() || canApplyBillBattleDamage();
+    const allowAIBarrelDamage = allowBarrelDamage && (!isBillBattleMode() || source === 'player');
+    const radius = BARREL_EXPLOSION_RADIUS;
+    const chainTargets = obstacles.filter(o => o && o.userData && o.userData.type === 'barrel' && !o.userData.exploding && o.position && o.position.distanceTo(explosionPos) < radius);
+    chainTargets.forEach((target, index) => {
+        // Spread chain reactions across frames so several explosions do not stall one frame.
+        setTimeout(() => explodeBarrel(target, source, shooter), Math.min(120, index * 24));
+    });
+    if (allowAIBarrelDamage) {
+        for (let j = ais.length - 1; j >= 0; j--) {
+            const ai = ais[j];
+            if (ai.hp <= 0) continue;
+            const distance = ai.position.distanceTo(explosionPos);
+            if (distance < radius) {
+                const aiCenter = ai.position.clone().add(new THREE.Vector3(0, 1.5, 0));
+                if (checkLineOfSight(explosionPos, aiCenter, obstacles)) {
+                    if (ai.hp !== Infinity) {
+                        if (isBillBattleMode() && source === 'player') {
+                            markBillBattlePlayerDamage(ai, clock.getElapsedTime());
+                        }
+                        ai.hp = 0;
+                        createRedSmokeEffect(ai.position.clone().add(new THREE.Vector3(0, 1.5, 0)));
+                    }
+                    if (ai.hp <= 0) {
+                        applyBarrelKillScoring(ai, source, shooter);
+                        aiFallDownCinematicSequence(new THREE.Vector3().subVectors(ai.position, explosionPos), ai, source, null, shooter);
+                    }
+                }
+            }
+        }
+    }
+    if (allowBarrelDamage && playerHP > 0) {
+        const distanceToPlayer = player.position.distanceTo(explosionPos);
+        if (distanceToPlayer < radius) {
+            const playerCenter = player.position.clone().add(new THREE.Vector3(0, 1, 0));
+            if (checkLineOfSight(explosionPos, playerCenter, obstacles)) {
+                if (playerHP !== Infinity) {
+                    playerHP = 0;
+                    screenShakeDuration = SHAKE_DURATION_MAX;
+                    if (redFlashOverlay) {
+                        redFlashOverlay.style.backgroundColor = 'rgba(255, 0, 0, 0.5)';
+                        setTimeout(() => { redFlashOverlay.style.backgroundColor = 'transparent'; }, 100);
+                    }
+                }
+                if (playerHP <= 0 && !isPlayerDeathPlaying) {
+                    if (source === 'ai' && shooter && shooter.kills !== undefined) {
+                        shooter.kills++;
+                        if (isTeamBasedAIMode()) {
+                            addEnemyTeamKillScore();
+                        } else if (gameSettings.gameMode === 'arcade') {
+                            enemyTeamKills++;
+                        }
+                    }
+                    startPlayerDeathSequence(null);
+                }
+            }
+        }
+    }
+}
+
+let activeSmokeParticles = 0;
+let activeImpactParticles = 0;
+
+function createSmokeEffect(position) {
+    const isMobile = shouldShowTouchControls();
+    const maxSmokeParticles = isMobile ? 18 : 36;
+    const requestedCount = isMobile ? 3 : 4;
+    const particleCount = Math.min(requestedCount, Math.max(0, maxSmokeParticles - activeSmokeParticles));
+    for (let i = 0; i < particleCount; i++) {
+        const smokeGeometry = RUNTIME_EFFECT_GEOMETRIES.smoke;
+        const smokeMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
+        const smoke = new THREE.Mesh(smokeGeometry, smokeMaterial);
+        const offset = new THREE.Vector3((Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.5);
+        smoke.position.copy(position).add(offset);
+        scene.add(smoke);
+        activeSmokeParticles++;
+        const scaleTarget = 4 + Math.random() * 2;
+        const duration = 0.5 + Math.random() * 0.3;
+        new TWEEN.Tween(smoke.scale).to({ x: scaleTarget, y: scaleTarget, z: scaleTarget }, duration * 1000).easing(TWEEN.Easing.Quadratic.Out).start();
+        new TWEEN.Tween(smokeMaterial).to({ opacity: 0 }, duration * 1000).easing(TWEEN.Easing.Linear.None).onComplete(() => {
+            scene.remove(smoke);
+            disposeMaterial(smoke.material); // 安全なマテリアル破棄を使用
+            activeSmokeParticles = Math.max(0, activeSmokeParticles - 1);
+        }).start();
+    }
+}
+
+function createImpactSparkEffect(position, color = 0xffdd88, direction = null) {
+    const isMobile = shouldShowTouchControls();
+    const maxImpactParticles = isMobile ? 12 : 24;
+    const requestedSparkCount = isMobile ? 3 : 4;
+    const sparkCount = Math.min(requestedSparkCount, Math.max(0, maxImpactParticles - activeImpactParticles));
+    const baseDir = direction && direction.lengthSq && direction.lengthSq() > 0.0001
+        ? direction.clone().normalize().multiplyScalar(-1)
+        : new THREE.Vector3(0, 1, 0);
+    for (let i = 0; i < sparkCount; i++) {
+        const sparkGeometry = RUNTIME_EFFECT_GEOMETRIES.spark;
+        const sparkMaterial = new THREE.MeshBasicMaterial({
+            color,
+            transparent: true,
+            opacity: 0.9,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        const spark = new THREE.Mesh(sparkGeometry, sparkMaterial);
+        spark.scale.z = 0.22 + Math.random() * 0.16;
+        spark.position.copy(position);
+        const jitter = new THREE.Vector3(
+            (Math.random() - 0.5) * 1.4,
+            Math.random() * 0.9,
+            (Math.random() - 0.5) * 1.4
+        );
+        const velocity = baseDir.clone().multiplyScalar(1.0 + Math.random() * 1.2).add(jitter).normalize().multiplyScalar(2.0 + Math.random() * 2.0);
+        spark.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), velocity.clone().normalize());
+        scene.add(spark);
+        activeImpactParticles++;
+        new TWEEN.Tween(spark.position)
+            .to({
+                x: spark.position.x + velocity.x * 0.16,
+                y: spark.position.y + velocity.y * 0.16,
+                z: spark.position.z + velocity.z * 0.16
+            }, 120)
+            .easing(TWEEN.Easing.Quadratic.Out)
+            .start();
+        new TWEEN.Tween(sparkMaterial)
+            .to({ opacity: 0 }, 140)
+            .easing(TWEEN.Easing.Quadratic.Out)
+            .onComplete(() => {
+                scene.remove(spark);
+                disposeMaterial(sparkMaterial);
+                activeImpactParticles = Math.max(0, activeImpactParticles - 1);
+            })
+            .start();
+    }
+
+    if (activeImpactParticles >= maxImpactParticles) return;
+    const dustGeometry = RUNTIME_EFFECT_GEOMETRIES.dust;
+    const dustMaterial = new THREE.MeshBasicMaterial({ color: 0xc8c2b8, transparent: true, opacity: 0.35 });
+    const dust = new THREE.Mesh(dustGeometry, dustMaterial);
+    dust.position.copy(position);
+    scene.add(dust);
+    activeImpactParticles++;
+    new TWEEN.Tween(dust.scale)
+        .to({ x: 3.0, y: 1.6, z: 3.0 }, 260)
+        .easing(TWEEN.Easing.Quadratic.Out)
+        .start();
+    new TWEEN.Tween(dustMaterial)
+        .to({ opacity: 0 }, 260)
+        .easing(TWEEN.Easing.Linear.None)
+        .onComplete(() => {
+            scene.remove(dust);
+            disposeMaterial(dustMaterial);
+            activeImpactParticles = Math.max(0, activeImpactParticles - 1);
+        })
+        .start();
+}
+
+function createRedSmokeEffect(position) {
+    const isMobile = shouldShowTouchControls();
+    const maxSmokeParticles = isMobile ? 18 : 36;
+    const requestedCount = isMobile ? 4 : 5;
+    const particleCount = Math.min(requestedCount, Math.max(0, maxSmokeParticles - activeSmokeParticles));
+    for (let i = 0; i < particleCount; i++) {
+        const smokeGeometry = RUNTIME_EFFECT_GEOMETRIES.smoke;
+        const smokeMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.8 });
+        const smoke = new THREE.Mesh(smokeGeometry, smokeMaterial);
+        const offset = new THREE.Vector3((Math.random() - 0.5) * 1.5, (Math.random() - 0.5) * 1.5, (Math.random() - 0.5) * 1.5);
+        smoke.position.copy(position).add(offset);
+        scene.add(smoke);
+        activeSmokeParticles++;
+        const scaleTarget = 5 + Math.random() * 5;
+        const duration = 0.4 + Math.random() * 0.25;
+        new TWEEN.Tween(smoke.scale).to({ x: scaleTarget, y: scaleTarget, z: scaleTarget }, duration * 1000).easing(TWEEN.Easing.Quadratic.Out).start();
+        new TWEEN.Tween(smokeMaterial).to({ opacity: 0 }, duration * 1000).easing(TWEEN.Easing.Linear.None).onComplete(() => {
+            scene.remove(smoke);
+            disposeMaterial(smoke.material); // 安全なマテリアル破棄を使用
+            activeSmokeParticles = Math.max(0, activeSmokeParticles - 1);
+        }).start();
+    }
+}
+
+function createRocketTrail(position, source = null, shooter = null) {
+    const trailGeometry = RUNTIME_EFFECT_GEOMETRIES.rocketTrail;
+    const trailMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+    const particle = new THREE.Mesh(trailGeometry, trailMaterial);
+    particle.userData.isRocketTrail = true;
+    particle.position.copy(position);
+    particle.userData.source = source;
+    particle.userData.shooter = shooter;
+    scene.add(particle);
+    rocketTrails.push({ mesh: particle, source: source, shooter: shooter });
+    const duration = 0.8 + Math.random() * 0.5;
+    new TWEEN.Tween(particle.scale).to({ x: 0.01, y: 0.01, z: 0.01 }, duration * 1000).easing(TWEEN.Easing.Quadratic.Out).start();
+    new TWEEN.Tween(trailMaterial).to({ opacity: 0 }, duration * 1000).easing(TWEEN.Easing.Linear.None).onComplete(() => {
+        scene.remove(particle);
+        disposeMaterial(particle.material); // 安全なマテリアル破棄を使用
+        for (let i = rocketTrails.length - 1; i >= 0; i--) {
+            if (rocketTrails[i].mesh === particle) {
+                rocketTrails.splice(i, 1);
+                break;
+            }
+        }
+    }).start();
+}
+
+function clearAIRocketInFlight(projectile) {
+    if (!projectile || !projectile.isRocket || projectile.source !== 'ai') return;
+    const shooter = projectile.shooter;
+    if (shooter && shooter.userData) shooter.userData.rocketInFlight = false;
+}
+
+function removeAIProjectiles(ai, removeAllAI = false) {
+    if (!ai && !removeAllAI) return;
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+        const p = projectiles[i];
+        if (p.source !== 'ai') continue;
+        if (!removeAllAI && p.shooter !== ai) continue;
+        clearAIRocketInFlight(p);
+        if (p.mesh) {
+            if (p.mesh.parent) {
+                p.mesh.parent.remove(p.mesh);
+            } else {
+                scene.remove(p.mesh);
+            }
+            disposeProjectileMeshResources(p.mesh);
+        }
+        projectiles.splice(i, 1);
+    }
+    for (let i = rocketTrails.length - 1; i >= 0; i--) {
+        const trail = rocketTrails[i];
+        if (trail.source !== 'ai') continue;
+        if (!removeAllAI && trail.shooter !== ai) continue;
+        const mesh = trail.mesh;
+        if (mesh) {
+            if (mesh.parent) {
+                mesh.parent.remove(mesh);
+            } else {
+                scene.remove(mesh);
+            }
+            if (mesh.material) disposeMaterial(mesh.material);
+        }
+        rocketTrails.splice(i, 1);
+    }
+    // 安全策: 追跡されていない弾メッシュを除去する。
+    const toRemove = [];
+    scene.traverse((obj) => {
+        if (!obj || !obj.isMesh || !obj.userData) return;
+        const isProjectileMesh = !!obj.userData.isProjectile;
+        const isRocketTrailMesh = !!obj.userData.isRocketTrail;
+        if (!isProjectileMesh && !isRocketTrailMesh) return;
+        if (!removeAllAI && obj.userData.shooter !== ai) return;
+        if (removeAllAI && obj.userData.source !== 'ai') return;
+        toRemove.push(obj);
+    });
+    for (const mesh of toRemove) {
+        if (mesh.parent) {
+            mesh.parent.remove(mesh);
+        } else {
+            scene.remove(mesh);
+        }
+        if (mesh.userData.isProjectile) disposeProjectileMeshResources(mesh);
+        else if (mesh.material) disposeMaterial(mesh.material);
+    }
+}
+
+let lastProjectileCleanupTime = 0;
+function clearProjectileArtifacts() {
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+        const p = projectiles[i];
+        clearAIRocketInFlight(p);
+        if (p && p.mesh) {
+            if (p.mesh.parent) {
+                p.mesh.parent.remove(p.mesh);
+            } else {
+                scene.remove(p.mesh);
+            }
+            disposeProjectileMeshResources(p.mesh);
+        }
+    }
+    projectiles.length = 0;
+    for (let i = rocketTrails.length - 1; i >= 0; i--) {
+        const trail = rocketTrails[i];
+        const mesh = trail && trail.mesh;
+        if (mesh) {
+            if (mesh.parent) {
+                mesh.parent.remove(mesh);
+            } else {
+                scene.remove(mesh);
+            }
+            if (mesh.material) disposeMaterial(mesh.material);
+        }
+    }
+    rocketTrails.length = 0;
+    // 安全策: 追跡されていない弾/ロケット軌跡メッシュを除去する。
+    const toRemove = [];
+    scene.traverse((obj) => {
+        if (!obj || !obj.isMesh || !obj.userData) return;
+        if (!obj.userData.isProjectile && !obj.userData.isRocketTrail) return;
+        toRemove.push(obj);
+    });
+    for (const mesh of toRemove) {
+        if (mesh.parent) {
+            mesh.parent.remove(mesh);
+        } else {
+            scene.remove(mesh);
+        }
+        if (mesh.userData.isProjectile) disposeProjectileMeshResources(mesh);
+        else if (mesh.material) disposeMaterial(mesh.material);
+    }
+}
+
+function queueExplosionClear(position, radius) {
+    if (!position || !Number.isFinite(radius)) return;
+    pendingExplosionClears.push({ pos: position.clone(), radius: radius });
+}
+
+function applyExplosionClears() {
+    if (pendingExplosionClears.length === 0) return;
+    for (const entry of pendingExplosionClears) {
+        const r = entry.radius + 0.5;
+        const r2 = r * r;
+        for (let i = projectiles.length - 1; i >= 0; i--) {
+            const p = projectiles[i];
+            if (!p || !p.mesh) continue;
+            if (p.mesh.position.distanceToSquared(entry.pos) > r2) continue;
+            clearAIRocketInFlight(p);
+            if (p.mesh.parent) {
+                p.mesh.parent.remove(p.mesh);
+            } else {
+                scene.remove(p.mesh);
+            }
+            disposeProjectileMeshResources(p.mesh);
+            projectiles.splice(i, 1);
+        }
+        const toRemove = [];
+        scene.traverse((obj) => {
+            if (!obj || !obj.isMesh || !obj.userData || !obj.userData.isProjectile) return;
+            if (obj.position.distanceToSquared(entry.pos) > r2) return;
+            toRemove.push(obj);
+        });
+        for (const mesh of toRemove) {
+            if (mesh.parent) {
+                mesh.parent.remove(mesh);
+            } else {
+                scene.remove(mesh);
+            }
+            disposeProjectileMeshResources(mesh);
+        }
+    }
+    pendingExplosionClears.length = 0;
+}
+
+function cleanupOrphanProjectiles(timeElapsed) {
+    if (timeElapsed - lastProjectileCleanupTime < 1.0) return;
+    lastProjectileCleanupTime = timeElapsed;
+    const liveMeshes = new Set();
+    for (const p of projectiles) {
+        if (p && p.mesh) liveMeshes.add(p.mesh);
+    }
+    const toRemove = [];
+    scene.traverse((obj) => {
+        if (!obj || !obj.isMesh || !obj.userData || !obj.userData.isProjectile) return;
+        if (liveMeshes.has(obj)) return;
+        toRemove.push(obj);
+    });
+    for (const mesh of toRemove) {
+        if (mesh.parent) {
+            mesh.parent.remove(mesh);
+        } else {
+            scene.remove(mesh);
+        }
+        disposeProjectileMeshResources(mesh);
+    }
+}
+
+function getPlayerSafeFireData(direction) {
+    const dir = direction.clone().normalize();
+    const eyePos = new THREE.Vector3();
+    camera.getWorldPosition(eyePos);
+
+    raycaster.set(eyePos, dir);
+    raycaster.far = 1.2;
+    const wallHits = raycaster.intersectObjects(obstacles, true);
+
+    const minClearance = 0.18;
+    if (wallHits.length > 0 && wallHits[0].distance < minClearance) {
+        const impact = wallHits[0].point.clone();
+        return {
+            blocked: true,
+            startPosition: eyePos.clone().add(dir.clone().multiplyScalar(0.02)),
+            muzzlePosition: impact.clone(),
+            impactPoint: impact
+        };
+    }
+
+    const maxForwardOffset = 0.55;
+    const safeForwardOffset = wallHits.length > 0
+        ? Math.max(0.08, Math.min(maxForwardOffset, wallHits[0].distance - 0.08))
+        : maxForwardOffset;
+
+    const startPosition = eyePos.clone().add(dir.clone().multiplyScalar(safeForwardOffset));
+    const muzzlePosition = startPosition.clone().add(dir.clone().multiplyScalar(0.18));
+    return { blocked: false, startPosition, muzzlePosition, impactPoint: null };
+}
+
+
+function getAISafeFireData(startPos, direction) {
+    const dir = direction.clone().normalize();
+    raycaster.set(startPos, dir);
+    raycaster.far = 2.0; // 適切な距離で壁を検出するように増加
+    const wallHits = raycaster.intersectObjects(obstacles, true);
+    
+    if (wallHits.length > 0) {
+        const hitObject = wallHits[0].object;
+        
+        // AIが塔の内部にいる場合、その塔自体との衝突は無視する
+        // ただし、他の障害物や他の塔とは衝突する
+        let shouldIgnore = false;
+        for (const ai of ais) {
+            // AIの位置から最も近い塔を探す
+            if (ai.position && hitObject.userData.type === 'tower') {
+                const aiToTowerDist = ai.position.distanceTo(hitObject.position);
+                const towerSize = 6; // 塔の幅は6
+                if (aiToTowerDist < towerSize / 2) {
+                    // AIが塔の内部にいる場合、この塔との衝突を無視
+                    shouldIgnore = true;
+                    break;
+                }
+            }
+        }
+        
+        if (!shouldIgnore) {
+            return { blocked: true, impactPoint: wallHits[0].point.clone() };
+        }
+    }
+    return { blocked: false, impactPoint: null };
+}
+
+function handleFirePress() {
+    if (!isGameRunning || isAIDeathPlaying || playerHP <= 0) return;
+    if (currentWeapon === WEAPON_SR) {
+        if ((ammoSR > 0 || isInfiniteDefaultWeaponActive(WEAPON_SR)) && !isScoping) {
+            const timeSinceLastFire = clock.getElapsedTime() - lastFireTime;
+            if (timeSinceLastFire > FIRE_RATE_SR) {
+                isScoping = true;
+                scopeOverlay.style.display = 'block';
+                cancelScopeButton.style.display = 'flex';
+                document.getElementById('crosshair').style.display = 'none';
+                if (gameSettings.nightModeEnabled) {
+                    document.getElementById('night-vision-overlay').style.display = 'block';
+                }
+                new TWEEN.Tween(camera).to({ fov: SNIPER_SCOPE_FOV }, 100).easing(TWEEN.Easing.Quadratic.Out).onUpdate(() => camera.updateProjectionMatrix()).start();
+            }
+        }
+    } else {
+        isMouseButtonDown = true;
+        shoot(); // MGも含めて全武器でshoot()を呼ぶ
+    }
+}
+
+function cancelScope() {
+
+    isScoping = false;
+    sniperAutoAimLockedAI = null;
+    sniperAutoAimSmoothedPoint = null;
+    scopeOverlay.style.display = 'none';
+    cancelScopeButton.style.display = 'none';
+    document.getElementById('crosshair').style.display = 'block';
+    document.getElementById('night-vision-overlay').style.display = 'none';
+    new TWEEN.Tween(camera).to({ fov: 75 }, 100).easing(TWEEN.Easing.Quadratic.Out).onUpdate(() => camera.updateProjectionMatrix()).start();
+}
+
+function updateMobileStateButtonIndicators() {
+    const crouchButton = document.getElementById('crouch-button');
+    const zoomButton = document.getElementById('zoom-button');
+    if (crouchButton) crouchButton.classList.toggle('state-button-active', !!isCrouchingToggle);
+    if (zoomButton) zoomButton.classList.toggle('state-button-active', !!isRifleZoomed);
+}
+
+function setCrouchToggle(enabled) {
+    isCrouchingToggle = !!enabled;
+    updateMobileStateButtonIndicators();
+    syncPCCombatStateDisplay();
+}
+
+function setRifleZoom(enabled) {
+    if (isScoping) return;
+    if (isRifleZoomed === enabled) return;
+    isRifleZoomed = enabled;
+    zoomedWeaponType = enabled ? currentWeapon : null;
+    updateMobileStateButtonIndicators();
+    syncPCCombatStateDisplay();
+    const targetFov = enabled ? (WEAPON_ZOOM_FOV[currentWeapon] || 46) : 75;
+    new TWEEN.Tween(camera).to({ fov: targetFov }, 100).easing(TWEEN.Easing.Quadratic.Out).onUpdate(() => camera.updateProjectionMatrix()).start();
+}
+
+function canUseRifleZoom(weaponType) {
+    return Object.prototype.hasOwnProperty.call(WEAPON_ZOOM_FOV, weaponType);
+}
+
+function handleFireRelease() {
+    if (!isGameRunning) return;
+    if (isScoping) {
+        document.getElementById('night-vision-overlay').style.display = 'none';
+        const timeSinceLastFire = clock.getElapsedTime() - lastFireTime;
+        if ((ammoSR > 0 || isInfiniteDefaultWeaponActive(WEAPON_SR)) && timeSinceLastFire > FIRE_RATE_SR) {
+              if (srGunSound) playSound(srGunSound);
+              let direction = new THREE.Vector3();
+              camera.getWorldDirection(direction);
+              const sniperTargetPoint = getPlayerSniperShotTargetPoint();
+              if (sniperTargetPoint) {
+                  const eyePos = new THREE.Vector3();
+                  camera.getWorldPosition(eyePos);
+                  direction.subVectors(sniperTargetPoint, eyePos).normalize();
+              }
+              const safeFire = getPlayerSafeFireData(direction);
+              if (sniperTargetPoint && !safeFire.blocked) {
+                  direction.subVectors(sniperTargetPoint, safeFire.startPosition).normalize();
+              }
+              createMuzzleFlash(safeFire.muzzlePosition, 65, 1.8, 70, 0xffff00, direction, 0.55);
+              tryHitBillBattleLight(safeFire.startPosition, direction);
+              if (safeFire.blocked) {
+                  createImpactSparkEffect(safeFire.impactPoint || safeFire.muzzlePosition, 0xffdd88, direction);
+                  createSmokeEffect(safeFire.impactPoint || safeFire.muzzlePosition);
+              } else {
+                  createProjectile(safeFire.startPosition, direction, 0xffff00, 0.1, false, 'player', projectileSpeed * 2, true, WEAPON_SR);
+              }
+            lastFireTime = clock.getElapsedTime();
+            if (!isInfiniteDefaultWeaponActive(WEAPON_SR) && --ammoSR === 0) {
+                setTimeout(() => {
+                    switchPlayerToFallbackWeapon();
+                    cancelScope();
+                }, 100);
+            }
+        }
+        setTimeout(() => {
+            if(isScoping) {
+                cancelScope();
+            }
+        }, 100);
+    }
+    isMouseButtonDown = false;
+}
+
+function shoot() {
+    if (!isGameRunning || isAIDeathPlaying || playerHP <= 0) return;
+    const now = clock.getElapsedTime();
+    if (playerMGReloadUntil > 0 && now >= playerMGReloadUntil) {
+        playerMGReloadUntil = 0;
+        ammoMG = MAX_AMMO_MG;
+        hideReloadingText();
+    }
+    if (playerPistolReloadUntil > 0 && now >= playerPistolReloadUntil) {
+        playerPistolReloadUntil = 0;
+        ammoPistolClip = MAX_AMMO_PISTOL_CLIP;
+        hideReloadingText();
+    }
+    if (playerMRReloadUntil > 0 && now >= playerMRReloadUntil) {
+        playerMRReloadUntil = 0;
+        const nextClip = isDefaultM1Weapon() ? MAX_AMMO_MR : Math.min(MAX_AMMO_MR, ammoMR);
+        setPlayerMRClipAmmo(nextClip);
+        hideReloadingText();
+    }
+    let canFire = false;
+    let projectileColor = 0xffff00;
+    let projectileSize = 0.1;
+    let fireRate = FIRE_RATE_PISTOL;
+    let projectileSpeedOverride = projectileSpeed;
+    let weaponType = null;
+    let isSniperShot = false;
+    switch (currentWeapon) {
+        case WEAPON_PISTOL:
+            if (playerPistolReloadUntil > 0 && now < playerPistolReloadUntil) {
+                canFire = false;
+                break;
+            }
+            if (ammoPistolClip > 0) {
+                canFire = true;
+                fireRate = FIRE_RATE_PISTOL;
+            }
+            break;
+        case WEAPON_MG:
+            if (gameSettings.defaultWeaponPlayer === WEAPON_MG && now < playerMGReloadUntil) {
+                canFire = false;
+                break;
+            }
+            if (ammoMG > 0 || isInfiniteDefaultWeaponActive(WEAPON_MG)) {
+                canFire = true;
+                projectileColor = 0xffff00;
+                fireRate = FIRE_RATE_MG;
+            }
+            break;
+        case WEAPON_RR: if (ammoRR > 0 || isInfiniteDefaultWeaponActive(WEAPON_RR)) { canFire = true; projectileColor = 0xff8c00; projectileSize = 0.5; fireRate = FIRE_RATE_RR; } break;
+        case WEAPON_SG: if (ammoSG > 0 || isInfiniteDefaultWeaponActive(WEAPON_SG)) { canFire = true; projectileColor = 0xffa500; projectileSize = 0.05; fireRate = FIRE_RATE_SG; } break;
+        case WEAPON_MR:
+            if (playerMRReloadUntil > 0 && now < playerMRReloadUntil) {
+                canFire = false;
+                break;
+            }
+            if (getPlayerMRClipAmmo() > 0) {
+                canFire = true;
+                projectileColor = 0xffff00;
+                fireRate = FIRE_RATE_MR_PLAYER;
+                projectileSpeedOverride = projectileSpeed * MR_PROJECTILE_SPEED_MULT;
+                weaponType = WEAPON_MR;
+            }
+            break;
+    }
+    const timeSinceLastFire = now - lastFireTime;
+    if (canFire && timeSinceLastFire > fireRate) {
+        let soundToPlay = playerGunSound;
+        if (currentWeapon === WEAPON_MG) soundToPlay = mgGunSound;
+        else if (currentWeapon === WEAPON_RR) soundToPlay = rrGunSound;
+        else if (currentWeapon === WEAPON_SG) soundToPlay = playerSgSound;
+        else if (currentWeapon === WEAPON_MR) soundToPlay = m1GunSound;
+        if (soundToPlay) playSound(soundToPlay);
+          let baseDirection = new THREE.Vector3();
+          camera.getWorldDirection(baseDirection);
+          const safeFire = getPlayerSafeFireData(baseDirection);
+          const muzzleScale = currentWeapon === WEAPON_RR ? 0.9 : (currentWeapon === WEAPON_SG ? 0.72 : (currentWeapon === WEAPON_MG ? 0.42 : 0.55));
+          if (currentWeapon === WEAPON_MG) {
+              createCrosshairMuzzleFlash(projectileColor, muzzleScale, 65);
+          } else {
+              createMuzzleFlash(safeFire.muzzlePosition, 60, 1.7, 65, projectileColor, baseDirection, muzzleScale);
+          }
+          tryHitBillBattleLight(safeFire.startPosition, baseDirection);
+          // 旧グローバルオートエイムは削除済み。
+        // オートエイムは現在、animate()でスコープを動かす狙撃スコープ時のみ有効。
+        if (safeFire.blocked) {
+            const sparkColor = currentWeapon === WEAPON_RR ? 0xff8c00 : (currentWeapon === WEAPON_SG ? 0xffbb66 : 0xffdd88);
+            createImpactSparkEffect(safeFire.impactPoint || safeFire.muzzlePosition, sparkColor, baseDirection);
+            createSmokeEffect(safeFire.impactPoint || safeFire.muzzlePosition);
+        } else if (currentWeapon === WEAPON_SG) {
+            const upVector = new THREE.Vector3(0, 1, 0);
+            const rightVector = new THREE.Vector3().crossVectors(baseDirection, upVector).normalize();
+            const spreadStep = SHOTGUN_SPREAD_ANGLE / SHOTGUN_PELLET_COUNT;
+            for (let i = 0; i < SHOTGUN_PELLET_COUNT; i++) {
+                const angleOffset = (i - (SHOTGUN_PELLET_COUNT - 1) / 2) * spreadStep;
+                const spreadDirection = baseDirection.clone();
+                const randomAngleX = (Math.random() - 0.5) * SHOTGUN_SPREAD_ANGLE;
+                const randomAngleY = (Math.random() - 0.5) * SHOTGUN_SPREAD_ANGLE;
+                spreadDirection.applyAxisAngle(upVector, angleOffset + randomAngleX);
+                spreadDirection.applyAxisAngle(rightVector, randomAngleY);
+                createProjectile(safeFire.startPosition, spreadDirection, projectileColor, projectileSize, false, 'player', projectileSpeed, false, WEAPON_SG);
+            }
+        } else {
+            createProjectile(safeFire.startPosition, baseDirection, projectileColor, projectileSize, currentWeapon === WEAPON_RR, 'player', projectileSpeedOverride, isSniperShot, weaponType);
+        }
+        lastFireTime = now;
+        if (currentWeapon === WEAPON_MG) {
+            if (!isInfiniteDefaultWeaponActive(WEAPON_MG) && --ammoMG === 0) {
+                ammoMG = 0;
+                if (gameSettings.defaultWeaponPlayer === WEAPON_MG) {
+                    // デフォルトMGのみリロード
+                    playerMGReloadUntil = now + 2.0;
+                    showReloadingText();
+                } else {
+                    // 拾ったMGは弾切れで即フォールバックへ
+                    playerMGReloadUntil = 0;
+                    hideReloadingText();
+                    switchPlayerToFallbackWeapon();
+                }
+            }
+        } else if (currentWeapon === WEAPON_PISTOL) {
+            ammoPistolClip = Math.max(0, ammoPistolClip - 1);
+            if (ammoPistolClip <= 0) {
+                playerPistolReloadUntil = now + 2.0;
+                showReloadingText(pistolReloadSound || relAudio);
+            }
+        } else if (currentWeapon === WEAPON_RR) {
+            if (!isInfiniteDefaultWeaponActive(WEAPON_RR) && --ammoRR === 0) switchPlayerToFallbackWeapon();
+        } else if (currentWeapon === WEAPON_SG) {
+            if (!isInfiniteDefaultWeaponActive(WEAPON_SG) && --ammoSG === 0) switchPlayerToFallbackWeapon();
+        } else if (currentWeapon === WEAPON_MR) {
+            if (isDefaultM1Weapon()) {
+                const nextClip = getPlayerMRClipAmmo() - 1;
+                setPlayerMRClipAmmo(nextClip);
+                if (nextClip <= 0) {
+                    if (clipSound) playSound(clipSound);
+                    playerMRReloadUntil = now + 2.0;
+                    showReloadingText();
+                }
+            } else {
+                ammoMR = Math.max(0, ammoMR - 1);
+                ammoMRClip = Math.max(0, ammoMRClip - 1);
+                if (ammoMRClip <= 0) {
+                    if (clipSound) playSound(clipSound);
+                    if (ammoMR > 0) {
+                        playerMRReloadUntil = now + 2.0;
+                        showReloadingText();
+                    } else {
+                        switchPlayerToFallbackWeapon();
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+function applyAIAimSpread(direction, maxAngleRad) {
+    if (!maxAngleRad || maxAngleRad <= 0) return direction.clone().normalize();
+    const dir = direction.clone().normalize();
+    const up = new THREE.Vector3(0, 1, 0);
+    let right = new THREE.Vector3().crossVectors(dir, up);
+    if (right.lengthSq() < 1e-6) {
+        right = new THREE.Vector3(1, 0, 0).cross(dir);
+    }
+    right.normalize();
+    const forward = dir;
+    const binormal = new THREE.Vector3().crossVectors(forward, right).normalize();
+    const angle = Math.random() * maxAngleRad;
+    const azimuth = Math.random() * Math.PI * 2;
+    const spread = forward.clone().multiplyScalar(Math.cos(angle))
+        .add(right.clone().multiplyScalar(Math.sin(angle) * Math.cos(azimuth)))
+        .add(binormal.clone().multiplyScalar(Math.sin(angle) * Math.sin(azimuth)));
+    return spread.normalize();
+}
+
+function aiShoot(ai, timeElapsed) {
+    if (!isGameRunning) return;
+    if (isBillBattleMode() && !isIndoorTeamDeathmatchMode() && !billBattleAttackActivated) return;
+    if (!isBillBattleMode()) {
+        const rooftopPhase = ai && ai.userData ? (ai.userData.rooftopPhase || 'none') : 'none';
+        if (ai.isElevating || rooftopPhase === 'climbing' || rooftopPhase === 'descending') return;
+        const isStableRooftop = ai.userData && ai.userData.onRooftop
+            && (rooftopPhase === 'on_roof' || ai.state === 'ROOFTOP_COMBAT');
+        if (!isStableRooftop) {
+            ai.position.y = -FLOOR_HEIGHT;
+            if (ai.targetPosition) ai.targetPosition.y = -FLOOR_HEIGHT;
+        }
+    }
+    if (ai && ai.userData && !Number.isFinite(ai.userData.pistolClipAmmo)) {
+        ai.userData.pistolClipAmmo = MAX_AMMO_PISTOL_CLIP;
+    }
+    if (ai && ai.userData && ai.userData.pistolReloadUntil && timeElapsed >= ai.userData.pistolReloadUntil) {
+        ai.userData.pistolReloadUntil = 0;
+        ai.userData.pistolClipAmmo = MAX_AMMO_PISTOL_CLIP;
+    }
+    if (ai && ai.userData && ai.userData.mgReloadUntil && timeElapsed >= ai.userData.mgReloadUntil) {
+        ai.userData.mgReloadUntil = 0;
+        ai.ammoMG = MAX_AMMO_MG;
+    }
+    if (ai && ai.userData && ai.userData.mrReloadUntil && timeElapsed >= ai.userData.mrReloadUntil) {
+        ai.userData.mrReloadUntil = 0;
+        const nextClip = isAIDefaultM1Weapon(ai) ? MAX_AMMO_MR : Math.min(MAX_AMMO_MR, ai.ammoMR);
+        setAIClipAmmo(ai, nextClip);
+    }
+    let startPosition = ai.position.clone().add(new THREE.Vector3(0, ai.isCrouching ? BODY_HEIGHT * 0.75 * 0.5 : BODY_HEIGHT * 0.75, 0));
+    const aimOrigin = ai.position.clone().add(new THREE.Vector3(0, ai.isCrouching ? BODY_HEIGHT * 0.65 : BODY_HEIGHT * 0.9, 0));
+    const peekOrigin = ai.position.clone().add(new THREE.Vector3(0, BODY_HEIGHT * 0.9, 0));
+    const aiHeadOrigin = getAIHeadPos(ai);
+    const getClearShotOrigin = (target, primaryOrigin) => {
+        const candidates = [primaryOrigin, aimOrigin, peekOrigin, aiHeadOrigin];
+        for (const candidate of candidates) {
+            if (checkLineOfSight(candidate, target, obstacles)) return candidate.clone();
+        }
+        return null;
+    };
+    const canSeeFrom = (origin, target) => getClearShotOrigin(target, origin) !== null;
+    const muzzleInfo = (ai.userData && ai.userData.parts) ? getGunMuzzleInfo(ai.userData.parts) : null;
+    let muzzleDirection = muzzleInfo ? muzzleInfo.direction.clone().normalize() : null;
+    let muzzlePositionForEffects = muzzleInfo ? muzzleInfo.position.clone() : startPosition.clone();
+    let targetIsPlayer = false;
+    if (muzzleInfo) {
+        startPosition = muzzleInfo.position.clone();
+    }
+    
+    let targetPosition = null;
+    let distanceToTarget = 0;
+    
+    const isTeamModeOrTeamArcade = isTeamBasedAIMode();
+    const isAggressiveTeammate = isTeamModeOrTeamArcade && ai.team === 'player';
+
+    // チームモードまたはチームアーケードモードの場合
+    if (isTeamModeOrTeamArcade && ai.team === 'player') {
+        // Outdoorチーム戦と同じく共通の視認ターゲット取得を使う
+        const visibleOpponent = getVisibleOpponentInfo(ai);
+        if (visibleOpponent && visibleOpponent.targetPos) {
+            targetPosition = visibleOpponent.targetPos.clone();
+            distanceToTarget = visibleOpponent.distance;
+            ai.lastKnownEnemyPos = visibleOpponent.targetPos.clone();
+            ai.lastSeenEnemyTime = timeElapsed;
+        } else if (ai.lastKnownEnemyPos) {
+            targetPosition = ai.lastKnownEnemyPos.clone();
+            distanceToTarget = ai.position.distanceTo(targetPosition);
+        }
+        // 味方AIはプレイヤーを絶対に標的にしない（保険）
+        targetIsPlayer = false;
+    } else if (isTeamModeOrTeamArcade && ai.team === 'enemy') {
+        // 敵AIはプレイヤーと味方AIを状況で選ぶ（味方AI寄り）
+        const targets = [];
+        
+        // プレイヤーをターゲット候補に追加
+        const playerHeadPos = getPlayerHeadPos();
+        const playerUpperPos = getPlayerUpperTorsoPos();
+        const playerBodyPos = getPlayerBodyPos();
+        if (playerHP > 0) {
+            if (canSeeFrom(aimOrigin, playerHeadPos)) {
+                targets.push({ position: playerHeadPos, distance: ai.position.distanceTo(player.position), type: 'player' });
+            } else if (canSeeFrom(aimOrigin, playerUpperPos)) {
+                targets.push({ position: playerUpperPos, distance: ai.position.distanceTo(player.position), type: 'player' });
+            } else if (canSeeFrom(aimOrigin, playerBodyPos)) {
+                targets.push({ position: playerBodyPos, distance: ai.position.distanceTo(player.position), type: 'player' });
+            }
+        }
+        
+        // 味方AIをターゲット候補に追加
+        for (const teammateAI of ais) {
+            if (teammateAI === ai || teammateAI.team !== 'player' || teammateAI.hp <= 0) continue;
+            const teammateHeadPos = getAIUpperTorsoPos(teammateAI);
+            const teammateBodyPos = getAILowerTorsoPos(teammateAI);
+            const distance = ai.position.distanceTo(teammateAI.position);
+            if (canSeeFrom(startPosition, teammateHeadPos)) {
+                targets.push({ position: teammateHeadPos, distance: distance, type: 'teammate' });
+            } else if (canSeeFrom(startPosition, teammateBodyPos)) {
+                targets.push({ position: teammateBodyPos, distance: distance, type: 'teammate' });
+            }
+        }
+        
+        // ターゲット選択:
+        // - 味方AIが見えているなら高確率でそちらを優先
+        // - いなければ最寄りターゲット
+        if (targets.length > 0) {
+            targets.sort((a, b) => a.distance - b.distance);
+            const teammateTargets = targets.filter(t => t.type === 'teammate');
+            let selectedTarget = targets[0];
+            if (teammateTargets.length > 0 && Math.random() < 0.75) {
+                selectedTarget = teammateTargets[0];
+            }
+            targetPosition = selectedTarget.position;
+            distanceToTarget = selectedTarget.distance;
+            targetIsPlayer = selectedTarget.type === 'player';
+        }
+    } else if (gameSettings.gameMode === 'ffa') {
+        const potentialTargets = [];
+        // プレイヤーをターゲット候補に追加
+        if (playerHP > 0) {
+            const playerHeadPos = getPlayerHeadPos();
+            const playerUpperPos = getPlayerUpperTorsoPos();
+            const playerBodyPos = getPlayerBodyPos();
+            if (canSeeFrom(aimOrigin, playerHeadPos)) {
+                potentialTargets.push({ target: player, position: playerHeadPos, distance: ai.position.distanceTo(player.position) });
+            } else if (canSeeFrom(aimOrigin, playerUpperPos)) {
+                potentialTargets.push({ target: player, position: playerUpperPos, distance: ai.position.distanceTo(player.position) });
+            } else if (canSeeFrom(aimOrigin, playerBodyPos)) {
+                potentialTargets.push({ target: player, position: playerBodyPos, distance: ai.position.distanceTo(player.position) });
+            }
+        }
+        // 他のAIをターゲット候補に追加
+        for (const otherAI of ais) {
+            if (otherAI === ai || otherAI.hp <= 0) continue;
+            const otherAIHeadPos = getAIUpperTorsoPos(otherAI);
+            const otherAIBodyPos = getAILowerTorsoPos(otherAI);
+            if (canSeeFrom(startPosition, otherAIHeadPos)) {
+                potentialTargets.push({ target: otherAI, position: otherAIHeadPos, distance: ai.position.distanceTo(otherAI.position) });
+            } else if (canSeeFrom(startPosition, otherAIBodyPos)) {
+                potentialTargets.push({ target: otherAI, position: otherAIBodyPos, distance: ai.position.distanceTo(otherAI.position) });
+            }
+        }
+
+        if (potentialTargets.length > 0) {
+            // 最も近いターゲットを選択
+            potentialTargets.sort((a, b) => a.distance - b.distance);
+            const closestTarget = potentialTargets[0];
+            targetPosition = closestTarget.position;
+            distanceToTarget = closestTarget.distance;
+            targetIsPlayer = closestTarget.target === player;
+        }
+    } else {
+        // 通常モードまたは敵AIはプレイヤーを狙う
+        const playerHeadPos = getPlayerHeadPos();
+        const playerUpperPos = getPlayerUpperTorsoPos();
+        const playerBodyPos = getPlayerBodyPos();
+        if (canSeeFrom(aimOrigin, playerHeadPos)) {
+            targetPosition = playerHeadPos;
+        } else if (canSeeFrom(aimOrigin, playerUpperPos)) {
+            targetPosition = playerUpperPos;
+        } else if (canSeeFrom(aimOrigin, playerBodyPos)) {
+            targetPosition = playerBodyPos;
+        }
+        distanceToTarget = ai.position.distanceTo(player.position);
+        targetIsPlayer = true;
+    }
+    
+    if (isTeamModeOrTeamArcade && ai.team === 'player' && targetIsPlayer) {
+        return;
+    }
+    if (targetPosition === null) {
+        // 味方AIは非視認でも最寄り敵へ圧をかけ続ける（マップ差の平準化）
+        if (isTeamModeOrTeamArcade && ai.team === 'player') {
+            const fallbackTarget = getClosestEnemyAIPositionForTeammate(ai);
+            if (fallbackTarget) {
+                targetPosition = fallbackTarget.clone();
+                distanceToTarget = ai.position.distanceTo(fallbackTarget);
+                targetIsPlayer = false;
+            } else {
+                return;
+            }
+        } else if (isOutdoorPvAIMode() && playerHP > 0) {
+            targetPosition = getPlayerUpperTorsoPos();
+            distanceToTarget = ai.position.distanceTo(player.position);
+            targetIsPlayer = true;
+        } else {
+            return;
+        }
+    }
+    // 弾は必ず実際の銃口から発射する。頭部などの代替LOS起点を弾の始点には使わない。
+    if (!checkLineOfSight(startPosition, targetPosition, obstacles)) return;
+    // 発砲直前に再照準し、銃口方向を狙いに一致させる。
+    if (ai.userData && ai.userData.parts) {
+        applyAimConstraints(ai.userData.parts, ai.rotation.y, targetPosition);
+        const freshMuzzleInfo = getGunMuzzleInfo(ai.userData.parts);
+        if (freshMuzzleInfo) {
+            startPosition = freshMuzzleInfo.position.clone();
+            muzzleDirection = freshMuzzleInfo.direction.clone().normalize();
+            muzzlePositionForEffects = freshMuzzleInfo.position.clone();
+        }
+    }
+    // 最終ポーズ後も銃口からの射線だけで判定する。
+    if (!checkLineOfSight(startPosition, targetPosition, obstacles)) return;
+
+    const toTarget = new THREE.Vector3().subVectors(targetPosition, startPosition).normalize();
+    let direction = toTarget.clone();
+    const distanceToPlayer = distanceToTarget;
+    // 物理整合性優先: 銃口方向とターゲット方向が極端にズレる場合のみ発砲しない
+    if (muzzleDirection) {
+        const muzzleToTargetAngle = muzzleDirection.angleTo(toTarget);
+        if (muzzleToTargetAngle > THREE.MathUtils.degToRad(45)) return;
+    }
+    direction.normalize();
+    {
+        const p = getAIAimPrecision01();
+        const lerp = (a, b, t) => a + (b - a) * t;
+        let spreadDeg = 0;
+        if (ai.currentWeapon === WEAPON_SR) {
+            spreadDeg = lerp(3.0, 0.15, p);
+        } else if (ai.currentWeapon === WEAPON_MR) {
+            spreadDeg = lerp(14.0, 1.4, p);
+            const distMul = lerp(0.08, 0.012, p);
+            const distCap = lerp(6.5, 1.2, p);
+            spreadDeg += Math.min(distCap, Math.max(0, distanceToPlayer * distMul));
+        } else if (ai.currentWeapon === WEAPON_RR) {
+            spreadDeg = lerp(22.0, 2.0, p);
+            const distMul = lerp(0.11, 0.015, p);
+            const distCap = lerp(9.0, 1.5, p);
+            spreadDeg += Math.min(distCap, Math.max(0, distanceToPlayer * distMul));
+        }
+        if (spreadDeg > 0.0001) {
+            direction = applyAIAimSpread(direction, THREE.MathUtils.degToRad(spreadDeg));
+        }
+    }
+    let canAIShoot = false;
+    let aiProjectileColor = 0xffff00;
+    let aiProjectileSize = 0.1;
+    let aiFireRate = FIRING_RATE;
+    let aiProjectileSpeed = projectileSpeed;
+    switch (ai.currentWeapon) {
+        case WEAPON_PISTOL:
+            if (ai.userData && ai.userData.pistolReloadUntil && timeElapsed < ai.userData.pistolReloadUntil) {
+                canAIShoot = false;
+                break;
+            }
+            if (!ai.userData) ai.userData = {};
+            if (!Number.isFinite(ai.userData.pistolClipAmmo)) ai.userData.pistolClipAmmo = MAX_AMMO_PISTOL_CLIP;
+            if (ai.userData.pistolClipAmmo > 0) {
+                canAIShoot = true;
+                aiFireRate = FIRING_RATE * (4.0 - ai.aggression * 3.0);
+            }
+            break;
+        case WEAPON_MG:
+            if (ai.userData && ai.userData.mgReloadUntil && timeElapsed < ai.userData.mgReloadUntil) {
+                canAIShoot = false;
+                break;
+            }
+            if (ai.ammoMG > 0 || isInfiniteDefaultWeaponActiveForAI(ai, WEAPON_MG)) {
+                canAIShoot = true;
+                aiFireRate = FIRING_RATE * (0.5 + (1.0 - (ai.aggression || 0.5)) * 0.5);
+            }
+            break;
+        case WEAPON_RR:
+            if (ai.userData && ai.userData.rocketInFlight) {
+                canAIShoot = false;
+                break;
+            }
+            if (ai.ammoRR > 0 || isInfiniteDefaultWeaponActiveForAI(ai, WEAPON_RR)) {
+                canAIShoot = true;
+                aiFireRate = FIRING_RATE * (5.0 - ai.aggression * 3.0);
+                aiProjectileSize = 0.5;
+                aiProjectileColor = 0xff8c00;
+            }
+            break;
+        case WEAPON_SR: if (ai.ammoSR > 0 || isInfiniteDefaultWeaponActiveForAI(ai, WEAPON_SR)) { canAIShoot = true; aiFireRate = FIRE_RATE_SR * (1.0 + (1.0 - ai.aggression) * 0.5); aiProjectileColor = 0xffff00; aiProjectileSpeed = projectileSpeed * 2; } break;
+        case WEAPON_SG:
+            if (ai.ammoSG > 0 || isInfiniteDefaultWeaponActiveForAI(ai, WEAPON_SG)) {
+                // ショットガンは有効射程内のみ発砲（遠距離の無駄撃ちを防ぐ）
+                if (distanceToPlayer <= SHOTGUN_RANGE) {
+                    canAIShoot = true;
+                    aiFireRate = FIRE_RATE_SG;
+                    aiProjectileColor = 0xffa500;
+                    aiProjectileSize = 0.05;
+                    aiFireRate /= (1 + ai.aggression);
+                } else {
+                    canAIShoot = false;
+                }
+            }
+            break;
+        case WEAPON_MR:
+            if (ai.userData && ai.userData.mrReloadUntil && timeElapsed < ai.userData.mrReloadUntil) {
+                canAIShoot = false;
+                break;
+            }
+            if (getAIClipAmmo(ai) > 0) {
+                canAIShoot = true;
+                aiFireRate = FIRE_RATE_MR;
+                aiProjectileColor = 0xffff00;
+                aiProjectileSpeed = projectileSpeed * MR_PROJECTILE_SPEED_MULT;
+            }
+            break;
+    }
+    // 味方AIの発砲頻度を強化（敵AIは変更しない）
+    if (isAggressiveTeammate && !canAIShoot && isAIWeaponOutOfAmmo(ai)) {
+        switchAIToFallbackWeapon(ai);
+    }
+    if (timeElapsed - ai.lastAttackTime < aiFireRate) return;
+    if (canAIShoot) {
+        const safeAIShot = getAISafeFireData(startPosition, direction);
+        if (safeAIShot.blocked) {
+            createImpactSparkEffect(safeAIShot.impactPoint || startPosition, aiProjectileColor || 0xffdd88, direction);
+            createSmokeEffect(safeAIShot.impactPoint || startPosition);
+            if (isTeamModeOrTeamArcade && ai.team === 'player') {
+                // 味方AIは遮蔽誤判定で沈黙しないよう、停止せずに次処理へ進める
+                // （敵方向への射線は事前LOSチェック済み）
+                ai.lastAttackTime = timeElapsed - (aiFireRate * 0.4);
+            } else {
+                ai.lastAttackTime = timeElapsed;
+                return;
+            }
+        }
+        let soundToPlay;
+        if (ai.currentWeapon === WEAPON_MG) {
+            if (ai.userData && ai.userData.mgSound) {
+                soundToPlay = ai.userData.mgSound;
+            } else {
+                soundToPlay = aimgGunSound;
+            }
+        }
+        else if (ai.currentWeapon === WEAPON_RR) soundToPlay = rrGunSound;
+        else if (ai.currentWeapon === WEAPON_SR) soundToPlay = aiSrGunSound;
+        else if (ai.currentWeapon === WEAPON_SG) soundToPlay = aiSgSound;
+        else if (ai.currentWeapon === WEAPON_MR) {
+            if (ai.userData && ai.userData.m1Sound) {
+                soundToPlay = ai.userData.m1Sound;
+            } else {
+                soundToPlay = aiM1GunSound;
+            }
+        }
+        else soundToPlay = aiGunSound;
+        if (soundToPlay) playSpatialSound(soundToPlay, startPosition, { gainBoost: 0.9 });
+    if (window.DEBUG_SPATIAL_AUDIO && soundToPlay) {
+        console.log('[aiShoot] sound', soundToPlay.id || soundToPlay.src);
+    }
+        const aiMuzzlePosition = (muzzlePositionForEffects && Number.isFinite(muzzlePositionForEffects.x))
+            ? muzzlePositionForEffects.clone()
+            : startPosition.clone().add(direction.clone().multiplyScalar(0.18));
+        const aiMuzzleScale = ai.currentWeapon === WEAPON_RR ? 1.55 : (ai.currentWeapon === WEAPON_SG ? 1.25 : (ai.currentWeapon === WEAPON_MG ? 0.85 : 1.0));
+        createMuzzleFlash(aiMuzzlePosition, 150, 3.0, 90, aiProjectileColor || 0xffffff, direction, aiMuzzleScale);
+        createGroundFlash(aiMuzzlePosition, 0xffffff, 1.5, 150);
+        if (ai.currentWeapon === WEAPON_SG) {
+            const upVector = new THREE.Vector3(0, 1, 0);
+            const rightVector = new THREE.Vector3().crossVectors(direction, upVector).normalize();
+            const spreadStep = SHOTGUN_SPREAD_ANGLE / SHOTGUN_PELLET_COUNT;
+            for (let i = 0; i < SHOTGUN_PELLET_COUNT; i++) {
+                const angleOffset = (i - (SHOTGUN_PELLET_COUNT - 1) / 2) * spreadStep;
+                const spreadDirection = direction.clone();
+                const randomAngleX = (Math.random() - 0.5) * SHOTGUN_SPREAD_ANGLE;
+                const randomAngleY = (Math.random() - 0.5) * SHOTGUN_SPREAD_ANGLE;
+                spreadDirection.applyAxisAngle(upVector, angleOffset + randomAngleX);
+                spreadDirection.applyAxisAngle(rightVector, randomAngleY);
+                createProjectile(startPosition, spreadDirection, aiProjectileColor, aiProjectileSize, false, 'ai', aiProjectileSpeed, false, WEAPON_SG, ai);
+            }
+        } else {
+            const aiWeaponType = ai.currentWeapon === WEAPON_MR ? WEAPON_MR : null;
+            if (ai.currentWeapon === WEAPON_RR && ai.userData) {
+                ai.userData.rocketInFlight = true;
+            }
+            createProjectile(startPosition, direction, aiProjectileColor, aiProjectileSize, ai.currentWeapon === WEAPON_RR, 'ai', aiProjectileSpeed, ai.currentWeapon === WEAPON_SR, aiWeaponType, ai);
+        }
+        if (ai.userData && ai.userData.parts && window.GFACharacterModels && GFACharacterModels.recoil) {
+            GFACharacterModels.recoil(ai.userData.parts, ai.currentWeapon);
+        }
+        ai.lastAttackTime = timeElapsed;
+        if (ai.currentWeapon === WEAPON_PISTOL) {
+            if (!ai.userData) ai.userData = {};
+            if (!Number.isFinite(ai.userData.pistolClipAmmo)) ai.userData.pistolClipAmmo = MAX_AMMO_PISTOL_CLIP;
+            ai.userData.pistolClipAmmo = Math.max(0, ai.userData.pistolClipAmmo - 1);
+            if (ai.userData.pistolClipAmmo <= 0) {
+                ai.userData.pistolReloadUntil = timeElapsed + 2.0;
+            }
+        } else if (ai.currentWeapon === WEAPON_MG) {
+            if (!isInfiniteDefaultWeaponActiveForAI(ai, WEAPON_MG) && --ai.ammoMG === 0) {
+                ai.ammoMG = 0;
+                if (ai.userData) ai.userData.mgReloadUntil = timeElapsed + 2.0;
+                switchAIToFallbackWeapon(ai);
+            }
+        } else if (ai.currentWeapon === WEAPON_RR) {
+            if (!isInfiniteDefaultWeaponActiveForAI(ai, WEAPON_RR) && --ai.ammoRR === 0) switchAIToFallbackWeapon(ai);
+        } else if (ai.currentWeapon === WEAPON_SR) {
+            if (!isInfiniteDefaultWeaponActiveForAI(ai, WEAPON_SR) && --ai.ammoSR === 0) switchAIToFallbackWeapon(ai);
+        } else if (ai.currentWeapon === WEAPON_SG) {
+            if (!isInfiniteDefaultWeaponActiveForAI(ai, WEAPON_SG) && --ai.ammoSG === 0) switchAIToFallbackWeapon(ai);
+        } else if (ai.currentWeapon === WEAPON_MR) {
+            if (isAIDefaultM1Weapon(ai)) {
+                const nextClip = getAIClipAmmo(ai) - 1;
+                setAIClipAmmo(ai, nextClip);
+                if (nextClip <= 0) {
+                    if (ai.userData) ai.userData.mrReloadUntil = timeElapsed + 2.0;
+                }
+            } else {
+                ai.ammoMR = Math.max(0, ai.ammoMR - 1);
+                setAIClipAmmo(ai, getAIClipAmmo(ai) - 1);
+                if (getAIClipAmmo(ai) <= 0) {
+                    if (ai.ammoMR > 0) {
+                        if (ai.userData) ai.userData.mrReloadUntil = timeElapsed + 2.0;
+                    } else {
+                        switchAIToFallbackWeapon(ai);
+                    }
+                }
+            }
+        }
+    }
+}
+
+function aiCheckPickup(ai) {
+    for (let i = weaponPickups.length - 1; i >= 0; i--) {
+        const pickup = weaponPickups[i];
+        if (!pickup.parent) continue;
+        if (pickup.userData.type === 'medikitPickup') continue;
+        if (ai.position.distanceTo(pickup.position) < ARRIVAL_THRESHOLD + 0.5) {
+            switch (pickup.userData.weaponType) {
+                case WEAPON_MG: ai.currentWeapon = WEAPON_MG; ai.ammoMG = MAX_AMMO_MG; break;
+                case WEAPON_RR: ai.currentWeapon = WEAPON_RR; ai.ammoRR = MAX_AMMO_RR; break;
+                case WEAPON_SR: ai.currentWeapon = WEAPON_SR; ai.ammoSR = MAX_AMMO_SR; break;
+                case WEAPON_SG: ai.currentWeapon = WEAPON_SG; ai.ammoSG = MAX_AMMO_SG; break;
+                case WEAPON_MR: {
+                    const isDefaultM1 = isAIDefaultM1Weapon(ai);
+                    const wasUsingM1 = ai.currentWeapon === WEAPON_MR;
+                    ai.currentWeapon = WEAPON_MR;
+                    if (!isDefaultM1) {
+                        ai.ammoMR += PICKUP_AMMO_MR;
+                        if (!wasUsingM1) {
+                            setAIClipAmmo(ai, Math.min(MAX_AMMO_MR, ai.ammoMR));
+                        } else if (getAIClipAmmo(ai) <= 0 && !(ai.userData && ai.userData.mrReloadUntil)) {
+                            setAIClipAmmo(ai, Math.min(MAX_AMMO_MR, ai.ammoMR));
+                        }
+                    }
+                    break;
+                }
+            }
+            updateEnemySniperArmedVoice(ai);
+            scene.remove(pickup);
+            weaponPickups.splice(i, 1);
+            respawningPickups.push({ type: 'weapon', weaponType: pickup.userData.weaponType, respawnTime: clock.getElapsedTime() + RESPAWN_DELAY });
+            if (ai.targetWeaponPickup === pickup) {
+                ai.targetWeaponPickup = null;
+                // 味方AIで追従モードONの場合、ai.stateを変更しない
+                if (!(isTeamBasedAIMode() && ai.team === 'player' && isFollowingPlayerMode)) {
+                    if (isTeamBasedAIMode() && ai.team === 'player') {
+                        ai.state = 'ATTACKING';
+                        ai.currentAttackTime = clock.getElapsedTime();
+                        ai.strafeDirection = (Math.random() > 0.5 ? 1 : -1);
+                    } else {
+                        ai.state = 'HIDING';
+                        ai.lastHiddenTime = clock.getElapsedTime();
+                    }
+                }
+            }
+            break;
+        }
+    }
+}
+
+const moveSpeed = 10.0;
+const lookSpeed = 0.006;
+  let keyboardMoveVector = new THREE.Vector2(0, 0);
+  let joystickMoveVector = new THREE.Vector2(0, 0);
+  let moveManager = null;
+  let joystickReinitTimer = 0;
+  let activeJoystickTouchId = null;
+  let lastJoystickTouchPoint = null;
+  let lastJoystickZoneRect = null;
+  let restoreJoystickAfterAIDeathKillCam = false;
+  let preservedAIDeathJoystickVector = new THREE.Vector2(0, 0);
+
+  function snapshotJoystickRect(joystickZone = document.getElementById('joystick-move')) {
+      if (!joystickZone) return null;
+      const rect = joystickZone.getBoundingClientRect();
+      if (rect.width < 10 || rect.height < 10) return null;
+      return {
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+          right: rect.right,
+          bottom: rect.bottom
+      };
+  }
+
+  function isPointInsideJoystickRect(clientX, clientY, rect = snapshotJoystickRect()) {
+      return !!rect && clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+  }
+
+  function joystickVectorFromPoint(clientX, clientY, rect = snapshotJoystickRect()) {
+      if (!rect) return null;
+      const radius = Math.max(1, Math.min(rect.width, rect.height) / 2);
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const x = (clientX - centerX) / radius;
+      const y = -(clientY - centerY) / radius;
+      const vec = new THREE.Vector2(
+          Math.max(-1, Math.min(1, x)),
+          Math.max(-1, Math.min(1, y))
+      );
+      if (vec.length() > 1) vec.normalize();
+      return vec;
+  }
+
+  function rememberJoystickTouch(touch, rect = snapshotJoystickRect()) {
+      if (!touch || !rect) return false;
+      activeJoystickTouchId = touch.identifier;
+      lastJoystickTouchPoint = { x: touch.clientX, y: touch.clientY };
+      lastJoystickZoneRect = rect;
+      const vec = joystickVectorFromPoint(touch.clientX, touch.clientY, rect);
+      if (vec) joystickMoveVector.copy(vec);
+      return true;
+  }
+
+  function restoreJoystickAfterKillCamIfHeld() {
+      if (!restoreJoystickAfterAIDeathKillCam) return;
+      restoreJoystickAfterAIDeathKillCam = false;
+      if (activeJoystickTouchId === null) {
+          preservedAIDeathJoystickVector.set(0, 0);
+          return;
+      }
+      if (lastJoystickTouchPoint) {
+          const vec = joystickVectorFromPoint(lastJoystickTouchPoint.x, lastJoystickTouchPoint.y, snapshotJoystickRect() || lastJoystickZoneRect);
+          if (vec && vec.lengthSq() > 0.0001) {
+              joystickMoveVector.copy(vec);
+              preservedAIDeathJoystickVector.copy(vec);
+              return;
+          }
+      }
+      joystickMoveVector.copy(preservedAIDeathJoystickVector);
+  }
+
+  function clearJoystickZoneDom(joystickZone = document.getElementById('joystick-move')) {
+      if (!joystickZone) return;
+      joystickZone.innerHTML = '';
+      joystickZone.style.touchAction = 'none';
+      joystickZone.style.webkitUserSelect = 'none';
+      joystickZone.style.userSelect = 'none';
+  }
+
+  function resetJoystickInputState() {
+      joystickMoveVector.set(0, 0);
+  }
+
+  function destroyJoystick() {
+      joystickMoveVector.set(0, 0);
+      if (moveManager) {
+          moveManager.destroy();
+          moveManager = null;
+      }
+      clearJoystickZoneDom();
+      if (joystickReinitTimer) {
+          clearTimeout(joystickReinitTimer);
+          joystickReinitTimer = 0;
+      }
+  }
+  
+  function initJoystick() {
+      if (!shouldShowTouchControls()) {
+          destroyJoystick();
+          return;
+      }
+      const joystickZone = document.getElementById('joystick-move');
+      if (!joystickZone || typeof nipplejs === 'undefined') {
+          destroyJoystick();
+          return;
+      }
+      destroyJoystick();
+      clearJoystickZoneDom(joystickZone);
+      const zoneRect = joystickZone.getBoundingClientRect();
+      const joystickSize = Math.max(80, Math.min(150, zoneRect.width || 150, zoneRect.height || 150));
+      moveManager = nipplejs.create({
+          zone: joystickZone,
+          mode: 'static',
+          position: { left: '50%', top: '50%' },
+          color: 'blue',
+          size: joystickSize,
+          restOpacity: 0.7
+      });
+  
+      moveManager.on('start', function () {
+          if (!isGameRunning) return;
+          joystickMoveVector.set(0, 0);
+      });
+  
+      moveManager.on('move', function (evt, data) {
+          if (!isGameRunning) return;
+          if (!data || !data.vector) {
+              joystickMoveVector.set(0, 0);
+              return;
+          }
+          const x = Number.isFinite(data.vector.x) ? data.vector.x : 0;
+          const y = Number.isFinite(data.vector.y) ? data.vector.y : 0;
+          joystickMoveVector.set(Math.max(-1, Math.min(1, x)), Math.max(-1, Math.min(1, y)));
+      });
+  
+      moveManager.on('end', function () {
+          resetJoystickInputState();
+          ensureJoystickReady();
+      });
+  }
+
+  function rebuildJoystickSoon(delay = 80) {
+      joystickMoveVector.set(0, 0);
+      if (!shouldShowTouchControls()) {
+          destroyJoystick();
+          return;
+      }
+      if (joystickReinitTimer) clearTimeout(joystickReinitTimer);
+      joystickReinitTimer = setTimeout(() => {
+          joystickReinitTimer = 0;
+          if (!isGameRunning || !shouldShowTouchControls()) return;
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+              initJoystick();
+              restoreJoystickAfterKillCamIfHeld();
+          }));
+      }, delay);
+  }
+
+  function ensureJoystickReady(forceReinit = false) {
+      if (!shouldShowTouchControls()) return;
+      const joystickZone = document.getElementById('joystick-move');
+      if (!joystickZone) return;
+      if (joystickZone.style.display === 'none') return;
+      if (!isGameRunning) return;
+
+      const rect = joystickZone.getBoundingClientRect();
+      const invalidRect = rect.width < 40 || rect.height < 40;
+      const missingNippleDom = moveManager && !joystickZone.querySelector('.nipple');
+      if (forceReinit || !moveManager || invalidRect || missingNippleDom) {
+          rebuildJoystickSoon(forceReinit ? 30 : 80);
+      }
+  }
+  
+  initJoystick();
+  window.addEventListener('resize', () => {
+      if (shouldShowTouchControls()) rebuildJoystickSoon(120);
+  });
+  window.addEventListener('orientationchange', () => {
+      if (shouldShowTouchControls()) rebuildJoystickSoon(250);
+  });
+  document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+          forceResetTouchState();
+          destroyJoystick();
+          return;
+      }
+      if (isGameRunning && shouldShowTouchControls()) {
+          rebuildJoystickSoon(80);
+      }
+  });
+  window.addEventListener('blur', () => {
+      forceResetTouchState();
+      destroyJoystick();
+  });
+  window.addEventListener('focus', () => {
+      if (isGameRunning && shouldShowTouchControls()) {
+          rebuildJoystickSoon(80);
+      }
+  });
+  document.addEventListener('touchstart', (event) => {
+      if (!isGameRunning || !shouldShowTouchControls()) return;
+      const joystickZone = document.getElementById('joystick-move');
+      const rect = snapshotJoystickRect(joystickZone);
+      if (!rect) return;
+      for (let i = 0; i < event.changedTouches.length; i++) {
+          const touch = event.changedTouches[i];
+          if (isPointInsideJoystickRect(touch.clientX, touch.clientY, rect)) {
+              rememberJoystickTouch(touch, rect);
+              break;
+          }
+      }
+  }, { passive: true });
+  document.addEventListener('touchmove', (event) => {
+      if (!isGameRunning || !shouldShowTouchControls() || activeJoystickTouchId === null) return;
+      for (let i = 0; i < event.changedTouches.length; i++) {
+          const touch = event.changedTouches[i];
+          if (touch.identifier === activeJoystickTouchId) {
+              lastJoystickTouchPoint = { x: touch.clientX, y: touch.clientY };
+              const vec = joystickVectorFromPoint(touch.clientX, touch.clientY, snapshotJoystickRect() || lastJoystickZoneRect);
+              if (vec) {
+                  if (isAIDeathPlaying) {
+                      preservedAIDeathJoystickVector.copy(vec);
+                  } else {
+                      joystickMoveVector.copy(vec);
+                  }
+              }
+              break;
+          }
+      }
+  }, { passive: true });
+  document.addEventListener('touchend', (event) => {
+      if (!isGameRunning || !shouldShowTouchControls()) return;
+      if (activeJoystickTouchId !== null) {
+          for (let i = 0; i < event.changedTouches.length; i++) {
+              if (event.changedTouches[i].identifier === activeJoystickTouchId) {
+                  activeJoystickTouchId = null;
+                  lastJoystickTouchPoint = null;
+                  if (isAIDeathPlaying) {
+                      restoreJoystickAfterAIDeathKillCam = false;
+                      preservedAIDeathJoystickVector.set(0, 0);
+                  }
+                  break;
+              }
+          }
+      }
+      if (event.touches && event.touches.length === 0) {
+          resetJoystickInputState();
+          if (!isAIDeathPlaying) rebuildJoystickSoon(30);
+      }
+  }, { passive: true });
+  document.addEventListener('touchcancel', (event) => {
+      if (!isGameRunning || !shouldShowTouchControls()) return;
+      if (activeJoystickTouchId !== null) {
+          for (let i = 0; i < event.changedTouches.length; i++) {
+              if (event.changedTouches[i].identifier === activeJoystickTouchId) {
+                  activeJoystickTouchId = null;
+                  lastJoystickTouchPoint = null;
+                  restoreJoystickAfterAIDeathKillCam = false;
+                  preservedAIDeathJoystickVector.set(0, 0);
+                  break;
+              }
+          }
+      }
+      if (!event.touches || event.touches.length === 0) {
+          resetJoystickInputState();
+          if (!isAIDeathPlaying) rebuildJoystickSoon(30);
+      }
+  }, { passive: true });
+  if (window.visualViewport) {
+      const reflowJoystick = () => {
+          if (!isGameRunning || !shouldShowTouchControls()) return;
+          rebuildJoystickSoon(120);
+      };
+      window.visualViewport.addEventListener('resize', reflowJoystick);
+      window.visualViewport.addEventListener('scroll', reflowJoystick);
+  }
+const keySet = new Set();
+
+function getNearestLivingEnemyPosition(originPosition) {
+    let closestEnemy = null;
+    let closestDistance = Infinity;
+    for (const ai of ais) {
+        if (!ai || ai.hp <= 0 || ai.team !== 'enemy') continue;
+        const d = originPosition.distanceTo(ai.position);
+        if (d < closestDistance) {
+            closestDistance = d;
+            closestEnemy = ai;
+        }
+    }
+    return closestEnemy ? closestEnemy.position.clone() : null;
+}
+
+function getFollowSlotPosition(ai) {
+    const teammates = ais.filter(member => member && member.team === 'player');
+    const slotIndex = Math.max(0, teammates.indexOf(ai));
+    const playerForward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+    playerForward.y = 0;
+    if (playerForward.lengthSq() < 0.0001) playerForward.set(0, 0, -1);
+    else playerForward.normalize();
+    const right = new THREE.Vector3().crossVectors(playerForward, new THREE.Vector3(0, 1, 0)).normalize();
+    const ring = Math.floor(slotIndex / 2);
+    const side = slotIndex % 2 === 0 ? -1 : 1;
+    const backDistance = 7.0 + ring * 1.1;
+    const sideDistance = 2.4 + ring * 0.5;
+    const slotPos = player.position.clone()
+        .add(playerForward.clone().multiplyScalar(-backDistance))
+        .add(right.clone().multiplyScalar(side * sideDistance));
+    slotPos.y = getGroundSurfaceY(slotPos);
+    return slotPos;
+}
+
+function getSafeFollowSlotPosition(ai) {
+    const base = getFollowSlotPosition(ai);
+    const offsets = [
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(1.8, 0, 0),
+        new THREE.Vector3(-1.8, 0, 0),
+        new THREE.Vector3(0, 0, 1.8),
+        new THREE.Vector3(0, 0, -1.8),
+        new THREE.Vector3(2.6, 0, 2.6),
+        new THREE.Vector3(-2.6, 0, 2.6),
+        new THREE.Vector3(2.6, 0, -2.6),
+        new THREE.Vector3(-2.6, 0, -2.6)
+    ];
+
+    const originalPos = ai.position.clone();
+    for (const offset of offsets) {
+        const candidate = base.clone().add(offset);
+        candidate.y = getGroundSurfaceY(candidate);
+        ai.position.copy(candidate);
+        if (!checkCollision(ai, obstacles)) {
+            ai.position.copy(originalPos);
+            return candidate;
+        }
+    }
+    ai.position.copy(originalPos);
+    return base;
+}
+
+function getNearbyTeammateSpawnPosition(ai) {
+    const playerForward = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+    playerForward.y = 0;
+    if (playerForward.lengthSq() < 0.0001) playerForward.set(0, 0, -1);
+    else playerForward.normalize();
+    const right = new THREE.Vector3().crossVectors(playerForward, new THREE.Vector3(0, 1, 0)).normalize();
+    const baseCandidates = [
+        player.position.clone().add(playerForward.clone().multiplyScalar(-3.5)).add(right.clone().multiplyScalar(-2.0)),
+        player.position.clone().add(playerForward.clone().multiplyScalar(-3.5)).add(right.clone().multiplyScalar(2.0)),
+        player.position.clone().add(playerForward.clone().multiplyScalar(-4.5)).add(right.clone().multiplyScalar(-2.6)),
+        player.position.clone().add(playerForward.clone().multiplyScalar(-4.5)).add(right.clone().multiplyScalar(2.6))
+    ];
+
+    const originalPos = ai.position.clone();
+    for (const candidate of baseCandidates) {
+        candidate.y = -FLOOR_HEIGHT;
+        ai.position.copy(candidate);
+        if (!checkCollision(ai, obstacles)) {
+            ai.position.copy(originalPos);
+            return candidate;
+        }
+    }
+    ai.position.copy(originalPos);
+    return getFollowSlotPosition(ai);
+}
+
+function warpTeammatesInFrontForFollow() {
+    const isTeamModeOrTeamArcade = isTeamBasedAIMode();
+    if (!isTeamModeOrTeamArcade) return;
+    const teammates = ais.filter(ai => ai && ai.team === 'player');
+    if (teammates.length === 0) return;
+
+    const reviveHPSetting = gameSettings.aiHP === 'Infinity' ? Infinity : Math.max(1, parseInt(gameSettings.aiHP, 10) || 3);
+
+    teammates.forEach((ai) => {
+        resetAIRooftopState(ai, 2.0);
+        ai.isElevating = false;
+        const targetPos = getSafeFollowSlotPosition(ai);
+        if (ai.hp <= 0) {
+            ai.hp = reviveHPSetting;
+            ai.visible = true;
+        }
+        const originalPos = ai.position.clone();
+        ai.position.copy(targetPos);
+        if (checkCollision(ai, obstacles)) {
+            ai.position.copy(originalPos);
+        }
+        ai.targetPosition.copy(targetPos);
+        ai.userData.followActive = true;
+        ai.state = 'FOLLOWING';
+        ai.avoiding = false;
+        ai.rotation.y = player.rotation.y;
+    });
+}
+
+function setFollowingPlayerMode(enabled) {
+    isFollowingPlayerMode = enabled;
+    debugLog(`AI Following Mode: ${isFollowingPlayerMode ? 'ON' : 'OFF'}`);
+    if (followStatusDisplay) {
+        if (isFollowingPlayerMode) {
+            followStatusDisplay.style.display = 'block';
+            followStatusDisplay.classList.add('blinking');
+        } else {
+            followStatusDisplay.style.display = 'none';
+            followStatusDisplay.classList.remove('blinking');
+        }
+    }
+    if (followButton && (shouldShowTouchControls())) {
+        if (isFollowingPlayerMode) {
+            followButton.classList.add('blinking');
+            followButton.textContent = 'FOLLOWING';
+        } else {
+            followButton.classList.remove('blinking');
+            followButton.textContent = 'FOLLOW';
+        }
+    }
+    if (isFollowingPlayerMode) {
+        for (const ai of ais) {
+            if (ai && ai.team === 'player') ai.userData.followActive = true;
+        }
+        warpTeammatesInFrontForFollow();
+    } else {
+        for (const ai of ais) {
+            if (ai && ai.team === 'player') ai.userData.followActive = false;
+        }
+    }
+}
+
+function toggleFollowingPlayerMode() {
+    setFollowingPlayerMode(!isFollowingPlayerMode);
+}
+
+document.addEventListener('keydown', (event) => {
+    if (!isGameRunning) return;
+    keySet.add(event.code);
+    if (isAIDeathPlaying) return;
+    // デバッグ: キー入力をログ
+    if (event.code === 'KeyW' || event.code === 'KeyA' || event.code === 'KeyS' || event.code === 'KeyD') {
+        debugLog('Key pressed:', event.code, 'isGameRunning:', isGameRunning, 'justRestarted:', window.justRestarted);
+    }
+    if (event.code === 'KeyC') {
+        setCrouchToggle(!isCrouchingToggle);
+    } else if (event.code === 'KeyF') { // Fキーで追従モードをトグル
+        toggleFollowingPlayerMode();
+    }
+});
+document.addEventListener('keyup', (event) => { 
+    if (!isGameRunning) return;
+    keySet.delete(event.code); 
+});
+const canvas = renderer.domElement;
+canvas.addEventListener('click', () => { if (!isGameRunning) return; if (document.pointerLockElement !== canvas) { canvas.requestPointerLock(); } });
+let hadGameplayPointerLock = false;
+document.addEventListener('pointerlockchange', () => {
+    const pauseBtn = document.getElementById('pause-button');
+    if (document.pointerLockElement === canvas) {
+        hadGameplayPointerLock = true;
+        if (pauseBtn && !shouldShowTouchControls()) pauseBtn.style.display = 'none';
+        document.addEventListener('mousemove', onMouseMove, false);
+    } else {
+        document.removeEventListener('mousemove', onMouseMove, false);
+        if (hadGameplayPointerLock && isGameRunning && !isPaused && !shouldShowTouchControls()
+            && !isSettingsScreenVisible()) {
+            if (pauseBtn) pauseBtn.style.display = 'block';
+        }
+        hadGameplayPointerLock = false;
+    }
+}, false);
+
+function onMouseMove(event) {
+    if (!isGameRunning || isAIDeathPlaying) return;
+    const movementX = event.movementX || 0;
+    const movementY = event.movementY || 0;
+    player.rotateY(-movementX * lookSpeed);
+    let cameraRotationX = camera.rotation.x - movementY * lookSpeed;
+    camera.rotation.x = THREE.MathUtils.clamp(cameraRotationX, -Math.PI / 2 + 0.1, Math.PI / 2 - 0.1);
+}
+
+document.addEventListener('mousedown', (event) => {
+    if (!isGameRunning || isAIDeathPlaying) return;
+    if (event.button === 0) { // 左クリック
+        handleFirePress();
+    } else if (event.button === 2) { // 右クリック
+        if (canUseRifleZoom(currentWeapon)) {
+            setRifleZoom(!isRifleZoomed);
+        } else if (isScoping) {
+            cancelScope();
+        }
+    }
+});
+document.addEventListener('mouseup', (event) => { if (!isGameRunning) return; if (event.button === 0) { handleFireRelease(); } });
+document.addEventListener('contextmenu', (event) => event.preventDefault());
+
+
+
+let isLooking = false;
+let lookTouchId = -1;
+let lastTouchX = 0;
+let lastTouchY = 0;
+document.addEventListener('touchstart', (event) => {
+    if (!isGameRunning || isAIDeathPlaying || lookTouchId !== -1) return;
+    const halfWidth = window.innerWidth / 2;
+    for (let i = 0; i < event.changedTouches.length; i++) {
+        const touch = event.changedTouches[i];
+
+        if (touch.target.id === 'pause-button') {
+            return;
+        }
+        
+        if (touch.clientX > halfWidth) {
+            if (touch.target.id === 'fire-button') {
+                handleFirePress();
+            }
+            isLooking = true;
+            lookTouchId = touch.identifier;
+            lastTouchX = touch.clientX;
+            lastTouchY = touch.clientY;
+            event.preventDefault();
+            break;
+        }
+    }
+}, { passive: false });
+document.addEventListener('touchmove', (event) => {
+    if (!isGameRunning || !isLooking || lookTouchId === -1) return;
+    let currentTouchX = 0;
+    let currentTouchY = 0;
+    let foundLookTouch = false;
+    for (let i = 0; i < event.changedTouches.length; i++) {
+        const touch = event.changedTouches[i];
+        if (touch.identifier === lookTouchId) {
+            currentTouchX = touch.clientX;
+            currentTouchY = touch.clientY;
+            foundLookTouch = true;
+            event.preventDefault();
+            break;
+        }
+    }
+    if (foundLookTouch) {
+        const dx = currentTouchX - lastTouchX;
+        const dy = currentTouchY - lastTouchY;
+        if (!isAIDeathPlaying) {
+            player.rotation.y -= dx * lookSpeed;
+            let cameraRotationX = camera.rotation.x - dy * lookSpeed;
+            camera.rotation.x = THREE.MathUtils.clamp(cameraRotationX, -Math.PI / 2 + 0.1, Math.PI / 2 - 0.1);
+        }
+        lastTouchX = currentTouchX;
+        lastTouchY = currentTouchY;
+    }
+}, { passive: false });
+document.addEventListener('touchend', (event) => {
+    if (!isGameRunning || lookTouchId === -1) return;
+    for (let i = 0; i < event.changedTouches.length; i++) {
+        const touch = event.changedTouches[i];
+        if (touch.identifier === lookTouchId) {
+            handleFireRelease();
+            isLooking = false;
+            lookTouchId = -1;
+            break;
+        }
+    }
+}, false);
+document.addEventListener('touchcancel', (event) => {
+    if (lookTouchId === -1) return;
+    for (let i = 0; i < event.changedTouches.length; i++) {
+        const touch = event.changedTouches[i];
+        if (touch.identifier === lookTouchId) {
+            handleFireRelease();
+            isLooking = false;
+            lookTouchId = -1;
+            break;
+        }
+    }
+}, false);
+const crouchButton = document.getElementById('crouch-button');
+if (crouchButton) {
+    crouchButton.addEventListener('touchstart', (event) => {
+        if (!isGameRunning) return;
+        setCrouchToggle(!isCrouchingToggle);
+        event.preventDefault();
+    }, { passive: false });
+}
+
+// zoomButton のイベントリスナーを追加
+const zoomButtonElement = document.getElementById('zoom-button');
+if (zoomButtonElement) {
+    const toggleZoom = (event) => {
+    if (!isGameRunning) return;
+        if (canUseRifleZoom(currentWeapon)) {
+            setRifleZoom(!isRifleZoomed);
+        } else if (isScoping) {
+            cancelScope();
+        }
+        event.preventDefault();
+    };
+    if (shouldShowTouchControls()) {
+        zoomButtonElement.addEventListener('touchstart', toggleZoom, { passive: false });
+    } else {
+        zoomButtonElement.addEventListener('click', toggleZoom);
+    }
+}
+
+// followButton のイベントリスナーを追加
+const followButtonElement = document.getElementById('follow-button');
+if (followButtonElement) {
+    followButtonElement.addEventListener('touchstart', (event) => {
+        if (!isGameRunning) return;
+        toggleFollowingPlayerMode();
+        event.preventDefault();
+    }, { passive: false });
+}
+
+function initializeAudio() {
+    // ユーザーインタラクション後に音声を初期化
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+    }
+    registerAudioElements();
+    for (const id of audioMetaById.keys()) {
+        ensureSoundBuffer(id);
+    }
+    updateMenuBGM();
+}
+
+function populateTitleMapSelector() {
+    const titleSelector = document.getElementById('title-map-selector');
+    const settingsSelector = document.getElementById('unified-map-selector');
+    if (!titleSelector || !settingsSelector) return;
+    const preferredValue = titleSelector.value || settingsSelector.value || 'default';
+    titleSelector.innerHTML = '';
+    Array.from(settingsSelector.options).forEach(option => {
+        titleSelector.appendChild(option.cloneNode(true));
+    });
+    const defaultOption = Array.from(titleSelector.options).find(option => option.value === 'default');
+    if (defaultOption) defaultOption.textContent = 'DEFAULT';
+    titleSelector.value = Array.from(titleSelector.options).some(option => option.value === preferredValue)
+        ? preferredValue
+        : 'default';
+}
+
+function isTitleIndoorMode(mode) {
+    return mode === GAME_MODE_BILLBATTLE || mode === GAME_MODE_BILLBATTLE_TDM;
+}
+
+function updateTitleIndoorControls() {
+    const modeSelect = document.getElementById('title-game-mode');
+    const mapField = document.querySelector('.title-map-field');
+    const roomField = document.querySelector('.title-indoor-size');
+    const isIndoor = isTitleIndoorMode(modeSelect ? modeSelect.value : 'arcade');
+    if (mapField) mapField.hidden = isIndoor;
+    if (roomField) roomField.hidden = !isIndoor;
+}
+
+function applyTitleMapSelection(value) {
+    if (value === RANDOM_MAP_OPTION_VALUE) {
+        gameSettings.mapType = 'random';
+        gameSettings.customMapName = '';
+    } else if (value && value !== 'default' && value !== '---') {
+        gameSettings.mapType = 'custom';
+        gameSettings.customMapName = value;
+    } else {
+        gameSettings.mapType = 'default';
+        gameSettings.customMapName = '';
+    }
+    activeRandomMapData = null;
+}
+
+function syncTitleSelectionsToSettings() {
+    const modeSelect = document.getElementById('title-game-mode');
+    const mapSelect = document.getElementById('title-map-selector');
+    const roomSelect = document.getElementById('title-indoor-size');
+    const previousMode = gameSettings.gameMode;
+    saveCurrentModeSpecificSettings(previousMode);
+    gameSettings.gameMode = normalizeGameMode(modeSelect ? modeSelect.value : 'arcade');
+    applyModeSpecificSettings(gameSettings.gameMode);
+    if (roomSelect) gameSettings.billBattleSize = roomSelect.value;
+    applyTitleMapSelection(isTitleIndoorMode(gameSettings.gameMode)
+        ? 'default'
+        : (mapSelect ? mapSelect.value : 'default'));
+    applyBillBattleModeConstraints();
+
+    document.querySelectorAll('input[name="game-mode"]').forEach(radio => {
+        radio.checked = radio.value === gameSettings.gameMode;
+    });
+    const settingsMap = document.getElementById('unified-map-selector');
+    if (settingsMap) {
+        const selectedMap = gameSettings.mapType === 'random'
+            ? RANDOM_MAP_OPTION_VALUE
+            : (gameSettings.mapType === 'custom' ? gameSettings.customMapName : 'default');
+        settingsMap.value = selectedMap;
+    }
+    const settingsRoom = document.getElementById('billbattle-size');
+    if (settingsRoom) settingsRoom.value = gameSettings.billBattleSize;
+    updateSettingsAvailabilityForMode();
+    syncModeSpecificSettingsUI();
+}
+
+function setTitleQuickStartDefaults() {
+    syncTitleSelectionsToSettings();
+    Object.assign(gameSettings, {
+        playerHP: '20',
+        aiHP: '20',
+        moveSpeedMultiplier: 1.25,
+        projectileSpeedMultiplier: 1.0,
+        mgCount: 1,
+        rrCount: 1,
+        srCount: 1,
+        sgCount: 1,
+        mrCount: 1,
+        aiAimPrecision: 80,
+        aiShotLevel: 'pro',
+        aiCount: 3,
+        medikitCount: 5,
+        killCamMode: 'playerOnly',
+        barrelRespawn: false,
+        autoAim: true,
+        nightModeEnabled: false,
+        timeLapseMode: false,
+        billBattleLighting: '5'
+    });
+    setDefaultWeaponForTarget('all', WEAPON_MG);
+
+    const setValue = (id, value) => {
+        const element = document.getElementById(id);
+        if (element) element.value = String(value);
+    };
+    setValue('player-hp', 20);
+    setValue('ai-hp', 20);
+    setValue('move-speed', 1.25);
+    setValue('projectile-speed', 1.0);
+    setValue('mg-count', 1);
+    setValue('rr-count', 1);
+    setValue('sr-count', 1);
+    setValue('sg-count', 1);
+    setValue('mr-count', 1);
+    setValue('medikit-count', 5);
+    setValue('ai-shot-slider', 80);
+    setValue('billbattle-lighting', 5);
+    const defaultTarget = document.getElementById('default-weapon-target');
+    if (defaultTarget) defaultTarget.value = 'all';
+    document.querySelectorAll('input[name="default-weapon"]').forEach(input => {
+        input.checked = input.value === WEAPON_MG;
+    });
+    document.querySelectorAll('input[name="ai-count"]').forEach(radio => {
+        radio.checked = radio.value === '3';
+    });
+    document.querySelectorAll('input[name="killcam-mode"]').forEach(radio => {
+        radio.checked = radio.value === 'playerOnly';
+    });
+    document.querySelectorAll('input[name="barrel-respawn"]').forEach(radio => {
+        radio.checked = radio.value === 'false';
+    });
+    document.querySelectorAll('input[name="auto-aim"]').forEach(radio => {
+        radio.checked = radio.value === 'true';
+    });
+    const nightMode = document.getElementById('night-mode');
+    const timeLapse = document.getElementById('time-lapse-mode');
+    if (nightMode) nightMode.checked = false;
+    if (timeLapse) timeLapse.checked = false;
+    const aiShotValue = document.getElementById('ai-shot-value');
+    if (aiShotValue) aiShotValue.textContent = '80';
+    const projectileValue = document.getElementById('projectile-speed-value');
+    if (projectileValue) projectileValue.textContent = '1.0x';
+    syncMoveSpeedSettingUI();
+    saveCurrentModeSpecificSettings(gameSettings.gameMode);
+    saveSettings();
+}
+
+function setupTitleLogoScreen() {
+    const titleScreen = document.getElementById('title-logo-screen');
+    const modeSelect = document.getElementById('title-game-mode');
+    const roomSelect = document.getElementById('title-indoor-size');
+    const settingsButton = document.getElementById('title-settings-button');
+    const deployButton = document.getElementById('title-deploy-button');
+    if (!titleScreen) return;
+    titleScreen.classList.remove('title-logo-hidden');
+    populateTitleMapSelector();
+    if (modeSelect) modeSelect.value = normalizeGameMode(gameSettings.gameMode);
+    if (roomSelect) roomSelect.value = gameSettings.billBattleSize || '80';
+    updateTitleIndoorControls();
+    updateMenuBGM();
+    titleScreen.addEventListener('pointerdown', initializeAudio, { once: true });
+    if (modeSelect) modeSelect.addEventListener('change', updateTitleIndoorControls);
+    if (settingsButton) {
+        settingsButton.addEventListener('click', () => {
+            initializeAudio();
+            syncTitleSelectionsToSettings();
+            saveSettings();
+            titleScreen.classList.add('title-logo-hidden');
+            document.getElementById('start-screen').style.display = 'flex';
+            playMenuBGM();
+        });
+    }
+    if (deployButton) {
+        deployButton.addEventListener('click', () => {
+            if (deployButton.disabled) return;
+            deployButton.disabled = true;
+            initializeAudio();
+            setTitleQuickStartDefaults();
+            titleScreen.classList.add('title-logo-hidden');
+            const startButton = document.getElementById('start-game-btn');
+            if (startButton) startButton.click();
+        });
+    }
+    const returnToTitle = () => {
+        saveSettings();
+        isPaused = false;
+        isGameRunning = false;
+        stopGameBGM(false);
+        if (deployButton) deployButton.disabled = false;
+        document.body.classList.add('settings-screen-active');
+        document.querySelectorAll('.end-screen').forEach(screen => { screen.style.display = 'none'; });
+        document.getElementById('resume-game-btn').style.display = 'none';
+        document.getElementById('restart-pause-btn').style.display = 'none';
+        document.getElementById('start-game-btn').style.display = 'inline-block';
+        document.getElementById('start-screen').style.display = 'none';
+        populateTitleMapSelector();
+        if (modeSelect) modeSelect.value = normalizeGameMode(gameSettings.gameMode);
+        const titleMap = document.getElementById('title-map-selector');
+        if (titleMap) {
+            titleMap.value = gameSettings.mapType === 'random'
+                ? RANDOM_MAP_OPTION_VALUE
+                : (gameSettings.mapType === 'custom' ? gameSettings.customMapName : 'default');
+        }
+        if (roomSelect) roomSelect.value = gameSettings.billBattleSize || '80';
+        updateTitleIndoorControls();
+        titleScreen.classList.remove('title-logo-hidden');
+        updateMenuBGM();
+    };
+    const backToTitleButton = document.getElementById('back-to-title-btn');
+    if (backToTitleButton) backToTitleButton.addEventListener('click', returnToTitle);
+    document.querySelectorAll('.end-top-button').forEach(button => {
+        button.addEventListener('click', returnToTitle);
+    });
+}
+
+function isSettingsScreenVisible() {
+    const start = document.getElementById('start-screen');
+    const readme = document.getElementById('readme-screen');
+    const buttonSettings = document.getElementById('button-settings-screen');
+    const bgmSettings = document.getElementById('bgm-settings-screen');
+    return [start, readme, buttonSettings, bgmSettings].some(screen => (
+        screen && window.getComputedStyle(screen).display !== 'none'
+    ));
+}
+
+function isTitleScreenVisible() {
+    const title = document.getElementById('title-logo-screen');
+    return !!title && !title.classList.contains('title-logo-hidden');
+}
+
+let currentBgmTrack = null;
+let bgmOrderIndex = 0;
+const MENU_BGM_TRACK = 'opm.mp3';
+let isPreparingGameStart = false;
+let gameBgmBufferSource = null;
+let gameBgmGainNode = null;
+let gameBgmBufferTrack = null;
+let gameBgmRequestToken = 0;
+
+function normalizeBgmVolume(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return 0.7;
+    return Math.min(1, Math.max(0, num));
+}
+
+function getEnabledBgmTracks() {
+    if (!Array.isArray(gameSettings.bgmEnabledTracks)) {
+        return BGM_TRACKS.slice();
+    }
+    const enabledSet = new Set(gameSettings.bgmEnabledTracks);
+    const filtered = BGM_TRACKS.filter(track => enabledSet.has(track));
+    if (gameSettings.bgmEnabledTracks.length === 0) {
+        gameSettings.bgmEnabledTracks = BGM_TRACKS.slice();
+        return BGM_TRACKS.slice();
+    }
+    if (filtered.length === 0) {
+        return BGM_TRACKS.slice();
+    }
+    return filtered;
+}
+
+function pickNextBgmTrack() {
+    const enabledTracks = getEnabledBgmTracks();
+    if (enabledTracks.length === 0) return null;
+    if (gameSettings.bgmMode === 'random') {
+        let choice = enabledTracks[Math.floor(Math.random() * enabledTracks.length)];
+        if (enabledTracks.length > 1 && choice === currentBgmTrack) {
+            for (let i = 0; i < 5; i++) {
+                const candidate = enabledTracks[Math.floor(Math.random() * enabledTracks.length)];
+                if (candidate !== currentBgmTrack) {
+                    choice = candidate;
+                    break;
+                }
+            }
+        }
+        return choice;
+    }
+    const index = bgmOrderIndex % enabledTracks.length;
+    const choice = enabledTracks[index];
+    bgmOrderIndex = (index + 1) % enabledTracks.length;
+    return choice;
+}
+
+function applyBgmVolume() {
+    const volume = normalizeBgmVolume(gameSettings.bgmVolume);
+    if (bgmAudio) bgmAudio.volume = volume;
+    if (gameBgmAudio) gameBgmAudio.volume = volume;
+    if (gameBgmGainNode && audioCtx) {
+        gameBgmGainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
+    }
+}
+
+function releaseGameBgmBufferSource(invalidatePending = true) {
+    if (invalidatePending) gameBgmRequestToken += 1;
+    const source = gameBgmBufferSource;
+    const gain = gameBgmGainNode;
+    gameBgmBufferSource = null;
+    gameBgmGainNode = null;
+    gameBgmBufferTrack = null;
+    if (source) {
+        source.onended = null;
+        try { source.stop(); } catch (e) {}
+        try { source.disconnect(); } catch (e) {}
+    }
+    if (gain) {
+        try { gain.disconnect(); } catch (e) {}
+    }
+}
+
+async function playGameBgmWithWebAudio(track, restart = false) {
+    if (!track || gameSettings.bgmMute) return false;
+    if (gameBgmBufferSource && gameBgmBufferTrack === track && !restart) {
+        applyBgmVolume();
+        return true;
+    }
+
+    const ctx = getAudioContext();
+    if (!ctx) return false;
+    try {
+        if (ctx.state === 'suspended') await ctx.resume();
+    } catch (e) {
+        return false;
+    }
+
+    const requestToken = ++gameBgmRequestToken;
+    const soundId = `gameBgm:${track}`;
+    if (!audioMetaById.has(soundId)) {
+        audioMetaById.set(soundId, { url: track, baseGain: 1.0 });
+    }
+    let buffer = ensureSoundBuffer(soundId);
+    if (buffer && typeof buffer.then === 'function') buffer = await buffer;
+    if (!buffer) return false;
+    if (requestToken !== gameBgmRequestToken) return null;
+    if (gameSettings.bgmMute || !isGameRunning || isSettingsScreenVisible()) return null;
+
+    releaseGameBgmBufferSource(false);
+    const source = ctx.createBufferSource();
+    const gain = ctx.createGain();
+    source.buffer = buffer;
+    source.loop = gameSettings.bgmPlayMode !== 'continuous';
+    gain.gain.value = normalizeBgmVolume(gameSettings.bgmVolume);
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    gameBgmBufferSource = source;
+    gameBgmGainNode = gain;
+    gameBgmBufferTrack = track;
+    source.onended = () => {
+        if (gameBgmBufferSource !== source) return;
+        try { source.disconnect(); } catch (e) {}
+        try { gain.disconnect(); } catch (e) {}
+        gameBgmBufferSource = null;
+        gameBgmGainNode = null;
+        gameBgmBufferTrack = null;
+        if (gameSettings.bgmPlayMode !== 'continuous' || gameSettings.bgmMute
+            || !isGameRunning || isSettingsScreenVisible()) return;
+        currentBgmTrack = pickNextBgmTrack();
+        if (currentBgmTrack) playGameBGM(false);
+    };
+    source.start(0);
+    return true;
+}
+
+function isTrackLoaded(track, audio = gameBgmAudio) {
+    if (!audio || !track) return false;
+    const currentSrc = (audio.currentSrc || audio.src || '').split('?')[0];
+    return currentSrc.endsWith('/' + track) || currentSrc.endsWith('\\\\' + track) || currentSrc.endsWith(track);
+}
+
+function setBgmTrack(track, resetTime = true) {
+    if (!gameBgmAudio || !track) return;
+    if (!isTrackLoaded(track, gameBgmAudio)) {
+        gameBgmAudio.src = track;
+        gameBgmAudio.load();
+    }
+    if (resetTime) {
+        gameBgmAudio.currentTime = 0;
+    }
+}
+
+function ensureContinuousBgmEndedHandler() {
+    if (!gameBgmAudio || gameBgmAudio._continuousEndedHandler) return;
+    const onBgmEnded = function onBgmEnded() {
+        if (gameSettings.bgmPlayMode !== 'continuous' || !isGameRunning || isSettingsScreenVisible()) return;
+        currentBgmTrack = pickNextBgmTrack();
+        if (!currentBgmTrack) return;
+        setBgmTrack(currentBgmTrack, true);
+        applyBgmVolume();
+        playBgmAudioWithRetry(gameBgmAudio);
+    };
+    gameBgmAudio._continuousEndedHandler = onBgmEnded;
+    gameBgmAudio.addEventListener('ended', onBgmEnded);
+}
+
+function removeContinuousBgmEndedHandler() {
+    if (!gameBgmAudio || !gameBgmAudio._continuousEndedHandler) return;
+    gameBgmAudio.removeEventListener('ended', gameBgmAudio._continuousEndedHandler);
+    gameBgmAudio._continuousEndedHandler = null;
+}
+
+function playBgmAudioWithRetry(audio, retryDelayMs = 250) {
+    if (!audio) return;
+    audio.muted = !!gameSettings.bgmMute;
+    if (audio.muted) return;
+    const playPromise = audio.play();
+    if (!playPromise || typeof playPromise.catch !== 'function') return;
+    playPromise.catch(() => {
+        setTimeout(() => {
+            if (!audio || gameSettings.bgmMute) return;
+            if (isPreparingGameStart) return;
+            if (audio === bgmAudio && (isGameRunning || (!isSettingsScreenVisible() && !isTitleScreenVisible()))) return;
+            if (audio === gameBgmAudio && (!isGameRunning || isSettingsScreenVisible() || isTitleScreenVisible())) return;
+            audio.play().catch(() => {});
+        }, retryDelayMs);
+    });
+}
+
+function playGameBGM(forceNewTrack = false) {
+    if (gameSettings.bgmMute) return;
+    const enabledTracks = getEnabledBgmTracks();
+    if (enabledTracks.length === 0) {
+        stopGameBGM(true);
+        return;
+    }
+    if (forceNewTrack || !currentBgmTrack || !enabledTracks.includes(currentBgmTrack)) {
+        currentBgmTrack = pickNextBgmTrack();
+        if (!currentBgmTrack) {
+            stopGameBGM(true);
+            return;
+        }
+    }
+    if (gameBgmAudio && !gameBgmAudio.paused && isTrackLoaded(currentBgmTrack, gameBgmAudio)) {
+        gameBgmAudio.loop = gameSettings.bgmPlayMode !== 'continuous';
+        if (gameSettings.bgmPlayMode === 'continuous') ensureContinuousBgmEndedHandler();
+        else removeContinuousBgmEndedHandler();
+        applyBgmVolume();
+        return;
+    }
+    if (gameBgmAudio) gameBgmAudio.pause();
+    removeContinuousBgmEndedHandler();
+    applyBgmVolume();
+    const requestedTrack = currentBgmTrack;
+    playGameBgmWithWebAudio(requestedTrack, forceNewTrack).then(started => {
+        if (started !== false || !gameBgmAudio || gameSettings.bgmMute) return;
+        if (requestedTrack !== currentBgmTrack || !isGameRunning || isSettingsScreenVisible()) return;
+        setBgmTrack(requestedTrack, true);
+        gameBgmAudio.loop = gameSettings.bgmPlayMode !== 'continuous';
+        if (gameSettings.bgmPlayMode === 'continuous') ensureContinuousBgmEndedHandler();
+        playBgmAudioWithRetry(gameBgmAudio);
+    });
+}
+
+function stopGameBGM(resetTime = false) {
+    releaseGameBgmBufferSource(true);
+    if (gameBgmAudio) gameBgmAudio.pause();
+    removeContinuousBgmEndedHandler();
+    if (resetTime && gameBgmAudio) {
+        gameBgmAudio.currentTime = 0;
+    }
+}
+
+function playMenuBGM() {
+    if (!bgmAudio || gameSettings.bgmMute) return;
+    if (!isTrackLoaded(MENU_BGM_TRACK, bgmAudio)) {
+        bgmAudio.src = MENU_BGM_TRACK;
+        bgmAudio.load();
+    }
+    bgmAudio.loop = true;
+    applyBgmVolume();
+    if (bgmAudio.paused) playBgmAudioWithRetry(bgmAudio);
+}
+
+function stopMenuBGM(resetTime = false) {
+    if (!bgmAudio) return;
+    bgmAudio.pause();
+    if (resetTime) {
+        bgmAudio.currentTime = 0;
+    }
+}
+
+function startStageBGM(usePreparedTrack = false) {
+    if (!isGameRunning || isSettingsScreenVisible()) {
+        stopGameBGM(false);
+        return;
+    }
+    stopMenuBGM(false);
+    if (gameBgmAudio && !gameBgmAudio.paused && currentBgmTrack
+        && isTrackLoaded(currentBgmTrack, gameBgmAudio)) {
+        playGameBGM(false);
+        return;
+    }
+    if (usePreparedTrack || gameSettings.bgmPlayMode === 'continuous') {
+        playGameBGM(false);
+    } else {
+        playGameBGM(true);
+    }
+}
+
+function updateMenuBGM() {
+    if (isPreparingGameStart) {
+        stopMenuBGM(false);
+        stopGameBGM(false);
+        return;
+    }
+    if (gameSettings.bgmMute) {
+        stopMenuBGM(false);
+        stopGameBGM(false);
+        return;
+    }
+    if (isSettingsScreenVisible() || isTitleScreenVisible()) {
+        // ゲーム中に設定画面へ戻った場合は、現在の曲をそのまま維持する
+        if (isGameRunning) {
+            applyBgmVolume();
+            return;
+        }
+        stopGameBGM(false);
+        playMenuBGM();
+        return;
+    }
+    stopMenuBGM(false);
+    if (!isGameRunning) {
+        stopGameBGM(false);
+        return;
+    }
+    playGameBGM(false);
+}
+
+function startGame() {
+    debugLog('startGame() called');
+    document.body.classList.remove('settings-screen-active');
+    applySettingsScreenLighting(false);
+    ensureBuildStamp();
+      applyBillBattleModeConstraints();
+      updateSettingsAvailabilityForMode();
+    if (isBillBattleMode()) {
+        billBattleFloor = 1;
+    }
+    
+    // シーンを完全にクリーンアップ（マップ切り替え時のゴースト対策）
+    forceRoofCleanup();
+    forceBuildingCleanup(); // 建築物クリーンアップを追加
+    resetObstacles();
+    setRifleZoom(false);
+    camera.fov = 75;
+    camera.updateProjectionMatrix();
+    
+    const startSc = document.getElementById('start-screen');
+    if (startSc) startSc.style.display = 'none';
+    if (renderer && renderer.domElement) {
+        renderer.domElement.style.display = 'block';
+    }
+    createStreetLights();
+    if (gameSettings.nightModeEnabled) {
+        ambientLight.intensity = 0.05;
+        directionalLight.intensity = 0.05;
+        renderer.setClearColor(0x111122);
+        setStreetLightsIntensity(gameSettings.nightModeLightIntensity);
+    } else {
+        applyOutdoorDayLighting();
+    }
+    const gameUI = ['crosshair', 'player-hp-display', 'player-weapon-display']; // 共通UI
+
+    if (gameSettings.gameMode === 'arcade') {
+        gameUI.push('kill-count-display', 'ai-hp-display', 'ai2-hp-display', 'ai3-hp-display'); // アーケードモードのAI HP表示も追加
+        gameUI.push('game-timer-display');
+    } else if (isTeamBasedAIMode() || gameSettings.gameMode === 'ffa') {
+        gameUI.push('ai-hp-display', 'ai2-hp-display', 'ai3-hp-display'); // チームモードのAI HP表示
+        if (isTeamBasedAIMode() || gameSettings.gameMode === 'ffa') {
+            gameUI.push('game-timer-display');
+        }
+        if (isTeamBasedAIMode()) {
+            gameUI.push('player-team-kills-display', 'enemy-team-kills-display');
+        }
+    }
+    gameUI.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'block';
+    });
+    // 新しく追加したコンテナの表示制御
+    const teamKillsContainer = document.getElementById('team-kills-container');
+    const aiHpContainer = document.getElementById('ai-hp-container');
+
+    if (isTeamBasedAIMode()) {
+        if (teamKillsContainer) teamKillsContainer.style.display = 'flex';
+        if (aiHpContainer) aiHpContainer.style.display = 'block';
+    } else if (gameSettings.gameMode === 'ffa') {
+        if (teamKillsContainer) teamKillsContainer.style.display = 'none';
+        if (aiHpContainer) aiHpContainer.style.display = 'block';
+    } else {
+        if (teamKillsContainer) teamKillsContainer.style.display = 'none';
+        if (aiHpContainer) aiHpContainer.style.display = 'block'; // AI HPは常に表示する
+    }
+    const element = document.documentElement;
+
+      if (shouldShowTouchControls()) {
+          debugLog('startGame(): Mobile device detected. Setting UI to block/flex.');
+          const joy = document.getElementById('joystick-move');
+          const fire = document.getElementById('fire-button');
+          const crouch = document.getElementById('crouch-button');
+          const zoom = document.getElementById('zoom-button');
+          const pause = document.getElementById('pause-button');
+          const followBtn = document.getElementById('follow-button'); 
+
+        if (joy) { joy.style.display = 'block'; debugLog('startGame(): joystick-move display set to block'); }
+        if (fire) { fire.style.display = 'flex'; debugLog('startGame(): fire-button display set to flex'); }
+        if (crouch) { crouch.style.display = 'flex'; debugLog('startGame(): crouch-button display set to flex'); }
+        if (zoom) { zoom.style.display = 'flex'; debugLog('startGame(): zoom-button display set to flex'); }
+        if (pause) { pause.style.display = 'block'; debugLog('startGame(): pause-button display set to block'); }
+
+          if (followBtn) { 
+              if (isTeamBasedAIMode()) {
+                  followBtn.style.display = 'flex'; debugLog('startGame(): follow-button display set to flex (team mode)');
+              } else {
+                  followBtn.style.display = 'none'; debugLog('startGame(): follow-button display set to none (non-team mode)');
+              }
+          }
+          initJoystick();
+      } else {
+        debugLog('startGame(): PC device detected. Setting UI to none.');
+        const joy = document.getElementById('joystick-move');
+        const fire = document.getElementById('fire-button');
+        const crouch = document.getElementById('crouch-button');
+        const zoom = document.getElementById('zoom-button');
+        const followBtn = document.getElementById('follow-button'); 
+
+        if (joy) { joy.style.display = 'none'; debugLog('startGame(): joystick-move display set to none'); }
+        if (fire) { fire.style.display = 'none'; debugLog('startGame(): fire-button display set to none'); }
+        if (crouch) { crouch.style.display = 'none'; debugLog('startGame(): crouch-button display set to none'); }
+        if (zoom) { zoom.style.display = 'none'; debugLog('startGame(): zoom-button display set to none'); }
+        if (followBtn) { followBtn.style.display = 'none'; debugLog('startGame(): follow-button display set to none'); }
+    }
+    enforceTouchUIVisibility();
+    try {
+        if (element.requestFullscreen) {
+            element.requestFullscreen().catch(err => console.warn('Fullscreen API error:', err));
+        } else if (element.webkitRequestFullscreen) {
+            element.webkitRequestFullscreen().catch(err => console.warn('Fullscreen API error (webkit):', err));
+        }
+    } catch (e) {
+        console.warn('Error trying to enter fullscreen:', e);
+    }
+    try {
+        if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock('landscape').catch(e => console.warn('Orientation lock failed:', e));
+        }
+    } catch (e) {
+        console.warn('Error trying to lock orientation:', e);
+    }
+    if (typeof resetObstacles === 'function') resetObstacles();
+    // 強制的に表示設定 (デバッグ目的)
+    if (playerHPDisplay) playerHPDisplay.style.display = 'block';
+    if (playerWeaponDisplay) playerWeaponDisplay.style.display = 'block';
+    
+    // 有効時はタイムラプスモードを開始
+    if (gameSettings.timeLapseMode) {
+        startTimeLapseMode();
+    }
+}
+
+function resetWeaponPickups(aiList = []) {
+    for (let i = weaponPickups.length - 1; i >= 0; i--) {
+        if (weaponPickups[i].parent) {
+            scene.remove(weaponPickups[i]);
+        }
+    }
+    weaponPickups.length = 0;
+    respawningPickups.length = 0;
+    createWeaponPickups(aiList);
+}
+
+function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+}
+
+function restartGame(options = {}) {
+    debugLog('restartGame() called');
+    if (options.rerollRandomMap && gameSettings.mapType === 'random') {
+        activeRandomMapData = null;
+    }
+    resetMatchEventVoices();
+    applySettingsScreenLighting(false);
+    ensureBuildStamp();
+      applyBillBattleModeConstraints();
+      updateSettingsAvailabilityForMode();
+    if (isBillBattleMode() && !options.preserveBillBattleFloor) {
+        billBattleFloor = 1;
+    }
+    playerBreadcrumbs = []; // 軌跡配列をリセット
+    
+    // 屋根ゴーストと建築物を先にクリーンアップ
+    forceHouseCleanup();
+    forceRoofCleanup();
+    forceBuildingCleanup(); // 建築物クリーンアップを追加
+    
+    resetObstacles();
+    gameOverScreen.style.display = 'none';
+    winScreen.style.display = 'none';
+    if (gameSettings.gameMode === 'arcade') {
+        if (killCountDisplay) killCountDisplay.style.display = 'block';
+        if (aiHPDisplay) aiHPDisplay.style.display = 'block';
+        if (document.getElementById('ai2-hp-display')) document.getElementById('ai2-hp-display').style.display = 'block';
+        if (document.getElementById('ai3-hp-display')) document.getElementById('ai3-hp-display').style.display = 'block';
+    } else {
+        if (killCountDisplay) killCountDisplay.style.display = 'none';
+    }
+    let customSpawnPoints = null;
+    let availableSpawnPoints = [];
+    if (isBillBattleMode()) {
+        availableSpawnPoints = [];
+    }
+    if (gameSettings.mapType === 'default') {
+        const R = ARENA_PLAY_AREA_RADIUS - 5;
+        let currentAICount = gameSettings.aiCount;
+        if (currentAICount === 1) {
+            availableSpawnPoints.push(new THREE.Vector3(40, 2.0, -40));
+            availableSpawnPoints.push(new THREE.Vector3(-40, 2.0, 40));
+        } else if (currentAICount === 2) {
+            for (let i = 0; i < 3; i++) {
+                const angle = (i / 3) * Math.PI * 2;
+                availableSpawnPoints.push(new THREE.Vector3(Math.sin(angle) * R, 2.0, Math.cos(angle) * R));
+            }
+        } else if (currentAICount === 3) {
+            for (let i = 0; i < 4; i++) {
+                const angle = (i / 4) * Math.PI * 2;
+                availableSpawnPoints.push(new THREE.Vector3(Math.sin(angle) * R, 2.0, Math.cos(angle) * R));
+            }
+        }
+        shuffle(availableSpawnPoints);
+    } else if (gameSettings.mapType === 'custom' || gameSettings.mapType === 'random') {
+        const resolved = resolveCustomMapSelection();
+        const selectedMapData = resolved.mapData;
+        if (gameSettings.mapType === 'custom' && resolved.mapName && resolved.mapName !== gameSettings.customMapName) {
+            gameSettings.customMapName = resolved.mapName;
+            saveSettings();
+        }
+        if (selectedMapData) {
+            debugLog("カスタムマップが選択されました。選択されたマップデータ:", selectedMapData); // 追加
+            try {
+                if (selectedMapData && Array.isArray(selectedMapData.obstacles)) {
+                    customSpawnPoints = getCompatibleCustomSpawnPoints(selectedMapData);
+                    shuffle(customSpawnPoints);
+                    availableSpawnPoints = customSpawnPoints;
+                }
+                if (selectedMapData.floorColor !== undefined) {
+                    setArenaFloorColor(selectedMapData.floorColor);
+                }
+            } catch (e) {
+                console.error("Could not parse spawn points from custom map data.", e);
+            }
+        }
+    }
+    playerHP = gameSettings.playerHP === 'Infinity' ? Infinity : parseInt(gameSettings.playerHP, 10);
+    if (playerHPDisplay) { // nullチェックを追加
+        playerHPDisplay.textContent = `HP: ${playerHP === Infinity ? '∞' : playerHP}`;
+    }
+    playerKills = 0;
+    if (killCountDisplay) killCountDisplay.textContent = `KILLS: ${playerKills}`;
+
+    // --- 新しいゲームモードの追加 ---
+    const isTeamModeOrTeamArcade = isTeamBasedAIMode();
+    if (isTeamModeOrTeamArcade) {
+        playerTeamKills = 0;
+        enemyTeamKills = 0;
+        if (playerTeamKillsDisplay) playerTeamKillsDisplay.textContent = `PLAYER TEAM KILLS: ${playerTeamKills}`;
+        if (enemyTeamKillsDisplay) enemyTeamKillsDisplay.textContent = `ENEMY TEAM KILLS: ${enemyTeamKills}`;
+        gameTimer = gameSettings.gameDuration;
+        updateTimerDisplay();
+        startTimer();
+    } else if (gameSettings.gameMode === 'arcade') {
+        playerTeamKills = 0;
+        enemyTeamKills = 0;
+        gameTimer = gameSettings.gameDuration;
+        updateTimerDisplay();
+        startTimer();
+        if (playerTeamKillsDisplay) playerTeamKillsDisplay.style.display = 'none';
+        if (enemyTeamKillsDisplay) enemyTeamKillsDisplay.style.display = 'none';
+    } else if (gameSettings.gameMode === 'ffa') {
+        if (killCountDisplay) killCountDisplay.style.display = 'block';
+        gameTimer = gameSettings.gameDuration;
+        updateTimerDisplay();
+        startTimer();
+        if (playerTeamKillsDisplay) playerTeamKillsDisplay.style.display = 'none';
+        if (enemyTeamKillsDisplay) enemyTeamKillsDisplay.style.display = 'none';
+    } else {
+        stopTimer(); // チームモード以外ではタイマーを停止
+        if (gameTimerDisplay) gameTimerDisplay.style.display = 'none';
+        if (playerTeamKillsDisplay) playerTeamKillsDisplay.style.display = 'none';
+        if (enemyTeamKillsDisplay) enemyTeamKillsDisplay.style.display = 'none';
+    }
+    // --- ここまで ---
+    let playerSpawnPos;
+    if (isBillBattleMode()) {
+        playerSpawnPos = getBillBattlePlayerSpawn();
+    } else if (availableSpawnPoints.length > 0) {
+        playerSpawnPos = availableSpawnPoints.pop();
+    } else {
+        const playerSpawn = customSpawnPoints ? customSpawnPoints.find(p => p.name === 'Player') : null;
+        playerSpawnPos = playerSpawn ? new THREE.Vector3(playerSpawn.x, 2.0, playerSpawn.z) : PLAYER_INITIAL_POSITION;
+    }
+    player.position.copy(playerSpawnPos);
+    player.position.y = getGroundSurfaceY(player.position) + playerTargetHeight;
+    if (isBillBattleMode()) {
+        enforceBillBattleInsideActor(player, 1.2, true, playerTargetHeight);
+        // インドアコンバット開始時にしゃがみ/身長を通常値へ戻す
+        setCrouchToggle(false);
+        playerTargetHeight = BILL_BATTLE_PLAYER_HEIGHT;
+        player.position.y = -FLOOR_HEIGHT + playerTargetHeight;
+        if (playerModel) {
+            playerModel.position.set(0, -playerTargetHeight, 0);
+        }
+    }
+    // スポーン位置が障害物/爆発物と重なる場合、入力不能を防ぐため安全地点へ再配置する。
+    if (checkCollision(player, obstacles)) {
+        const pushDistance = 0.2;
+        const resolved = resolvePlayerCollision(player, obstacles, pushDistance);
+        if (!resolved || checkCollision(player, obstacles)) {
+            let safePos = null;
+            if (isBillBattleMode()) {
+                for (let i = 0; i < 8; i++) {
+                    const candidate = getBillBattlePlayerSpawn();
+                    if (!candidate || !Number.isFinite(candidate.x)) continue;
+                    player.position.copy(candidate);
+                    if (!checkCollision(player, obstacles)) {
+                        safePos = candidate;
+                        break;
+                    }
+                }
+            }
+            if (!safePos) {
+                safePos = findSaferRespawnPosition(player, [], playerTargetHeight * 2, 0, null);
+            }
+            if (safePos) {
+                player.position.copy(safePos);
+                if (isBillBattleMode()) {
+                    enforceBillBattleInsideActor(player, 1.2, true, playerTargetHeight);
+                    player.position.y = -FLOOR_HEIGHT + playerTargetHeight;
+                }
+            }
+        }
+    }
+
+      // プレイヤーがアリーナの中心を向くように角度を計算
+      // カメラはプレイヤーオブジェクトの逆向き（-Z方向）を向いているため、
+      // プレイヤー自体は中心と逆の方向を向く必要がある
+      const lookAtPoint = new THREE.Vector3(0, player.position.y, 0);
+    const direction = new THREE.Vector3().subVectors(lookAtPoint, player.position);
+    player.rotation.y = Math.atan2(direction.x, direction.z) + Math.PI;
+
+    window.justRestarted = true;
+    const playerDir = new THREE.Vector3();
+    player.getWorldDirection(playerDir);
+    camera.rotation.x = 0;
+    applyPlayerDefaultWeaponLoadout();
+    let finalAICount = isBillBattleMode() ? getBillBattleAICount() : gameSettings.aiCount;
+    const isTeamMode = isTeamBasedAIMode();
+    if (isTeamMode) {
+        finalAICount = 3; // チームモードおよびチームアーケードモードでは常に3体（1体味方 + 2体敵）
+    }
+    for (const ai of ais) {
+        cleanupAI(ai); // AIと関連リソースを正しく削除するためcleanupAIを使用
+    }
+    ais.length = 0;
+    const aiColors = [0xb64b3e, 0xbd8740, 0x7c639c];
+    const teamColors = {
+        player: 0x2586c9,
+        enemy: [0xb63e37, 0xb63e37]
+    };
+    for (let i = 0; i < finalAICount; i++) {
+        let aiColor;
+        let aiTeam = null; // FFA/Battleモードは初期状態でチームなし
+        if (isBillBattleMode()) {
+            aiTeam = 'enemy';
+        }
+
+        if (isTeamMode) {
+            if (i === 0) {
+                aiTeam = 'player'; // 最初の1体は味方
+                aiColor = teamColors.player;
+            } else {
+                aiTeam = 'enemy'; // 残り2体は敵
+                aiColor = teamColors.enemy[i - 1];
+            }
+        } else { // Battle / Arcade / FFA
+            aiColor = aiColors[i] || 0xff00ff;
+        }
+        // インデックスに基づいてAIのカスタムを決定
+        let aiCustomization = null;
+        if (i === 0) {
+            aiCustomization = characterCustomization.enemy1;
+        } else if (i === 1) {
+            aiCustomization = characterCustomization.enemy2;
+        } else if (i === 2) {
+            aiCustomization = characterCustomization.enemy3;
+        }
+        
+        const ai = createAI(aiColor, aiCustomization);
+        resetCharacterPose(ai); // 既定ポーズへリセット
+        // ゲームプレイ中は銃を表示
+        if (ai.userData.parts && ai.userData.parts.gun) {
+            ai.userData.parts.gun.visible = true;
+        }
+        ai.team = aiTeam; // チームプロパティを設定 (null for non-team modes)
+        if (!ai.userData) ai.userData = {};
+        ai.userData.slotIndex = i + 1;
+        bindArmoryCharacter(ai, `enemy${i + 1}`, ai.currentWeapon || WEAPON_PISTOL);
+        if (isTeamMode) {
+            if (aiTeam === 'enemy') {
+                ai.userData.mgSound = (i === 1) ? ai1mGunSound : ai2mGunSound;
+                ai.userData.m1Sound = aiM1GunSound;
+            } else {
+                ai.userData.mgSound = null;
+                ai.userData.m1Sound = aiM1GunSound2;
+            }
+        } else {
+            const mgList = [aimgGunSound, ai1mGunSound, ai2mGunSound];
+            const m1List = [aiM1GunSound, aiM1GunSound2, aiM1GunSound3];
+            ai.userData.mgSound = mgList[i % mgList.length];
+            ai.userData.m1Sound = m1List[i % m1List.length];
+            if (isBillBattleMode() && finalAICount === 1) {
+                ai.userData.m1Sound = aiM1GunSound3;
+            }
+        }
+        ai.kills = 0; // キル数を初期化
+        let aiSpawnPos;
+        if (isTeamMode && aiTeam === 'player') {
+            aiSpawnPos = getNearbyTeammateSpawnPosition(ai);
+        } else if (isBillBattleMode()) {
+            aiSpawnPos = getBillBattleAISpawn();
+            // スポーン位置が有効であることを保証
+            if (!aiSpawnPos || !Number.isFinite(aiSpawnPos.x) || !Number.isFinite(aiSpawnPos.y) || !Number.isFinite(aiSpawnPos.z)) {
+                console.warn('Invalid initial AI spawn position, using fallback');
+                aiSpawnPos = new THREE.Vector3(0, -FLOOR_HEIGHT, 0);
+            }
+        } else if (availableSpawnPoints.length > 0) {
+            aiSpawnPos = availableSpawnPoints.pop();
+        } else {
+            const aiSpawn = customSpawnPoints ? customSpawnPoints.find(p => p.name === `AI ${i + 1}`) : null;
+            const defaultPos = AI_INITIAL_POSITIONS[i] || new THREE.Vector3(Math.random() * 20 - 10, 0, 20);
+            aiSpawnPos = aiSpawn ? new THREE.Vector3(aiSpawn.x, 0, aiSpawn.z) : defaultPos;
+        }
+        ai.position.copy(aiSpawnPos);
+        ai.position.y = getGroundSurfaceY(ai.position);
+        // プレイヤーと同様にAIをステージ中央へ向ける
+        const lookAtPoint = new THREE.Vector3(0, ai.position.y, 0);
+        const direction = new THREE.Vector3().subVectors(lookAtPoint, ai.position);
+        ai.rotation.y = Math.atan2(direction.x, direction.z);
+          if (isBillBattleMode()) {
+              ai.state = 'ATTACKING'; // 攻撃モードで開始
+              ai.isCrouching = false;
+              ai.scale.y = 1.0;
+              ai.crouchUntilTime = null;
+              if (!ai.userData) ai.userData = {};
+              // Build Battleでは休眠状態なし。AIは開始時からアクティブにする。
+              ai.userData.billBattleFixedSpawnPos = ai.position.clone();
+              ai.visible = true; // AIを即時表示する
+          }
+        // 即時のスタック監視発火を防ぐため、lastPositionを現在位置で初期化する
+        if (ai.lastPosition) ai.lastPosition.copy(ai.position);
+        if (finalAICount === 3 && !isTeamMode) {
+            if (i === 0) { ai.aggression = 0.7; ai.flankAggression = 0.1; }
+            else if (i === 1) { ai.aggression = 0.4; ai.flankAggression = 0.8; ai.flankPreference = 'left'; }
+            else { ai.aggression = 0.5; ai.flankAggression = 0.8; ai.flankPreference = 'right'; }
+        } else {
+            ai.aggression = Math.random();
+            ai.flankAggression = Math.random();
+        }
+        scene.add(ai);
+        ais.push(ai);
+    }
+    // 初期向きを「最寄りの敵対対象」に合わせる（開始直後に逆向きで走るのを防ぐ）
+    for (const ai of ais) {
+        // 初期の探索を積極化するため、近接ターゲットを取得して即座に向かわせる
+        const initTarget = getClosestOpponentPosition(ai);
+        if (initTarget) {
+            ai.targetPosition.copy(initTarget);
+            ai.rotation.y = Math.atan2(initTarget.x - ai.position.x, initTarget.z - ai.position.z);
+        } else {
+            // ターゲットが取れない場合のみアリーナ中央を向く
+            ai.rotation.y = Math.atan2(0 - ai.position.x, 0 - ai.position.z);
+        }
+        // 開始直後から索敵・攻撃判断をさせる
+        ai.userData.nextPerceptionTime = 0;
+    }
+    const aiHP = gameSettings.aiHP === 'Infinity' ? Infinity : parseInt(gameSettings.aiHP, 10);
+    const aiHPText = gameSettings.aiHP === 'Infinity' ? '∞' : aiHP;
+    const ai1HPDisplay = document.getElementById('ai-hp-display');
+    const ai2HPDisplay = document.getElementById('ai2-hp-display');
+    const ai3HPDisplay = document.getElementById('ai3-hp-display');
+    ais.forEach((ai, index) => {
+        ai.hp = aiHP;
+        // 味方AIは積極的に攻撃するため、初期状態をATTACKINGにする
+        if (isTeamMode && ai.team === 'player') {
+            ai.state = 'ATTACKING';
+            ai.currentAttackTime = 0;
+            ai.strafeDirection = (Math.random() > 0.5 ? 1 : -1);
+            ai.aggression = 0.98; // 味方AIは最大寄りの攻撃性
+            ai.flankAggression = 0.9;
+            // 味方AIは開始時から近い敵を追いかける
+            const closestEnemy = getClosestOpponentPosition(ai);
+            if (closestEnemy) ai.targetPosition.copy(closestEnemy);
+            ai.userData.nextPerceptionTime = 0;
+        } else if (isTeamMode && ai.team === 'enemy') {
+            ai.state = 'ATTACKING';
+            ai.currentAttackTime = 0;
+            ai.strafeDirection = (Math.random() > 0.5 ? 1 : -1);
+            ai.aggression = 0.75;
+            ai.flankAggression = 0.5;
+            // 敵AIも近くのターゲットへすぐ移動する
+            const closestEnemy = getClosestOpponentPosition(ai);
+            if (closestEnemy) ai.targetPosition.copy(closestEnemy);
+            ai.userData.nextPerceptionTime = 0;
+        } else {
+            // 非チームモードでも開始直後から戦闘意思を持たせる
+            ai.state = 'ATTACKING';
+            ai.currentAttackTime = 0;
+            ai.strafeDirection = (Math.random() > 0.5 ? 1 : -1);
+
+            const closest = getClosestOpponentPosition(ai);
+            if (closest) {
+                ai.targetPosition.copy(closest);
+            } else {
+                // 念のため: ターゲットが取れない場合は移動へ
+                ai.state = 'MOVING';
+                const angle = Math.random() * Math.PI * 2;
+                const r = ARENA_PLAY_AREA_RADIUS * 0.6 * Math.random();
+                ai.targetPosition.set(Math.cos(angle) * r, -FLOOR_HEIGHT, Math.sin(angle) * r);
+            }
+
+            ai.userData.searchPulseAt = clock.getElapsedTime() + 0.1;
+            ai.userData.nextPerceptionTime = 0;
+            ai.aggression = Math.max(0.3, ai.aggression || Math.random());
+        }
+        applyAIDefaultWeaponLoadout(ai, { suppressEventVoices: true });
+        ai.targetWeaponPickup = null;
+        ai.lastHiddenTime = 0; ai.lastAttackTime = -999; ai.currentAttackTime = 0; ai.avoiding = false;
+        if (isTeamMode) {
+            if (index === 0) { // 味方AI
+                if (ai1HPDisplay) ai1HPDisplay.textContent = `Teammate HP: ${aiHPText}`;
+                if (ai1HPDisplay) ai1HPDisplay.style.color = 'cyan'; // 味方はシアン色
+            } else if (index === 1) { // 敵AI 1
+                if (ai2HPDisplay) ai2HPDisplay.textContent = `Enemy 1 HP: ${aiHPText}`;
+                if (ai2HPDisplay) ai2HPDisplay.style.color = 'limegreen';
+            } else if (index === 2) { // 敵AI 2
+                if (ai3HPDisplay) ai3HPDisplay.textContent = `Enemy 2 HP: ${aiHPText}`;
+                if (ai3HPDisplay) ai3HPDisplay.style.color = 'orange';
+            }
+        } else {
+            if (index === 0) { if (ai1HPDisplay) ai1HPDisplay.textContent = `AI 1 HP: ${aiHPText}`; if (ai1HPDisplay) ai1HPDisplay.style.color = 'limegreen'; }
+            else if (index === 1) { if (ai2HPDisplay) ai2HPDisplay.textContent = `AI 2 HP: ${aiHPText}`; if (ai2HPDisplay) ai2HPDisplay.style.color = 'cyan'; }
+            else if (index === 2) { if (ai3HPDisplay) ai3HPDisplay.textContent = `AI 3 HP: ${aiHPText}`; if (ai3HPDisplay) ai3HPDisplay.style.color = 'orange'; }
+        }
+    });
+
+    resetWeaponPickups(ais);
+    if (isClassicBillBattleMode()) {
+        showFloorStartMessage(billBattleFloor);
+    }
+
+    // AI HPの個別表示制御はコンテナに任せるため削除
+
+    const gameUI = ['crosshair', 'player-hp-display', 'player-weapon-display']; // 共通UI
+
+    if (gameSettings.gameMode === 'arcade') {
+        gameUI.push('kill-count-display', 'game-timer-display');
+    } else if (isTeamBasedAIMode()) {
+        gameUI.push('player-team-kills-display', 'enemy-team-kills-display'); // 追加
+        gameUI.push('game-timer-display');
+    }
+    gameUI.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'block';
+    });
+    // 新しく追加したコンテナの表示制御
+    const teamKillsContainer = document.getElementById('team-kills-container');
+    const aiHpContainer = document.getElementById('ai-hp-container');
+
+    if (isTeamBasedAIMode()) {
+        if (teamKillsContainer) teamKillsContainer.style.display = 'flex';
+        if (aiHpContainer) aiHpContainer.style.display = 'block';
+    } else {
+        if (teamKillsContainer) teamKillsContainer.style.display = 'none';
+        if (aiHpContainer) aiHpContainer.style.display = 'block'; // AI HPは常に表示する
+    }
+      if (shouldShowTouchControls()) {
+          debugLog('restartGame(): Mobile device detected. Setting UI to block/flex.');
+          const joy = document.getElementById('joystick-move');
+          const fire = document.getElementById('fire-button');
+          const crouch = document.getElementById('crouch-button');
+          const zoom = document.getElementById('zoom-button');
+          const pause = document.getElementById('pause-button');
+        if (joy) { joy.style.display = 'block'; debugLog('restartGame(): joystick-move display set to block'); }
+        if (fire) { fire.style.display = 'flex'; debugLog('restartGame(): fire-button display set to flex'); }
+          if (crouch) { crouch.style.display = 'flex'; debugLog('restartGame(): crouch-button display set to flex'); }
+          if (zoom) { zoom.style.display = 'flex'; debugLog('restartGame(): zoom-button display set to flex'); }
+          if (pause) { pause.style.display = 'block'; debugLog('restartGame(): pause-button display set to block'); }
+          initJoystick();
+      } else {
+        debugLog('restartGame(): PC device detected. Setting UI to none.');
+        const joy = document.getElementById('joystick-move');
+        const fire = document.getElementById('fire-button');
+        const crouch = document.getElementById('crouch-button');
+        const zoom = document.getElementById('zoom-button');
+        const pause = document.getElementById('pause-button');
+        if (joy) { joy.style.display = 'none'; debugLog('restartGame(): joystick-move display set to none'); }
+        if (fire) { fire.style.display = 'none'; debugLog('restartGame(): fire-button display set to none'); }
+        if (crouch) { crouch.style.display = 'none'; debugLog('restartGame(): crouch-button display set to none'); }
+        if (zoom) { zoom.style.display = 'none'; debugLog('restartGame(): zoom-button display set to none'); }
+        if (pause) { pause.style.display = 'none'; debugLog('restartGame(): pause-button display set to none'); } // PauseボタンもPCでは非表示
+    }
+    enforceTouchUIVisibility();
+    clearProjectileArtifacts();
+    for (let i = debris.length - 1; i >= 0; i--) {
+        const mesh = debris[i].mesh;
+        if (mesh.parent) {
+            mesh.parent.remove(mesh);
+        }
+    }
+    debris.length = 0;
+    // ここで地形を再生成すると、既に配置したプレイヤー/AIと地形が不整合になるため再生成しない。
+    // resetWeaponPickups(); // AI生成後へ移動済み
+    if (shouldSpawnMedikits()) {
+        for (let i = 0; i < gameSettings.medikitCount; i++) {
+            createMedikitPickup(getMedikitSpawnPosition());
+        }
+    }
+    clock.start();
+    // Spread the first expensive LOS raycasts over several frames instead of one startup spike.
+    ais.forEach((ai, index) => {
+        if (ai && ai.userData) ai.userData.nextPerceptionTime = index * 0.07;
+    });
+    lastFireTime = -1;
+    playerPistolReloadUntil = 0;
+    playerMGReloadUntil = 0;
+    playerMRReloadUntil = 0;
+    ammoPistolClip = MAX_AMMO_PISTOL_CLIP;
+    hideReloadingText();
+    keySet.clear();
+    joystickMoveVector.set(0, 0);
+    isMouseButtonDown = false;
+    isScoping = false; // スコープ状態もリセット
+    resetPlayerLadderState();
+    isGameRunning = !options.deferGameplay;
+    isPaused = !!options.deferGameplay;
+    updateMobileWeaponButtonVisibility();
+    if (!options.deferGameplay) {
+        startStageBGM();
+        playMatchStartVoice();
+    }
+    document.exitPointerLock(); // 念のためポインターロックを解除し、再取得の機会を与える
+    
+    // 既存のplayerModelがplayerに追加されている場合、まず削除する
+    if (playerModel && playerModel.parent) {
+        player.remove(playerModel);
+    }
+    playerModel = createCharacterModel(0xff3333, characterCustomization.player); // プレイヤーのカスタマイズ設定
+    bindArmoryCharacter(playerModel, 'player', currentWeapon);
+    player.add(playerModel);
+    playerModel.position.set(0, -playerTargetHeight, 0);
+    if (playerModel) { // 念のためnullチェック
+        playerModel.visible = false; // プレイヤーモデルは非表示に保つ
+    }
+    // playerBodyとplayerHeadをplayerModelのuserDataから取得
+    playerBody = playerModel.userData.parts.body;
+    playerHead = playerModel.userData.parts.head;
+}
+
+function startAIDeathSequence(impactVelocity, ai) {
+    aiFallDownCinematicSequence(impactVelocity, ai);
+}
+
+function getPlayerRespawnHostilePositions() {
+    const hostiles = [];
+    const isTeamModeOrArcade = isTeamBasedAIMode();
+    if (isTeamModeOrArcade) {
+        for (const ai of ais) {
+            if (ai && ai.hp > 0 && ai.team === 'enemy') hostiles.push(ai.position.clone());
+        }
+        return hostiles;
+    }
+    for (const ai of ais) {
+        if (ai && ai.hp > 0) hostiles.push(ai.position.clone());
+    }
+    return hostiles;
+}
+
+function findSaferRespawnPosition(entity, hostilePositions, objectBodyHeight, minDistanceFromAIs = 0, excludedAI = null) {
+    const R = ARENA_PLAY_AREA_RADIUS - 5;
+    const NUM_CANDIDATES = 90;
+    const oldPos = entity.position.clone();
+    const oldRot = entity.rotation.clone();
+
+    let bestPos = null;
+    let bestScore = -Infinity;
+
+    for (let i = 0; i < NUM_CANDIDATES; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.random() * R;
+        const candidate = new THREE.Vector3(Math.sin(angle) * radius, 0, Math.cos(angle) * radius);
+        candidate.y = getGroundY(candidate, objectBodyHeight);
+
+        entity.position.copy(candidate);
+        if (checkCollision(entity, obstacles)) continue;
+
+        if (minDistanceFromAIs > 0) {
+            let tooClose = false;
+            for (const otherAI of ais) {
+                if (!otherAI || otherAI === excludedAI || otherAI.hp <= 0) continue;
+                if (candidate.distanceTo(otherAI.position) < minDistanceFromAIs) {
+                    tooClose = true;
+                    break;
+                }
+            }
+            if (tooClose) continue;
+        }
+
+        let nearestHostileDist = 1000;
+        if (hostilePositions && hostilePositions.length > 0) {
+            nearestHostileDist = Infinity;
+            for (const hp of hostilePositions) {
+                const d = candidate.distanceTo(hp);
+                if (d < nearestHostileDist) nearestHostileDist = d;
+            }
+        }
+
+        if (nearestHostileDist > bestScore) {
+            bestScore = nearestHostileDist;
+            bestPos = candidate.clone();
+        }
+    }
+
+    entity.position.copy(oldPos);
+    entity.rotation.copy(oldRot);
+    return bestPos;
+}
+
+
+function respawnAI(ai) {
+    const aiHP = gameSettings.aiHP === 'Infinity' ? Infinity : parseInt(gameSettings.aiHP, 10);
+    ai.hp = aiHP;
+    if (!ai.userData) ai.userData = {};
+    markActorAsFreshRespawnForKillCam(ai);
+    stopKillCamPhysicsForActor(ai);
+    clearDeathFallState(ai);
+    if (ai.userData) ai.userData.rocketInFlight = false;
+    if (ai.userData) ai.userData.isDying = false;
+    if (isBillBattleMode()) {
+        let spawnPos = getBillBattleAISpawn();
+      // スポーン位置が有効であることを保証
+        if (!spawnPos || !Number.isFinite(spawnPos.x) || !Number.isFinite(spawnPos.y) || !Number.isFinite(spawnPos.z)) {
+            console.warn('Invalid AI spawn position, using fallback');
+            spawnPos = new THREE.Vector3(0, -FLOOR_HEIGHT, 0);
+        }
+        ai.position.copy(spawnPos);
+        ai.position.y = getGroundSurfaceY(ai.position);
+        enforceBillBattleInsideActor(ai, 1.2, true, BODY_HEIGHT);
+        const yaw = Math.atan2(player.position.x - ai.position.x, player.position.z - ai.position.z);
+        ai.state = 'ATTACKING'; // 攻撃モードで開始
+        // Build Battleでは休眠状態なし
+        ai.userData.billBattleFixedSpawnPos = ai.position.clone();
+        applyAIDefaultWeaponLoadout(ai, { suppressEventVoices: true });
+        resetAIActivePose(ai, yaw);
+        ai.state = 'ATTACKING';
+        ai.userData.billBattleFixedSpawnPos = ai.position.clone();
+        ai.targetWeaponPickup = null;
+          ai.lastHiddenTime = clock.getElapsedTime();
+          ai.lastAttackTime = 0; ai.currentAttackTime = 0; ai.avoiding = false;
+          if (ai.userData) ai.userData.mgReloadUntil = 0;
+          if (ai.userData) ai.userData.pistolReloadUntil = 0;
+          if (ai.userData) ai.userData.pistolClipAmmo = MAX_AMMO_PISTOL_CLIP;
+        ai.visible = true;
+        scene.add(ai);
+        return;
+    }
+    const isTeammate = ai.team === 'player';
+    const isTeamModeOrArcade = isTeamBasedAIMode();
+
+    if (isFollowingPlayerMode && isTeamModeOrArcade && isTeammate) {
+        const followPos = getSafeFollowSlotPosition(ai);
+        const originalPos = ai.position.clone();
+        ai.position.copy(followPos);
+        if (checkCollision(ai, obstacles)) {
+            ai.position.copy(originalPos);
+            ai.position.copy(getNearbyTeammateSpawnPosition(ai));
+        }
+        ai.state = 'FOLLOWING';
+        applyAIDefaultWeaponLoadout(ai, { suppressEventVoices: true });
+        resetAIActivePose(ai, player.rotation.y);
+        ai.state = 'FOLLOWING';
+        ai.userData.followActive = true;
+        ai.targetWeaponPickup = null;
+        ai.lastHiddenTime = clock.getElapsedTime();
+        ai.lastAttackTime = 0; ai.currentAttackTime = 0; ai.avoiding = false;
+        if (ai.userData) ai.userData.mgReloadUntil = 0;
+        if (ai.userData) ai.userData.pistolReloadUntil = 0;
+        if (ai.userData) ai.userData.pistolClipAmmo = MAX_AMMO_PISTOL_CLIP;
+        ai.userData.nextPerceptionTime = 0;
+        ai.userData.cachedVisibleOpponentInfo = null;
+        ai.userData.cachedIsAISeen = false;
+        ai.visible = true;
+        scene.add(ai);
+        return;
+    }
+
+    const hostilePositions = getOpponentTargetsForAI(ai).map(t => (t === player ? player.position.clone() : t.position.clone()));
+    let farthestPosition = findSaferRespawnPosition(ai, hostilePositions, BODY_HEIGHT * 2, 10, ai);
+    if (!farthestPosition) farthestPosition = new THREE.Vector3(0, getGroundY(new THREE.Vector3(0, 0, 0), BODY_HEIGHT * 2), 0);
+    ai.position.copy(farthestPosition);
+    const yaw = Math.atan2(player.position.x - ai.position.x, player.position.z - ai.position.z);
+    ai.state = 'HIDING';
+    applyAIDefaultWeaponLoadout(ai, { suppressEventVoices: true });
+    resetAIActivePose(ai, yaw);
+    ai.state = 'HIDING';
+    ai.targetWeaponPickup = null;
+    ai.lastHiddenTime = clock.getElapsedTime();
+    ai.lastAttackTime = 0; ai.currentAttackTime = 0; ai.avoiding = false;
+    if (ai.userData) ai.userData.mgReloadUntil = 0;
+    if (ai.userData) ai.userData.pistolReloadUntil = 0;
+    if (ai.userData) ai.userData.pistolClipAmmo = MAX_AMMO_PISTOL_CLIP;
+    if (ai.userData) ai.userData.mrReloadUntil = 0;
+    if (ai.userData) ai.userData.mrReloadUntil = 0;
+    ai.userData.nextPerceptionTime = 0;
+    ai.userData.cachedVisibleOpponentInfo = null;
+    ai.userData.cachedIsAISeen = false;
+    ai.visible = true;
+    scene.add(ai);
+}
+
+function respawnPlayer() {
+    playerHP = gameSettings.playerHP === 'Infinity' ? Infinity : parseInt(gameSettings.playerHP, 10);
+    if (playerHPDisplay) { // nullチェックを追加
+        playerHPDisplay.textContent = `HP: ${playerHP === Infinity ? '∞' : playerHP}`;
+    }
+
+    const isBillBattle = isBillBattleMode();
+
+    // 前試合・死亡前の屋上状態や再進入タイマーを残さない。
+    resetPlayerLadderState();
+
+    // プレイヤーの入力状態を完全にリセット
+    keySet.clear();
+    joystickMoveVector.set(0, 0);
+    isMouseButtonDown = false;
+    isScoping = false; // スコープ状態もリセット
+    cancelScope(); // もしスコープ中だったら解除
+
+    if (playerDeathTweenPos) { playerDeathTweenPos.stop(); playerDeathTweenPos = null; }
+    if (playerDeathTweenRotX) { playerDeathTweenRotX.stop(); playerDeathTweenRotX = null; }
+    if (playerDeathTweenRotZ) { playerDeathTweenRotZ.stop(); playerDeathTweenRotZ = null; }
+
+    if (!player.userData) player.userData = {};
+    markActorAsFreshRespawnForKillCam(player);
+    const hostilePositions = getPlayerRespawnHostilePositions();
+    let safePos = isBillBattle
+        ? getBillBattlePlayerSpawn()
+        : findSaferRespawnPosition(player, hostilePositions, playerTargetHeight * 2, 10, null);
+    if (safePos && lastPlayerDeathPos) {
+        let retryCount = 0;
+        while (safePos.distanceTo(lastPlayerDeathPos) < 8 && retryCount < 4) {
+            safePos = findSaferRespawnPosition(player, hostilePositions, playerTargetHeight * 2, 10, null);
+            retryCount++;
+        }
+    }
+      if (safePos) {
+          player.position.copy(safePos);
+          if (isBillBattle) {
+              enforceBillBattleInsideActor(player, 1.2, true, playerTargetHeight);
+              // インドアコンバットのリスポーン時に立ち姿の通常身長を保証
+              setCrouchToggle(false);
+              playerTargetHeight = BILL_BATTLE_PLAYER_HEIGHT;
+              player.position.y = -FLOOR_HEIGHT + playerTargetHeight;
+              if (playerModel) {
+                  playerModel.position.set(0, -playerTargetHeight, 0);
+              }
+          }
+          lastPlayerDeathPos = null;
+          restoreRightButtonsDefault();
+      } else {
+        console.error("Could not find a safe spawn point after multiple attempts. Spawning at default (0, 0, 0).");
+        const playerSpawnPos = new THREE.Vector3(0, 0, 0);
+        player.position.copy(playerSpawnPos);
+        const groundYAtDefaultSpawn = getGroundY(player.position, playerTargetHeight * 2);
+        player.position.y = groundYAtDefaultSpawn;
+    }
+
+    const respawnLookAt = new THREE.Vector3(0, player.position.y, 0);
+    const respawnDir = new THREE.Vector3().subVectors(respawnLookAt, player.position);
+    player.rotation.y = Math.atan2(respawnDir.x, respawnDir.z) + Math.PI;
+    player.rotation.x = 0;
+    player.rotation.z = 0;
+    if (camera) camera.rotation.set(0, 0, 0);
+    
+    // プレイヤーの位置と向きを設定
+    // player.position.copy(playerSpawnPos); // ループ内で既に設定済み
+      player.rotation.y = Math.atan2(0 - player.position.x, 0 - player.position.z) + Math.PI; // 中心を向く
+      player.rotation.x = 0;
+      player.rotation.z = 0;
+      if (camera) camera.rotation.set(0, 0, 0);
+    camera.rotation.x = 0; // カメラの縦回転をリセット
+    applyPlayerDefaultWeaponLoadout();
+
+    // playerModelの表示状態を確実に更新
+    if (playerModel) {
+        resetCharacterPose(playerModel);
+        if (playerModel.userData && playerModel.userData.parts && playerModel.userData.parts.gun) {
+            playerModel.userData.parts.gun.visible = true;
+        }
+        playerModel.rotation.set(0, 0, 0);
+        if (!playerModel.parent) { // もしplayerModelがシーンから削除されていたらplayerに追加
+            player.add(playerModel);
+        }
+        // playerModel.visible = true; // 常に表示
+        playerModel.visible = false; // <-- ここに明示的に追加
+        playerModel.position.set(0, -playerTargetHeight, 0); // playerModelはplayerの子なので相対位置を設定
+    }
+}
+
+
+function forceResetTouchState() {
+    isLooking = false;
+    lookTouchId = -1;
+    isMouseButtonDown = false;
+    joystickMoveVector.set(0, 0);
+    activeJoystickTouchId = null;
+    lastJoystickTouchPoint = null;
+    restoreJoystickAfterAIDeathKillCam = false;
+    preservedAIDeathJoystickVector.set(0, 0);
+}
+
+function preparePlayerModelForDeathKillCam(wasCrouching = false, wasMoving = false) {
+    if (!player || !playerModel) return false;
+    if (playerModel.parent !== player) {
+        player.attach(playerModel);
+    }
+    player.visible = true;
+    player.traverse((object) => { object.visible = true; });
+    resetCharacterVisualPose(playerModel, currentWeapon);
+    if (playerModel.userData && playerModel.userData.parts) {
+        applyCrouchPose(playerModel.userData.parts, wasCrouching, clock.getElapsedTime(), wasMoving, 0);
+    }
+    playerModel.rotation.set(0, 0, 0);
+    playerModel.position.set(0, -playerTargetHeight, 0);
+    groundPlayerModelForAIDeathKillCam();
+    playerModel.visible = true;
+    player.updateMatrixWorld(true);
+    playerModel.updateMatrixWorld(true);
+    return true;
+}
+
+function startPlayerDeathSequence(projectile) {
+    if (isPlayerDeathPlaying || playerHP > 0) return;
+    const deathWasCrouching = !!isCrouchingToggle;
+    const deathWasMoving = (joystickMoveVector && joystickMoveVector.lengthSq() > 0.0001)
+        || !!(keyboardMoveVector && keyboardMoveVector.lengthSq() > 0.0001);
+    const deathHitPoint = projectile && projectile.mesh
+        ? projectile.mesh.getWorldPosition(new THREE.Vector3())
+        : player.position.clone().add(new THREE.Vector3(0, playerTargetHeight * 0.55, 0));
+    const deathImpactVelocity = getReliableDeathImpactVelocity(projectile, player);
+    if (shouldPlayKillCamImpactSound(projectile) && impactSound) {
+        playSound(impactSound);
+    }
+    forceResetTouchState(); // 入力状態をリセット
+    isPlayerDeathPlaying = true;
+    captureDeathGroundY(player);
+    syncKillCamLighting();
+    isGameRunning = false; // 一時的にゲームを停止
+    document.exitPointerLock();
+    lastPlayerDeathPos = player.position.clone();
+
+    // 梯子昇降中の死亡でリスポーン後に浮くのを防ぐ
+    isElevating = false;
+    elevatingTargetY = 0;
+    elevatingTargetObstacle = null;
+    elevatingLandingPosition = null;
+
+    // プレイヤー死亡では、敵死亡キルカメラと同じ第三者視点用モデル準備を必ず通す。
+    // 初回キル前はこの準備が未実行なので、通常の一人称表示状態を引きずりやすい。
+    if (!preparePlayerModelForDeathKillCam(deathWasCrouching, deathWasMoving)) {
+        isPlayerDeathPlaying = false;
+        syncKillCamLighting();
+        isGameRunning = true;
+        updateMobileWeaponButtonVisibility();
+        return;
+    }
+    playerDeathActor = player;
+    // The gameplay camera looks down the player's -Z axis, while the visible model faces +Z.
+    // Face the death model toward the shooter before applying the backward impact reaction.
+    facePlayerDeathModelTowardImpactSource(deathImpactVelocity);
+
+    // UIを非表示
+    const uiToHide = ['joystick-move', 'fire-button', 'crosshair', 'crouch-button', 'zoom-button', 'follow-button', 'player-hp-display', 'ai-hp-display', 'ai2-hp-display', 'ai3-hp-display', 'player-weapon-display', 'pause-button', 'game-timer-display', 'player-team-kills-display', 'enemy-team-kills-display'];
+    uiToHide.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+    // キルカメラ中にジョイスティック内部状態が壊れたまま残るのを防ぐ
+    destroyJoystick();
+
+    // プレイヤーモデルは足元基準で配置
+    const playerBodyHeight = playerTargetHeight * 2;
+    const fallDuration = 1.0;
+
+    // AIと同じ姿勢ロジックで、死亡時も棒立ちを避ける
+    if (playerModel.userData && playerModel.userData.parts) {
+        const parts = playerModel.userData.parts;
+        if (parts.gun) {
+            applyGunStyle(parts.gun, currentWeapon);
+        }
+        applyDeathLoosePose(parts, Math.random(), deathImpactVelocity, deathHitPoint);
+    }
+    const playerFallInfo = getTowerEdgeFallInfo(player, playerBodyHeight, false);
+    pushDeathActorOffTowerEdge(player, playerFallInfo);
+    startKillCamPhysics(
+        player,
+        playerModel && playerModel.userData ? playerModel.userData.parts : null,
+        createDeathPhysicsVelocity(deathImpactVelocity, playerFallInfo, 4.2),
+        0.25,
+        { fallingToGround: !!playerFallInfo }
+    );
+    if (!playerFallInfo) liftKillCamActorAboveGround(player, 0.03);
+    
+    // 倒れるアニメーション
+    const impactDir = deathImpactVelocity.clone().setY(0).normalize();
+    const finalRotation = getDirectionalDeathRotation(playerModel, impactDir, deathHitPoint);
+    playerDeathTweenRotX = new TWEEN.Tween(playerModel.rotation).to({ x: finalRotation.x }, fallDuration * 1000).easing(TWEEN.Easing.Quadratic.Out).onUpdate(() => keepDeathActorOutsideObstacles(player, impactDir)).start();
+    playerDeathTweenRotZ = new TWEEN.Tween(playerModel.rotation).to({ z: finalRotation.z }, fallDuration * 1000).easing(TWEEN.Easing.Quadratic.Out).start();
+
+    if (!playerFallInfo) liftKillCamActorAboveGround(player, 0.03);
+    if (isBillBattleMode()) enforceBillBattleInsideActor(player, 1.2, false);
+    player.updateMatrixWorld(true);
+
+    // プレイヤー死亡キルカメラ: 遮蔽物を避けて必ずプレイヤーが映る角度を選ぶ
+    playerDeathLookAt = getPlayerDeathLookAt();
+    const playerLookAt = playerDeathLookAt.clone();
+    const preferredDir = deathImpactVelocity.clone();
+    const playerDeathCamPos = findPlayerDeathCameraPosition(playerLookAt, obstacles, preferredDir);
+    cinematicCamera.position.copy(playerDeathCamPos);
+    cinematicCamera.lookAt(playerLookAt);
+    cinematicCamera.fov = 75;
+    cinematicCamera.aspect = window.innerWidth / window.innerHeight;
+    cinematicCamera.updateProjectionMatrix();
+    new TWEEN.Tween(cinematicCamera).to({ fov: 30 }, 2000).easing(TWEEN.Easing.Quadratic.InOut).start();
+    playerDeathCamOffset = playerDeathCamPos.clone().sub(playerLookAt);
+    playerDeathCamWorldPosition = playerDeathCamPos.clone();
+    updatePlayerDeathCinematicCamera();
+
+    const redFlashOverlay = document.getElementById('red-flash-overlay');
+    if (redFlashOverlay) {
+        // 初期状態をリセットし、表示をブロック
+        redFlashOverlay.className = ''; // クラスを全てクリア
+        redFlashOverlay.style.opacity = '0'; // 明示的に透明に
+        redFlashOverlay.style.backgroundColor = 'rgba(0,0,0,0)'; // 明示的に透明な黒に
+        redFlashOverlay.style.display = 'block';
+
+        // 赤フラッシュを開始
+        setTimeout(() => {
+            redFlashOverlay.classList.add('red-flash'); // 赤フラッシュクラスを追加
+        }, 50);
+
+        // 黒画面への移行
+        setTimeout(() => {
+            redFlashOverlay.classList.remove('red-flash'); // 赤フラッシュクラスを削除
+            redFlashOverlay.classList.add('fade-to-black'); // 黒画面クラスを追加
+        }, 300); // 赤フラッシュ表示時間
+
+        // 黒画面からフェードアウト
+        setTimeout(() => {
+            redFlashOverlay.classList.remove('fade-to-black'); // 黒画面クラスを削除
+            redFlashOverlay.classList.add('fade-out'); // フェードアウトクラスを追加
+        }, 1300); // 黒画面表示時間
+
+        // オーバーレイを完全に非表示にする
+        setTimeout(() => {
+            redFlashOverlay.style.display = 'none';
+            redFlashOverlay.className = ''; // クラスをクリアしてリセット
+            redFlashOverlay.style.opacity = '0'; // 明示的に透明に
+            redFlashOverlay.style.backgroundColor = 'rgba(0,0,0,0)'; // 明示的に透明な黒に
+        }, 2300); // フェードアウト完了後
+
+
+    }
+
+            // 3秒後にリスポーンまたはゲームオーバー画面へ
+          setTimeout(() => { // このsetTimeoutは全体の演出時間に合わせて調整
+              isPlayerDeathPlaying = false;
+              syncKillCamLighting();
+              stopKillCamPhysics();
+              playerDeathCamWorldPosition = null;
+              playerDeathCamOffset = null;
+              restoreDeathCameraParent();
+              // プレイヤーモデルの回転をリセット
+              if (playerModel) {
+                  playerModel.rotation.set(0, 0, 0);
+                  playerModel.position.set(0, -playerTargetHeight, 0);
+                  playerModel.visible = false;
+              }
+              playerDeathActor = null;
+              restoreRightButtonsDefault();
+  
+              // カメラをリセット (通常のプレイヤー視点に戻す)
+            camera.position.set(0, 0, 0); // 相対位置としてリセット
+            camera.rotation.set(0, 0, 0); // 相対角度としてリセット
+            
+            if (isTimedRespawnMode()) {
+                respawnPlayer(); // プレイヤーをリスポーン地点に移動
+                if (isFollowingPlayerMode) {
+                    for (const ai of ais) {
+                        if (ai && ai.team === 'player') ai.userData.followActive = true;
+                    }
+                    warpTeammatesInFrontForFollow();
+                }
+                isGameRunning = true; // ゲームを再開
+                updateMobileWeaponButtonVisibility();
+                if (player) player.traverse((object) => { object.visible = true; }); // プレイヤーをシーンに再追加
+                // UIを再表示
+                const uiToShow = ['crosshair', 'player-hp-display', 'player-weapon-display', 'game-timer-display', 'player-team-kills-display', 'enemy-team-kills-display', 'pause-button'];
+                if (isClassicBillBattleMode()) uiToShow.push('billbattle-kills-remaining');
+                if (shouldShowTouchControls()) {
+                    uiToShow.push('joystick-move', 'fire-button', 'crouch-button');
+                } else {
+                    canvas.requestPointerLock();
+                }
+                uiToShow.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.style.display = 'block';
+                });
+                if (shouldShowTouchControls()) ensureJoystickReady(true);
+                const followBtn = document.getElementById('follow-button');
+                if (followBtn) {
+                    const shouldShowFollow = shouldShowTouchControls() && isTeamBasedAIMode()
+                        && isGameRunning && !isPaused && !isSettingsScreenVisible();
+                    followBtn.style.display = shouldShowFollow ? 'flex' : 'none';
+                }
+            } else if (gameSettings.gameMode === 'team') {
+                // チームモード：残りHPを確認
+                const playerTeamAlive = checkTeamAlive('player');
+                const enemyTeamAlive = checkTeamAlive('enemy');
+                
+                if (!playerTeamAlive) {
+                    showGameOver();
+                } else if (!enemyTeamAlive) {
+                    showWinScreen();
+                } else {
+                    // まだ生存者がいる場合はリスポーン
+                    respawnPlayer();
+                    if (isFollowingPlayerMode) {
+                        for (const ai of ais) {
+                            if (ai && ai.team === 'player') ai.userData.followActive = true;
+                        }
+                        warpTeammatesInFrontForFollow();
+                    }
+                    isGameRunning = true;
+                    updateMobileWeaponButtonVisibility();
+                    if (player) player.traverse((object) => { object.visible = true; });
+                    // UIを再表示
+                    const uiToShow = ['crosshair', 'player-hp-display', 'player-weapon-display', 'game-timer-display', 'player-team-kills-display', 'enemy-team-kills-display', 'pause-button'];
+                    if (isClassicBillBattleMode()) uiToShow.push('billbattle-kills-remaining');
+                    if (shouldShowTouchControls()) {
+                        uiToShow.push('joystick-move', 'fire-button', 'crouch-button');
+                    } else {
+                        canvas.requestPointerLock();
+                    }
+                    uiToShow.forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) el.style.display = 'block';
+                    });
+                    if (shouldShowTouchControls()) ensureJoystickReady(true);
+                    const followBtn = document.getElementById('follow-button');
+                    if (followBtn) {
+                        const shouldShowFollow = shouldShowTouchControls() && isTeamBasedAIMode()
+                            && isGameRunning && !isPaused && !isSettingsScreenVisible();
+                        followBtn.style.display = shouldShowFollow ? 'flex' : 'none';
+                    }
+                }
+            } else {
+                // FFAモード：ゲームオーバー
+                showGameOver();
+            }
+    }, 3000); // 3秒後にリスポーンまたはゲームオーバー
+}
+
+function checkTeamAlive(team) {
+    // プレイヤーチームの場合はプレイヤーもチェック
+    if (team === 'player') {
+        if (playerHP > 0) return true;
+    }
+    
+    // AIチームメンバーをチェック
+    for (const ai of ais) {
+        if (ai.team === team && ai.hp > 0) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+function isAnyRelevantAIDyingForVictory() {
+    if (!Array.isArray(ais) || ais.length === 0) return false;
+    if (gameSettings.gameMode === 'team') {
+        return ais.some(ai => ai && ai.team === 'enemy' && ai.hp <= 0 && ai.userData && ai.userData.isDying);
+    }
+    if (gameSettings.gameMode === 'battle' || gameSettings.gameMode === 'ffa') {
+        return ais.some(ai => ai && ai.hp <= 0 && ai.userData && ai.userData.isDying);
+    }
+    if (isBillBattleMode()) {
+        return ais.some(ai => ai && ai.team === 'enemy' && ai.hp <= 0 && ai.userData && ai.userData.isDying);
+    }
+    return false;
+}
+
+function findFlankingSpot(ai, timeElapsed) {
+    const playerPos = player.position.clone();
+    const playerDir = new THREE.Vector3();
+    player.getWorldDirection(playerDir);
+    const FLANK_DISTANCE = 20;
+    const attempts = 5;
+    for (let i = 0; i < attempts; i++) {
+        let targetOffset;
+        const rightDir = new THREE.Vector3(-playerDir.z, 0, playerDir.x);
+        const leftDir = new THREE.Vector3(playerDir.z, 0, -playerDir.x);
+        if (ai.flankPreference === 'left') { targetOffset = leftDir; }
+        else if (ai.flankPreference === 'right') { targetOffset = rightDir; }
+        else {
+            if (ai.flankAggression > 0.6 || Math.random() > 0.5) { targetOffset = playerDir.clone().negate(); }
+            else { targetOffset = Math.random() > 0.5 ? rightDir : leftDir; }
+        }
+        targetOffset.multiplyScalar(FLANK_DISTANCE + Math.random() * 10);
+        const targetPos = playerPos.clone().add(targetOffset);
+        targetPos.y = 0;
+        const distFromCenter = Math.sqrt(targetPos.x * targetPos.x + targetPos.z * targetPos.z);
+        if (distFromCenter > ARENA_PLAY_AREA_RADIUS) {
+            targetPos.multiplyScalar(ARENA_PLAY_AREA_RADIUS / distFromCenter);
+        }
+        const aiHeadPos = getAIHeadPos(ai);
+        if (checkLineOfSight(aiHeadPos, targetPos, obstacles)) {
+            ai.targetPosition.copy(targetPos);
+            ai.state = 'FLANKING';
+            ai.lastFlankTime = timeElapsed;
+            return true;
+        }
+    }
+    return false;
+}
+
+function createWindows(obstacleMesh, buildingWidth, buildingHeight, buildingDepth) {
+    const WINDOW_SIZE = 1.2;
+    const WINDOW_THICKNESS = 0.1;
+    const WINDOW_MATERIAL = new THREE.MeshLambertMaterial({ color: 0xcccccc });
+    const windowGeometry = new THREE.BoxGeometry(WINDOW_SIZE, WINDOW_SIZE, WINDOW_THICKNESS);
+    const HORIZONTAL_SPACING = 2.0;
+    const VERTICAL_SPACING = 2.5;
+    for (let side = 0; side < 2; side++) {
+        const zOffset = (buildingDepth / 2) * (side === 0 ? 1 : -1);
+        const rotationY = side === 0 ? 0 : Math.PI;
+        const numHorizontalWindows = 2;
+        const startX = -((numHorizontalWindows - 1) * HORIZONTAL_SPACING) / 2;
+        const numVerticalWindows = Math.floor((buildingHeight - WINDOW_SIZE) / VERTICAL_SPACING) + 1;
+        const startY = -((numVerticalWindows - 1) * VERTICAL_SPACING) / 2;
+        for (let i = 0; i < numHorizontalWindows; i++) {
+            for (let j = 0; j < numVerticalWindows; j++) {
+                const windowMesh = new THREE.Mesh(windowGeometry, WINDOW_MATERIAL);
+                windowMesh.position.set(startX + i * HORIZONTAL_SPACING, startY + j * VERTICAL_SPACING, zOffset);
+                windowMesh.rotation.y = rotationY;
+                obstacleMesh.add(windowMesh);
+            }
+        }
+    }
+    for (let side = 0; side < 2; side++) {
+        const xOffset = (buildingWidth / 2) * (side === 0 ? 1 : -1);
+        const rotationY = side === 0 ? Math.PI / 2 : -Math.PI / 2;
+        const numHorizontalWindows = 2;
+        const startZ = -((numHorizontalWindows - 1) * HORIZONTAL_SPACING) / 2;
+        const numVerticalWindows = Math.floor((buildingHeight - WINDOW_SIZE) / VERTICAL_SPACING) + 1;
+        const startY = -((numVerticalWindows - 1) * VERTICAL_SPACING) / 2;
+        for (let i = 0; i < numHorizontalWindows; i++) {
+            for (let j = 0; j < numVerticalWindows; j++) {
+                const windowMesh = new THREE.Mesh(windowGeometry, WINDOW_MATERIAL);
+                windowMesh.position.set(xOffset, startY + j * VERTICAL_SPACING, startZ + i * HORIZONTAL_SPACING);
+                windowMesh.rotation.y = rotationY;
+                obstacleMesh.add(windowMesh);
+            }
+        }
+    }
+}
+
+function shouldPlayAIDeathKillCam(ai, killerSource) {
+    const mode = gameSettings.killCamMode || 'playerOnly';
+    if (mode === 'off') return false;
+    // AI同士/環境キルはキルカメラ対象外（通常の倒れ演出を優先）
+    if (killerSource !== 'player') return false;
+    if (mode === 'playerOnly') {
+        if (!ai) return false;
+        // team/teamArcade では敵AIのみ、それ以外（battle/ffa/arcade/bill）は全AI対象
+        if (isTeamBasedAIMode()) return ai.team === 'enemy';
+        return true;
+    }
+    return false;
+}
+
+function getAIDeathTowerFallInfo(ai) {
+    if (!ai) return null;
+    const aiBodyHeight = BODY_HEIGHT + HEAD_RADIUS * 2;
+    const tower = getTowerObstacleUnder(ai.position, aiBodyHeight, true);
+    if (!tower) return null;
+    const outward = new THREE.Vector3(ai.position.x - tower.position.x, 0, ai.position.z - tower.position.z);
+    if (outward.lengthSq() < 0.01) {
+        const angle = Math.random() * Math.PI * 2;
+        outward.set(Math.cos(angle), 0, Math.sin(angle));
+    }
+    outward.normalize();
+    return { tower, outward };
+}
+
+function startAIDeathTowerFallPhysics(ai, parts, impactVelocity = null) {
+    if (!ai) return false;
+    if (killCamPhysics.active && killCamPhysics.actor !== ai) return false;
+    const fallInfo = getAIDeathTowerFallInfo(ai);
+    if (!fallInfo) return false;
+    if (ai.targetPosition) ai.targetPosition.copy(ai.position);
+    ai.avoiding = false;
+    ai.isElevating = false;
+    if (ai.userData) {
+        ai.userData.rooftopPhase = 'death_fall';
+        ai.userData.rooftopIntent = false;
+        ai.userData.onRooftop = false;
+        ai.userData.rooftopSniperPriority = false;
+        ai.userData.elevatingDirection = 0;
+        ai.userData.stallStartTime = 0;
+    }
+    pushDeathActorOffTowerEdge(ai, fallInfo);
+    startKillCamPhysics(
+        ai,
+        parts || (ai.userData && ai.userData.parts ? ai.userData.parts : null),
+        createDeathPhysicsVelocity(impactVelocity, fallInfo, 4.8),
+        0.4,
+        { fallingToGround: true }
+    );
+    return true;
+}
+
+function finishAfterAIDeathTowerFall(ai, onFinish, timeoutMs = 7000) {
+    const startedAt = performance.now();
+    const waitForLanding = () => {
+        const timedOut = performance.now() - startedAt >= timeoutMs;
+        const landed = !ai || !ai.userData || !ai.userData.deathFallingToGround;
+        if (landed || timedOut) {
+            stopKillCamPhysicsForActor(ai);
+            if (onFinish) onFinish();
+            return;
+        }
+        requestAnimationFrame(waitForLanding);
+    };
+    requestAnimationFrame(waitForLanding);
+}
+
+function getClosestEnemyAIPositionForTeammate(ai) {
+    if (!ai) return null;
+    let bestPos = null;
+    let bestDist = Infinity;
+    for (const other of ais) {
+        if (!other || other === ai || other.hp <= 0) continue;
+        if (other.team !== 'enemy') continue;
+        const d = ai.position.distanceTo(other.position);
+        if (d < bestDist) {
+            bestDist = d;
+            bestPos = other.position.clone();
+        }
+    }
+    return bestPos;
+}
+
+let enemyKilledMessageTimer = null;
+function showEnemyKilledMessage() {
+    let el = document.getElementById('enemy-killed-message');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'enemy-killed-message';
+        el.textContent = 'Enemy Kill';
+        el.style.position = 'fixed';
+        el.style.left = '50%';
+        el.style.top = '35%';
+        el.style.transform = 'translate(-50%, -50%)';
+        el.style.color = 'red';
+        el.style.fontSize = '24px';
+        el.style.fontWeight = 'bold';
+        el.style.pointerEvents = 'none';
+        el.style.zIndex = '9999';
+        el.style.display = 'none';
+        document.body.appendChild(el);
+    }
+    el.style.display = 'block';
+    if (enemyKilledMessageTimer) {
+        clearTimeout(enemyKilledMessageTimer);
+        enemyKilledMessageTimer = null;
+    }
+    enemyKilledMessageTimer = setTimeout(() => {
+        el.style.display = 'none';
+    }, 2000);
+}
+
+function finalizeAIDeathWithoutKillCam(ai, killerSource = 'unknown', impactVelocity = null, impactPoint = null) {
+    if (!ai) return;
+    if (!ai.userData) ai.userData = {};
+    syncKillCamLighting();
+    // AI死亡処理では常に発射済み弾とロケット軌跡を回収して残像を防ぐ。
+    removeAIProjectiles(ai, true);
+    console.log('finalizeAIDeathWithoutKillCam called, killCamMode:', gameSettings.killCamMode, 'gameMode:', gameSettings.gameMode, 'isBillBattle:', isBillBattleMode(), 'killerSource:', killerSource);
+    if (isClassicBillBattleMode() && killerSource !== 'player') {
+        const reviveHP = gameSettings.aiHP === 'Infinity' ? Infinity : parseInt(gameSettings.aiHP, 10);
+        ai.hp = reviveHP;
+        ai.visible = true;
+        ai.userData.isDying = false;
+        restoreRightButtonsDefault();
+        return;
+    }
+    ai.targetWeaponPickup = null;
+    if (isClassicBillBattleMode() && killerSource !== 'player') {
+        ai.visible = false;
+        ai.userData.isDying = false;
+        billBattleKillsRemaining = Math.max(0, billBattleKillsRemaining - 1);
+        updateBillBattleKillDisplay();
+        if (billBattleKillsRemaining <= 0) playBillBattleRoomClearVoice();
+        restoreRightButtonsDefault();
+        return;
+    }
+    if (isClassicBillBattleMode() && killerSource === 'player' && gameSettings.killCamMode === 'off') {
+        console.log('Executing death animation in BillBattle mode for player kill');
+        if (killerSource === 'player') {
+            showEnemyKilledMessage();
+        }
+        createRedSmokeEffect(ai.position.clone());
+        removeAIProjectiles(ai, true);
+        const parts = ai.userData ? ai.userData.parts : null;
+        if (parts) {
+            if (parts.gun) {
+                applyGunStyle(parts.gun, ai.currentWeapon);
+            }
+            applyDeathLoosePose(parts, Math.random(), impactVelocity, impactPoint);
+        }
+        liftDeathActorAboveGround(ai, 0.03);
+        const finalAIRotation = getDirectionalDeathRotation(ai, impactVelocity);
+        new TWEEN.Tween(ai.rotation).to({ x: finalAIRotation.x }, 1200).easing(TWEEN.Easing.Quadratic.Out).onUpdate(() => keepDeathActorOutsideObstacles(ai, impactVelocity)).start();
+        if (startAIDeathTowerFallPhysics(ai, parts, impactVelocity)) {
+            finishAfterAIDeathTowerFall(ai, () => {
+                ai.visible = false;
+                ai.userData.isDying = false;
+                billBattleKillsRemaining = Math.max(0, billBattleKillsRemaining - 1);
+                updateBillBattleKillDisplay();
+                if (billBattleKillsRemaining <= 0) playBillBattleRoomClearVoice();
+                restoreRightButtonsDefault();
+            });
+            return;
+        }
+        setTimeout(() => {
+            stopKillCamPhysicsForActor(ai);
+            ai.visible = false;
+            ai.userData.isDying = false;
+            billBattleKillsRemaining = Math.max(0, billBattleKillsRemaining - 1);
+            updateBillBattleKillDisplay();
+            if (billBattleKillsRemaining <= 0) playBillBattleRoomClearVoice();
+            restoreRightButtonsDefault();
+        }, 2700);
+        return;
+    }
+    if (gameSettings.killCamMode === 'off' || killerSource !== 'player') {
+        console.log('Executing non-killcam death sequence for AI, gameMode:', gameSettings.gameMode, 'killerSource:', killerSource);
+        if (killerSource === 'player') {
+            showEnemyKilledMessage();
+        }
+        createRedSmokeEffect(ai.position.clone());
+        removeAIProjectiles(ai, true);
+        const parts = ai.userData ? ai.userData.parts : null;
+        if (parts) {
+            if (parts.gun) {
+                applyGunStyle(parts.gun, ai.currentWeapon);
+            }
+            applyDeathLoosePose(parts, Math.random(), impactVelocity, impactPoint);
+        }
+        liftDeathActorAboveGround(ai, 0.03);
+        const finalAIRotation = getDirectionalDeathRotation(ai, impactVelocity);
+        new TWEEN.Tween(ai.rotation).to({ x: finalAIRotation.x }, 1200).easing(TWEEN.Easing.Quadratic.Out).onUpdate(() => keepDeathActorOutsideObstacles(ai, impactVelocity)).start();
+        if (startAIDeathTowerFallPhysics(ai, parts, impactVelocity)) {
+            finishAfterAIDeathTowerFall(ai, () => {
+                if (isTimedRespawnMode()) {
+                    respawnAI(ai);
+                } else {
+                    ai.visible = false;
+                }
+                ai.userData.isDying = false;
+            });
+            return;
+        }
+        setTimeout(() => {
+            stopKillCamPhysicsForActor(ai);
+            if (isTimedRespawnMode()) {
+                respawnAI(ai);
+            } else {
+                ai.visible = false;
+            }
+            ai.userData.isDying = false;
+        }, 2700);
+        return;
+    }
+    if (isClassicBillBattleMode() && killerSource === 'player') {
+        ai.visible = false;
+        ai.userData.isDying = false;
+        billBattleKillsRemaining = Math.max(0, billBattleKillsRemaining - 1);
+        updateBillBattleKillDisplay();
+        if (billBattleKillsRemaining <= 0) playBillBattleRoomClearVoice();
+        restoreRightButtonsDefault();
+        return;
+    }
+    if (isTimedRespawnMode()) {
+        respawnAI(ai);
+    } else {
+        ai.visible = false;
+    }
+    ai.userData.isDying = false;
+}
+
+function aiFallDownCinematicSequence(impactVelocity, ai, killerSource = 'unknown', killerProjectile = null, killerActor = null) {
+    if (!ai) return;
+    captureDeathGroundY(ai);
+    const deathImpactPoint = killerProjectile && killerProjectile.mesh
+        ? killerProjectile.mesh.getWorldPosition(new THREE.Vector3())
+        : ai.position.clone().add(new THREE.Vector3(0, 1.45, 0));
+    if (!ai.userData) ai.userData = {};
+    playEnemyAIDefeatVoice(ai, killerSource, killerProjectile, killerActor);
+    ai.userData.isDying = true;
+    // AIM設定に関係なく、死亡開始時点でAI弾を即時回収する。
+    removeAIProjectiles(ai, true);
+    if (isBillBattleMode() && killerSource !== 'player') {
+        finalizeAIDeathWithoutKillCam(ai, killerSource, impactVelocity, deathImpactPoint);
+        return;
+    }
+    console.log('aiFallDownCinematicSequence called, killCamMode:', gameSettings.killCamMode, 'shouldPlayKillCam:', shouldPlayAIDeathKillCam(ai, killerSource));
+    if (!shouldPlayAIDeathKillCam(ai, killerSource)) {
+        console.log('Calling finalizeAIDeathWithoutKillCam because killcam is OFF');
+        finalizeAIDeathWithoutKillCam(ai, killerSource, impactVelocity, deathImpactPoint);
+        return;
+    }
+    if (isAIDeathPlaying) {
+        finalizeAIDeathWithoutKillCam(ai, killerSource, impactVelocity, deathImpactPoint);
+        return;
+    }
+      if (shouldPlayKillCamImpactSound(killerProjectile) && impactSound) {
+          playSound(impactSound);
+      }
+      isAIDeathPlaying = true;
+      isMouseButtonDown = false;
+      syncKillCamLighting();
+      if (!ai.userData) ai.userData = {};
+      ai.userData.isDying = true;
+      ai.targetWeaponPickup = null; // AI死亡時に目標武器ピックアップをクリア
+      cinematicTargetAI = ai;
+      showPlayerModelForAIDeathKillCam(ai);
+      const joy = document.getElementById('joystick-move');
+      const fire = document.getElementById('fire-button');
+      const cross = document.getElementById('crosshair');
+      const followBtn = document.getElementById('follow-button');
+      const zoomBtn = document.getElementById('zoom-button');
+      const crouchBtn = document.getElementById('crouch-button');
+      lastJoystickZoneRect = snapshotJoystickRect(joy) || lastJoystickZoneRect;
+      preservedAIDeathJoystickVector.copy(joystickMoveVector);
+      restoreJoystickAfterAIDeathKillCam = activeJoystickTouchId !== null && preservedAIDeathJoystickVector.lengthSq() > 0.0001;
+      if (joy) joy.style.display = 'none';
+      if (fire) fire.style.display = 'none';
+      if (cross) cross.style.display = 'none';
+      if (followBtn) followBtn.style.display = 'none';
+      if (zoomBtn) zoomBtn.style.display = 'none';
+      if (crouchBtn) crouchBtn.style.display = 'none';
+      // キルカメラ中にジョイスティック内部状態が壊れたまま残るのを防ぐ
+      destroyJoystick();
+    const aiBodyHeight = BODY_HEIGHT + HEAD_RADIUS * 2;
+    const aiFallInfo = getTowerEdgeFallInfo(ai, aiBodyHeight, true, 0.08);
+    pushDeathActorOffTowerEdge(ai, aiFallInfo);
+    createRedSmokeEffect(ai.position);
+    const aiDeathLocation = ai.position.clone();
+    const aiLookAt = aiDeathLocation.clone().add(new THREE.Vector3(0, 1.2, 0));
+    const targetCameraPosition = findClearKillCameraPosition(aiDeathLocation, aiLookAt, obstacles, impactVelocity);
+    cinematicCamera.position.copy(targetCameraPosition);
+    cinematicCamera.lookAt(aiLookAt);
+    aiDeathCamOffset = targetCameraPosition.clone().sub(aiLookAt);
+    cinematicCamera.fov = 75;
+    cinematicCamera.aspect = window.innerWidth / window.innerHeight;
+    cinematicCamera.updateProjectionMatrix();
+    new TWEEN.Tween(cinematicCamera).to({ fov: 30 }, 2000).easing(TWEEN.Easing.Quadratic.InOut).start();
+    const fallDuration = 1.0;
+    const finalAIRotation = getDirectionalDeathRotation(ai, impactVelocity);
+    if (ai.userData && ai.userData.parts) {
+        const parts = ai.userData.parts;
+        if (parts.gun) {
+            applyGunStyle(parts.gun, ai.currentWeapon);
+        }
+        applyDeathLoosePose(parts, Math.random(), impactVelocity, deathImpactPoint);
+    }
+    new TWEEN.Tween(ai.rotation).to({ x: finalAIRotation.x }, fallDuration * 1000).easing(TWEEN.Easing.Quadratic.Out).onUpdate(() => keepDeathActorOutsideObstacles(ai, impactVelocity)).start();
+    startKillCamPhysics(
+        ai,
+        ai.userData && ai.userData.parts ? ai.userData.parts : null,
+        createDeathPhysicsVelocity(impactVelocity, aiFallInfo, 4.8),
+        0.4,
+        { fallingToGround: !!aiFallInfo }
+    );
+    if (!aiFallInfo) liftDeathActorAboveGround(ai, 0.03);
+          setTimeout(() => {
+              isAIDeathPlaying = false;
+              syncKillCamLighting();
+              cinematicTargetAI = null;
+              aiDeathCamOffset = null;
+              stopKillCamPhysics();
+            restoreRightButtonsDefault();
+            finalizeAIDeathWithoutKillCam(ai, killerSource);
+            if (player) player.visible = true;
+            if (ais.length > 0 || gameSettings.gameMode === 'arcade') {
+                if (joy) joy.style.display = 'block';
+                if (fire) fire.style.display = 'block';
+              if (cross) cross.style.display = 'block';
+              if (shouldShowTouchControls()) {
+                  ensureJoystickReady(true);
+              }
+              if (followBtn) {
+                  const shouldShowFollow = shouldShowTouchControls() && isTeamBasedAIMode()
+                      && isGameRunning && !isPaused && !isSettingsScreenVisible();
+                  followBtn.style.display = shouldShowFollow ? 'flex' : 'none';
+              }
+            if (player) {
+                player.traverse((object) => { object.visible = true; }); // AI死亡演出終了時はプレイヤーを再表示
+                if (playerModel) {
+                    playerModel.position.set(0, -playerTargetHeight, 0);
+                    playerModel.visible = false; // プレイヤーモデルは非表示に保つ
+                }
+            }
+        }
+    }, fallDuration * 1000 + 500);
+}
+
+function showGameOver() {
+    forceResetTouchState();
+    hideReloadingText();
+    recordBillBattleRoomScore();
+    const enemyKilledEl = document.getElementById('enemy-killed-message');
+    if (enemyKilledEl) enemyKilledEl.style.display = 'none';
+    isGameRunning = false;
+    setFollowingPlayerMode(false);
+    clearProjectileArtifacts();
+    gameOverScreen.style.display = 'flex';
+    playMatchEndVoice(false);
+    document.exitPointerLock();
+}
+
+function showWinScreen() {
+    forceResetTouchState();
+    hideReloadingText();
+    const enemyKilledEl = document.getElementById('enemy-killed-message');
+    if (enemyKilledEl) enemyKilledEl.style.display = 'none';
+    isGameRunning = false;
+    clearProjectileArtifacts();
+    winScreen.style.display = 'flex';
+    playMatchEndVoice(true);
+    document.exitPointerLock();
+    const winBtn = winScreen ? winScreen.querySelector('.restart-button') : null;
+    if (winBtn) {
+        if (isClassicBillBattleMode()) {
+            winBtn.textContent = 'NEXT ROOM';
+            winBtn.dataset.nextRoom = 'true';
+        } else {
+            winBtn.textContent = 'RESTART';
+            winBtn.dataset.nextRoom = 'false';
+        }
+    }
+    const pauseBtn = document.getElementById('pause-button');
+    if(pauseBtn) pauseBtn.style.display = 'none';
+}
+
+function setCrosshairVisible(visible) {
+    if (!crosshairElement) crosshairElement = document.getElementById('crosshair');
+    if (!crosshairElement) return;
+    const currentVisible = crosshairElement.style.display !== 'none';
+    if (currentVisible === visible && lastCrosshairVisible === visible) return;
+    crosshairElement.style.display = visible ? 'block' : 'none';
+    lastCrosshairVisible = visible;
+}
+
+function updateCrosshairForWeapon() {
+    const crosshair = crosshairElement || document.getElementById('crosshair');
+    crosshairElement = crosshair;
+    if (!crosshair) return;
+    const lineH = document.getElementById('line-h');
+    const lineV = document.getElementById('line-v');
+    const circle = crosshairCircle || document.getElementById('crosshair-circle');
+    const plusH = crosshairPlusH || document.getElementById('crosshair-plus-h');
+    const plusV = crosshairPlusV || document.getElementById('crosshair-plus-v');
+    if (lineH) lineH.style.display = 'block';
+    if (lineV) lineV.style.display = 'block';
+    if (circle) circle.style.display = 'none';
+    if (plusH) plusH.style.display = 'none';
+    if (plusV) plusV.style.display = 'none';
+
+    if (currentWeapon === WEAPON_SG) {
+        if (lineH) lineH.style.display = 'none';
+        if (lineV) lineV.style.display = 'none';
+        if (circle) circle.style.display = 'block';
+    } else if (currentWeapon === WEAPON_RR) {
+        if (lineH) lineH.style.display = 'none';
+        if (lineV) lineV.style.display = 'none';
+        if (circle) circle.style.display = 'block';
+        if (plusH) plusH.style.display = 'block';
+        if (plusV) plusV.style.display = 'block';
+    }
+}
+
+function checkCollision(object, obstacles, ignoreObstacle = null) {
+    const objectBox = new THREE.Box3();
+    const pos = object.position;
+    let currentObjectBox;
+    
+    for (const obstacle of obstacles) {
+        if (obstacle === ignoreObstacle) continue;
+        if (obstacle === object) continue;
+        
+        // 屋上床のみ除外。屋上遮蔽物（カバー）は衝突対象にする。
+        if (obstacle.userData.isRooftop && !obstacle.userData.isHouseRoof && !obstacle.userData.isRooftopCover) continue;
+        
+        // 家の屋根はAIに対して強力な衝突判定を適用
+        if (obstacle.userData.isHouseRoof && ais.includes(object)) {
+            const obstacleBox = new THREE.Box3().setFromObject(obstacle);
+            const objectBox = new THREE.Box3().setFromObject(object);
+            if (obstacleBox.intersectsBox(objectBox)) {
+                return true; // 強力な衝突
+            }
+        }
+        
+        // 家の屋根はAIの地面計算から完全に除外
+        if (obstacle.userData.isHouseRoof && ais.includes(object)) {
+            continue;
+        }
+        
+        // AIが家に入れるように特別処理
+        if (ais.includes(object) && obstacle.userData.type === 'house') {
+            // 家の壁は個別に衝突判定するため、家グループ自体とは衝突しない
+            // 壁はobstacles配列に個別に追加されていないため、子要素をチェック
+            let hasCollision = false;
+            obstacle.traverse((child) => {
+                if (child.userData.isWall && child.isMesh) {
+                    const childBox = new THREE.Box3().setFromObject(child);
+                    const objectBox = new THREE.Box3().setFromObject(object);
+                    if (childBox.intersectsBox(objectBox)) {
+                        hasCollision = true;
+                    }
+                }
+            });
+            if (hasCollision) return true;
+            continue;
+        }
+        
+        currentObjectBox = new THREE.Box3().setFromObject(obstacle);
+        
+        // AIの場合は少し大きめのバウンディングボックスを使用
+        if (ais.includes(object)) {
+            const aiBodyHeight = BODY_HEIGHT + (HEAD_RADIUS * 2); 
+            const aiCollisionHeight = object.isCrouching ? aiBodyHeight * 0.7 : aiBodyHeight; 
+            objectBox.min.set(pos.x - 0.3, pos.y - aiCollisionHeight, pos.z - 0.3);
+            objectBox.max.set(pos.x + 0.3, pos.y, pos.z + 0.3);
+        } else {
+            // プレイヤーの場合
+            objectBox.min.set(pos.x - 0.2, pos.y - playerTargetHeight, pos.z - 0.2);
+            objectBox.max.set(pos.x + 0.2, pos.y, pos.z + 0.2);
+        }
+        
+        if (objectBox.intersectsBox(currentObjectBox)) {
+            return true;
+        }
+    }
+    if (checkHouseCollisionBox(objectBox)) return true;
+    return false;
+}
+
+// AI移動のスイープチェック（薄い壁のすり抜け対策）
+function applyAIMovementWithSweep(ai, moveVec, ignoreObstacle = null) {
+    const moveLen = moveVec.length();
+    if (moveLen < 1e-6) return false;
+    
+    // Build Battleでは水平方向移動のみに強制
+    if (isBillBattleMode()) {
+        moveVec.y = 0; // 垂直移動を禁止
+    }
+    
+    const origin = ai.position.clone().add(new THREE.Vector3(0, 1.0, 0));
+    const dir = moveVec.clone().normalize();
+    raycaster.set(origin, dir);
+    raycaster.far = moveLen + 0.35;
+    const hits = raycaster.intersectObjects(obstacles, true);
+    for (const hit of hits) {
+        const obj = hit.object;
+        if (obj === ignoreObstacle) continue;
+        if (obj.userData && obj.userData.isRooftop && !obj.userData.isHouseRoof && !obj.userData.isRooftopCover) continue;
+        const safeLen = Math.max(0, hit.distance - 0.35);
+        if (safeLen < moveLen) {
+            moveVec.multiplyScalar(safeLen / moveLen);
+        }
+        break;
+    }
+    const oldPos = ai.position.clone();
+    ai.position.add(moveVec);
+    
+    // Build BattleではAIを地面に固定する
+    if (isBillBattleMode()) {
+        ai.position.y = getGroundSurfaceY(ai.position);
+    }
+    
+    if (checkCollision(ai, obstacles)) {
+        ai.position.copy(oldPos);
+        return false;
+    }
+    return true;
+}
+
+// AI専用の衝突判定関数
+function checkAICollisionWithObstacles(ai, newPos, obstacles) {
+    const oldPos = ai.position.clone();
+    ai.position.copy(newPos);
+    const collides = checkCollision(ai, obstacles);
+    ai.position.copy(oldPos);
+    return collides;
+}
+
+function checkPartCollision(part) {
+    if (part.userData && part.userData.isDeadPart === true) {
+        return false; // 死亡したパーツは衝突判定を行わない
+    }
+    const partBBox = new THREE.Box3().setFromObject(part);
+    for (const obstacle of obstacles) {
+        const obstacleBBox = new THREE.Box3().setFromObject(obstacle);
+        if (partBBox.intersectsBox(obstacleBBox)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function findClearCameraPosition(targetPosition, obstaclesArray, projectile) {
+    const lookAtTargetForRaycast = targetPosition.clone().add(new THREE.Vector3(0, 1.5, 0));
+    let cameraCandidates = [];
+    if (projectile) {
+        const fromBehind = projectile.velocity.clone().normalize().multiplyScalar(-10);
+        fromBehind.y = 5;
+        cameraCandidates.push(fromBehind);
+    }
+    const baseCandidates = [
+        new THREE.Vector3(0, 5, 10), new THREE.Vector3(10, 5, 0), new THREE.Vector3(-10, 5, 0),
+        new THREE.Vector3(8, 6, 8), new THREE.Vector3(-8, 6, 8), new THREE.Vector3(8, 6, -8),
+        new THREE.Vector3(-8, 6, -8), new THREE.Vector3(0, 5, -10), new THREE.Vector3(0, 12, 0.1),
+    ];
+    cameraCandidates.push(...baseCandidates);
+    for (const offset of cameraCandidates) {
+        const candidateCameraPosition = targetPosition.clone().add(offset);
+        const directionToTarget = new THREE.Vector3().subVectors(lookAtTargetForRaycast, candidateCameraPosition).normalize();
+        raycaster.set(candidateCameraPosition, directionToTarget);
+        const intersects = raycaster.intersectObjects(obstaclesArray, true);
+        const distanceToTarget = candidateCameraPosition.distanceTo(lookAtTargetForRaycast);
+        if (intersects.length === 0 || intersects[0].distance > distanceToTarget - 0.1) {
+            return candidateCameraPosition;
+        }
+    }
+    let bestCandidate = null;
+    let maxDistance = -1;
+    for (const offset of cameraCandidates) {
+        const candidateCameraPosition = targetPosition.clone().add(offset);
+        const directionToTarget = new THREE.Vector3().subVectors(lookAtTargetForRaycast, candidateCameraPosition).normalize();
+        raycaster.set(candidateCameraPosition, directionToTarget);
+        const intersects = raycaster.intersectObjects(obstaclesArray, true);
+        if (intersects.length > 0) {
+            if (intersects[0].distance > maxDistance) {
+                maxDistance = intersects[0].distance;
+                bestCandidate = candidateCameraPosition;
+            }
+        }
+    }
+    return bestCandidate || targetPosition.clone().add(new THREE.Vector3(0, 15, 0));
+}
+
+function isKillCamCameraPositionBlocked(candidate, obstaclesArray) {
+    if (!candidate || !obstaclesArray) return false;
+    for (const obstacle of obstaclesArray) {
+        if (!obstacle) continue;
+        const box = new THREE.Box3().setFromObject(obstacle).expandByScalar(0.35);
+        if (box.containsPoint(candidate)) return true;
+    }
+    return false;
+}
+
+function getKillCamFocusPoints(basePosition, lookAtTarget) {
+    const base = basePosition || lookAtTarget;
+    return [
+        lookAtTarget.clone(),
+        base.clone().add(new THREE.Vector3(0, 0.35, 0)),
+        base.clone().add(new THREE.Vector3(0, 1.05, 0)),
+        base.clone().add(new THREE.Vector3(0.35, 0.8, 0)),
+        base.clone().add(new THREE.Vector3(-0.35, 0.8, 0)),
+    ];
+}
+
+function scoreKillCamCandidate(candidate, focusPoints, obstaclesArray) {
+    if (isKillCamCameraPositionBlocked(candidate, obstaclesArray)) return { score: -Infinity, clearCount: 0 };
+    let score = 0;
+    let clearCount = 0;
+    for (const point of focusPoints) {
+        const toPoint = new THREE.Vector3().subVectors(point, candidate);
+        const dist = toPoint.length();
+        if (dist < 0.01) {
+            score -= 1000;
+            continue;
+        }
+        raycaster.set(candidate, toPoint.normalize());
+        const hits = raycaster.intersectObjects(obstaclesArray, true);
+        const clear = hits.length === 0 || hits[0].distance > dist - 0.18;
+        if (clear) {
+            clearCount++;
+            score += 1200 - Math.abs(dist - 8.5) * 25;
+        } else {
+            const visibleDepth = hits[0].distance / dist;
+            score += visibleDepth * 220 - 900;
+        }
+    }
+    score -= Math.max(0, candidate.y - focusPoints[0].y - 5.5) * 45;
+    return { score, clearCount };
+}
+
+function selectKillCamCandidate(candidates, focusPoints, obstaclesArray, fallback) {
+    let bestCandidate = null;
+    let bestScore = -Infinity;
+    const clearCandidates = [];
+    for (const candidate of candidates) {
+        const result = scoreKillCamCandidate(candidate, focusPoints, obstaclesArray);
+        if (result.clearCount >= focusPoints.length) {
+            clearCandidates.push({ candidate: candidate.clone(), score: result.score });
+        }
+        if (result.score > bestScore) {
+            bestScore = result.score;
+            bestCandidate = candidate.clone();
+        }
+    }
+    if (clearCandidates.length > 0) {
+        clearCandidates.sort((a, b) => b.score - a.score);
+        const scoreLimit = clearCandidates[0].score - 170;
+        const topCandidates = clearCandidates.filter(entry => entry.score >= scoreLimit);
+        const pick = topCandidates[Math.floor(Math.random() * topCandidates.length)] || clearCandidates[0];
+        return pick.candidate;
+    }
+    return bestCandidate || fallback;
+}
+
+function findClearKillCameraPosition(targetPosition, lookAtTarget, obstaclesArray, preferredDirection = null) {
+    const candidates = [];
+    const up = new THREE.Vector3(0, 1, 0);
+    let billCeilingMaxY = null;
+    if (isBillBattleMode() && billBattleCeiling) {
+        const ceilingGeom = billBattleCeiling.geometry;
+        const ceilingH = ceilingGeom && ceilingGeom.parameters && ceilingGeom.parameters.height
+            ? ceilingGeom.parameters.height
+            : BILL_BATTLE_CEILING_THICKNESS;
+        billCeilingMaxY = billBattleCeiling.position.y - (ceilingH / 2) - 0.3;
+    }
+    if (preferredDirection && preferredDirection.lengthSq() > 1e-6) {
+        const dir = preferredDirection.clone().normalize();
+        for (const d of [4.6, 6.5, 8.5, 10.5]) {
+            for (const h of [1.9, 2.4, 3.2, 4.2, 5.4]) {
+                candidates.push(targetPosition.clone().add(dir.clone().multiplyScalar(-d)).add(new THREE.Vector3(0, h, 0)));
+            }
+        }
+    }
+
+    for (let i = 0; i < 24; i++) {
+        const a = (i / 24) * Math.PI * 2;
+        for (const r of [4.8, 6.5, 8.5, 10.5, 12.0]) {
+            const h = i % 4 === 0 ? 1.9 : (i % 4 === 1 ? 2.7 : (i % 4 === 2 ? 3.9 : 5.2));
+            candidates.push(targetPosition.clone().add(new THREE.Vector3(Math.cos(a) * r, h, Math.sin(a) * r)));
+        }
+    }
+    candidates.push(targetPosition.clone().add(new THREE.Vector3(0, 4.2, 0.5)));
+    candidates.push(targetPosition.clone().add(new THREE.Vector3(0, 5.0, 0.1)));
+    for (const overhead of [
+        new THREE.Vector3(0, 6.8, 0.7),
+        new THREE.Vector3(0.7, 7.8, 0),
+        new THREE.Vector3(-0.7, 8.4, -0.5),
+    ]) {
+        candidates.push(targetPosition.clone().add(overhead));
+    }
+
+    const focusPoints = getKillCamFocusPoints(targetPosition, lookAtTarget);
+    for (const candidate of candidates) {
+        if (isBillBattleMode()) {
+            const margin = 2.5;
+            candidate.x = THREE.MathUtils.clamp(candidate.x, -BILL_BATTLE_HALF + margin, BILL_BATTLE_HALF - margin);
+            candidate.z = THREE.MathUtils.clamp(candidate.z, -BILL_BATTLE_HALF + margin, BILL_BATTLE_HALF - margin);
+            if (billCeilingMaxY !== null) candidate.y = Math.min(candidate.y, billCeilingMaxY);
+        }
+    }
+    return selectKillCamCandidate(candidates, focusPoints, obstaclesArray, targetPosition.clone().add(new THREE.Vector3(0, 4.2, 0.5)));
+}
+
+function showFloorStartMessage(floorNumber) {
+    const el = document.getElementById('floor-start-display');
+    if (!el) return;
+    const roomNumber = Math.max(1, parseInt(floorNumber, 10) || 1);
+    el.innerHTML = `<div style="font-size: 0.58em; line-height: 1; margin-bottom: 0.18em;">ROOM${roomNumber}</div><div>BATTLE START</div>`;
+    if (isProbablyMobileDevice()) {
+        el.style.fontSize = '1.2em';
+        el.style.padding = '6px 10px';
+    } else {
+        el.style.fontSize = '3em';
+        el.style.padding = '12px 20px';
+    }
+    el.style.display = 'block';
+    setTimeout(() => {
+        el.style.display = 'none';
+    }, 1500);
+}
+
+function fadeToBlack(durationMs, onMidpoint) {
+    const overlay = document.getElementById('fade-overlay');
+    if (!overlay) {
+        if (onMidpoint) onMidpoint();
+        return;
+    }
+    overlay.style.transition = `opacity ${durationMs}ms ease`;
+    overlay.style.opacity = '1';
+    setTimeout(() => {
+        if (onMidpoint) onMidpoint();
+        overlay.style.opacity = '0';
+    }, durationMs + 50);
+}
+
+function openBillBattleElevator() {
+    if (!BILL_BATTLE_USE_ELEVATOR) return;
+    if (billBattleElevatorOpen || billBattleElevatorDoors.length < 2) return;
+    billBattleElevatorOpen = true;
+    const [leftDoor, rightDoor] = billBattleElevatorDoors;
+    const slideDistance = BILL_BATTLE_ELEVATOR_WIDTH;
+    if (leftDoor) {
+        const leftIndex = obstacles.indexOf(leftDoor);
+        if (leftIndex > -1) obstacles.splice(leftIndex, 1);
+        new TWEEN.Tween(leftDoor.position).to({ x: leftDoor.position.x - slideDistance }, 1200).easing(TWEEN.Easing.Quadratic.Out).start();
+    }
+    if (rightDoor) {
+        const rightIndex = obstacles.indexOf(rightDoor);
+        if (rightIndex > -1) obstacles.splice(rightIndex, 1);
+        new TWEEN.Tween(rightDoor.position).to({ x: rightDoor.position.x + slideDistance }, 1200).easing(TWEEN.Easing.Quadratic.Out).start();
+    }
+}
+
+function advanceBillBattleFloor() {
+    billBattleFloor += 1;
+    billBattleTransitioning = false;
+    restartGame({ preserveBillBattleFloor: true });
+}
+
+function updateBillBattleElevator(timeElapsed) {
+    if (!BILL_BATTLE_USE_ELEVATOR) return;
+    if (!isBillBattleMode() || billBattleTransitioning) return;
+      if (!isBillBattleFloorCleared()) return;
+      const playerBox = new THREE.Box3().setFromObject(player);
+      for (const door of billBattleElevatorDoors) {
+          if (!door || !door.parent) continue;
+          const doorBox = new THREE.Box3().setFromObject(door);
+          if (playerBox.intersectsBox(doorBox)) {
+              billBattleTransitioning = true;
+              openBillBattleElevator();
+              fadeToBlack(600, () => {
+                  advanceBillBattleFloor();
+              });
+              break;
+          }
+      }
+  }
+
+function updateBillBattleEntry() {
+    if (!isBillBattleMode() || billBattlePlayerEntered) return;
+    billBattlePlayerEntered = true;
+}
+
+function updateBillBattleAttackDelay(timeElapsed) {
+    if (!isBillBattleMode() || isIndoorTeamDeathmatchMode()) return;
+    if (billBattleAttackActivated) return;
+    if (!Number.isFinite(billBattleAttackDelayUntil)) {
+        billBattleAttackDelayUntil = timeElapsed + BILL_BATTLE_ATTACK_DELAY;
+        return;
+    }
+    if (timeElapsed < billBattleAttackDelayUntil) return;
+    billBattleAttackActivated = true;
+    billBattleAttackDelayUntil = -Infinity;
+    for (const ai of ais) {
+        if (!ai || ai.hp <= 0) continue;
+        if (!ai.userData) ai.userData = {};
+        ai.state = 'ATTACKING';
+        ai.currentAttackTime = timeElapsed;
+        ai.lastAttackTime = timeElapsed - 999;
+        ai.avoiding = false;
+        ai.isCrouching = false;
+        ai.userData.nextPerceptionTime = 0;
+    }
+}
+
+function updateBillBattleAIRespawns(timeElapsed) {
+    if (!isBillBattleMode()) return;
+    if (!BILL_BATTLE_ALLOW_RESPAWN) return;
+    if (isBillBattleFloorCleared()) {
+        billBattleAIRespawnQueue = [];
+        return;
+    }
+      for (let i = billBattleAIRespawnQueue.length - 1; i >= 0; i--) {
+          const entry = billBattleAIRespawnQueue[i];
+          if (timeElapsed >= entry.time) {
+              respawnAI(entry.ai);
+              billBattleAIRespawnQueue.splice(i, 1);
+          }
+      }
+  }
+
+function findPlayerDeathCameraPosition(lookAtTarget, obstaclesArray, preferredDirection = null) {
+    const candidates = [];
+    const up = new THREE.Vector3(0, 1, 0);
+    const baseDirs = [];
+    let billCeilingMaxY = null;
+    if (isBillBattleMode() && billBattleCeiling) {
+        const ceilingGeom = billBattleCeiling.geometry;
+        const ceilingH = ceilingGeom && ceilingGeom.parameters && ceilingGeom.parameters.height
+            ? ceilingGeom.parameters.height
+            : BILL_BATTLE_CEILING_THICKNESS;
+        billCeilingMaxY = billBattleCeiling.position.y - (ceilingH / 2) - 0.3;
+    }
+    if (preferredDirection && preferredDirection.lengthSq() > 1e-6) {
+        baseDirs.push(preferredDirection.clone().normalize().multiplyScalar(-1));
+    }
+    baseDirs.push(new THREE.Vector3(0, 0, 1));
+    baseDirs.push(new THREE.Vector3(0, 0, -1));
+    baseDirs.push(new THREE.Vector3(1, 0, 0));
+    baseDirs.push(new THREE.Vector3(-1, 0, 0));
+    baseDirs.push(new THREE.Vector3(1, 0, 1).normalize());
+    baseDirs.push(new THREE.Vector3(-1, 0, 1).normalize());
+    baseDirs.push(new THREE.Vector3(1, 0, -1).normalize());
+    baseDirs.push(new THREE.Vector3(-1, 0, -1).normalize());
+
+    const distances = [8.5, 10.5, 12.5, 14.0];
+    const heights = [2.8, 3.6, 4.6, 5.8];
+    for (const dir of baseDirs) {
+        for (const d of distances) {
+            for (const h of heights) {
+                const candidate = lookAtTarget.clone().add(dir.clone().multiplyScalar(d)).add(up.clone().multiplyScalar(h));
+                if (isBillBattleMode()) {
+                    const margin = 2.5;
+                    candidate.x = THREE.MathUtils.clamp(candidate.x, -BILL_BATTLE_HALF + margin, BILL_BATTLE_HALF - margin);
+                    candidate.z = THREE.MathUtils.clamp(candidate.z, -BILL_BATTLE_HALF + margin, BILL_BATTLE_HALF - margin);
+                    if (billCeilingMaxY !== null) candidate.y = Math.min(candidate.y, billCeilingMaxY);
+                }
+                candidates.push(candidate);
+            }
+        }
+    }
+    for (const offset of [
+        new THREE.Vector3(0, 7.8, 1.2),
+        new THREE.Vector3(1.0, 9.2, 0),
+        new THREE.Vector3(-1.0, 10.0, -0.8),
+    ]) {
+        const topCandidate = lookAtTarget.clone().add(offset);
+        if (isBillBattleMode()) {
+            const margin = 2.5;
+            topCandidate.x = THREE.MathUtils.clamp(topCandidate.x, -BILL_BATTLE_HALF + margin, BILL_BATTLE_HALF - margin);
+            topCandidate.z = THREE.MathUtils.clamp(topCandidate.z, -BILL_BATTLE_HALF + margin, BILL_BATTLE_HALF - margin);
+            if (billCeilingMaxY !== null) topCandidate.y = Math.min(topCandidate.y, billCeilingMaxY);
+        }
+        candidates.push(topCandidate);
+    }
+
+    let bestCandidate = null;
+    let bestScore = -Infinity;
+    for (const candidate of candidates) {
+        const toLook = new THREE.Vector3().subVectors(lookAtTarget, candidate);
+        const distance = toLook.length();
+        if (distance < 0.01) continue;
+        raycaster.set(candidate, toLook.normalize());
+        const hits = raycaster.intersectObjects(obstaclesArray, true);
+        const clear = hits.length === 0 || hits[0].distance > distance - 0.15;
+        if (clear) return candidate;
+        const score = hits.length > 0 ? hits[0].distance : 0;
+        if (score > bestScore) {
+            bestScore = score;
+            bestCandidate = candidate;
+        }
+    }
+    return bestCandidate || getPlayerDeathExternalCameraFallback(lookAtTarget, preferredDirection);
+}
+
+function getPlayerDeathExternalCameraFallback(lookAtTarget, preferredDirection = null) {
+    let dir = null;
+    if (preferredDirection && preferredDirection.lengthSq() > 1e-6) {
+        dir = preferredDirection.clone().setY(0).normalize().multiplyScalar(-1);
+    }
+    if (!dir || dir.lengthSq() < 1e-6) {
+        dir = new THREE.Vector3(Math.sin(player.rotation.y), 0, Math.cos(player.rotation.y)).normalize();
+    }
+    const side = new THREE.Vector3(-dir.z, 0, dir.x).multiplyScalar(2.4);
+    const pos = lookAtTarget.clone()
+        .add(dir.multiplyScalar(11.5))
+        .add(side)
+        .add(new THREE.Vector3(0, 3.8, 0));
+    if (isBillBattleMode()) {
+        const margin = 2.5;
+        pos.x = THREE.MathUtils.clamp(pos.x, -BILL_BATTLE_HALF + margin, BILL_BATTLE_HALF - margin);
+        pos.z = THREE.MathUtils.clamp(pos.z, -BILL_BATTLE_HALF + margin, BILL_BATTLE_HALF - margin);
+        if (billBattleCeiling) {
+            const ceilingGeom = billBattleCeiling.geometry;
+            const ceilingH = ceilingGeom && ceilingGeom.parameters && ceilingGeom.parameters.height
+                ? ceilingGeom.parameters.height
+                : BILL_BATTLE_CEILING_THICKNESS;
+            pos.y = Math.min(pos.y, billBattleCeiling.position.y - (ceilingH / 2) - 0.3);
+        }
+    }
+    return pos;
+}
+
+function updatePlayerDeathCinematicCamera() {
+    if (!playerDeathLookAt) return;
+    const minDistance = 8.0;
+    if (!playerDeathCamOffset || playerDeathCamOffset.length() < minDistance) {
+        const fallback = getPlayerDeathExternalCameraFallback(playerDeathLookAt, null);
+        playerDeathCamOffset = fallback.clone().sub(playerDeathLookAt);
+    }
+    playerDeathCamWorldPosition = playerDeathLookAt.clone().add(playerDeathCamOffset);
+    cinematicCamera.position.copy(playerDeathCamWorldPosition);
+    cinematicCamera.lookAt(playerDeathLookAt);
+    cinematicCamera.updateProjectionMatrix();
+}
+
+// 通常カメラの描画経路へ戻っても一人称にならないよう、死亡中は外部カメラと同期する。
+function syncPlayerDeathRenderCamera() {
+    if (!camera || !isPlayerDeathPlaying) return;
+    attachDeathCameraToScene();
+    cinematicCamera.updateMatrixWorld(true);
+    camera.position.copy(cinematicCamera.position);
+    camera.quaternion.copy(cinematicCamera.quaternion);
+    camera.fov = cinematicCamera.fov;
+    camera.aspect = cinematicCamera.aspect;
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld(true);
+}
+
+// 指定された位置の真下にある最適な地面のY座標を返すヘルパー関数
+function getGroundY(position, objectBodyHeight) {
+    let currentGroundY = -FLOOR_HEIGHT; // デフォルトはステージの最下部
+
+    // プレイヤーの足元の水平位置
+    const horizontalBox = new THREE.Box2(
+        new THREE.Vector2(position.x - 0.2, position.z - 0.2), 
+        new THREE.Vector2(position.x + 0.2, position.z + 0.2)
+    );
+    const feetY = position.y - objectBodyHeight / 2; // オブジェクトの足元のY座標
+
+      for (const obs of obstacles) {
+          // 壁は地面としてカウントしない
+          if (obs.userData.isWall) continue;
+          // ビルバトルの天井ライトは地面扱いしない
+          if (obs.userData && obs.userData.type === 'billLight') continue;
+        
+        const obstacleBox = new THREE.Box3().setFromObject(obs);
+        // 空洞建物の場合、床のジオメトリーから高さを取得
+        const geometry = obs.geometry || (obs.children && obs.children[0] ? obs.children[0].geometry : null);
+        const height = geometry ? geometry.parameters.height : 4;
+        const topOfObstacle = obs.position.y + height / 2;
+        
+        // 障害物の水平位置
+        const obstacleHorizontalBox = new THREE.Box2(
+            new THREE.Vector2(obstacleBox.min.x, obstacleBox.min.z), 
+            new THREE.Vector2(obstacleBox.max.x, obstacleBox.max.z)
+        );
+
+        if (horizontalBox.intersectsBox(obstacleHorizontalBox)) {
+            // プレイヤーの足元が障害物の上または少し上にある場合
+            if (feetY >= topOfObstacle - 0.1) { // わずかな誤差を許容
+                // 最も高い着地点を優先
+                if (topOfObstacle > currentGroundY) {
+                    currentGroundY = topOfObstacle;
+                }
+            }
+        }
+    }
+    return currentGroundY + objectBodyHeight / 2; // オブジェクトの中心Y座標としての着地位置
+}
+
+function getTwoStoryHouseDeckSurfaceY(position) {
+    let surfaceY = null;
+    for (const house of houses) {
+        const spec = house.userData && house.userData.deckSpec;
+        if (!spec) continue;
+        if (position.y < spec.surfaceY - 0.75) continue;
+
+        const local = house.worldToLocal(position.clone());
+        if (Math.abs(local.x) > spec.width / 2 || Math.abs(local.z) > spec.depth / 2) continue;
+
+        const overLadderOpening = local.z >= spec.openingStartZ &&
+            local.x >= spec.openingLeft && local.x <= spec.openingRight;
+        if (overLadderOpening) continue;
+
+        if (surfaceY === null || spec.surfaceY > surfaceY) surfaceY = spec.surfaceY;
+    }
+    return surfaceY;
+}
+
+// 足元基準の地面Y（原点が足元のリグ向け。例: AI/キャラグループ）
+function getGroundSurfaceY(position) {
+    const houseDeckY = getTwoStoryHouseDeckSurfaceY(position);
+    let currentGroundY = houseDeckY === null ? -FLOOR_HEIGHT : houseDeckY;
+    const horizontalBox = new THREE.Box2(
+        new THREE.Vector2(position.x - 0.25, position.z - 0.25),
+        new THREE.Vector2(position.x + 0.25, position.z + 0.25)
+    );
+      for (const obs of obstacles) {
+          if (obs.userData && obs.userData.isBillBattleCeiling) continue;
+          if (obs.userData.isWall) continue;
+          if (obs.userData && obs.userData.type === 'billLight') continue;
+        
+        // 家の屋根は完全に無視
+        if (obs.userData.isHouseRoof) continue;
+        
+        // 屋上の床の場合は特別処理（家の屋根は含めない）
+        if (obs.userData.isRooftop && !obs.userData.isHouseRoof) {
+            const obstacleBox = new THREE.Box3().setFromObject(obs);
+            const obstacleHorizontalBox = new THREE.Box2(
+                new THREE.Vector2(obstacleBox.min.x, obstacleBox.min.z),
+                new THREE.Vector2(obstacleBox.max.x, obstacleBox.max.z)
+            );
+            if (horizontalBox.intersectsBox(obstacleHorizontalBox)) {
+                const rooftopY = Number.isFinite(obs.userData.surfaceY)
+                    ? obs.userData.surfaceY
+                    : new THREE.Box3().setFromObject(obs).max.y;
+                if (obs.userData.isHouseDeck && position.y < rooftopY - 0.75) continue;
+                if (rooftopY > currentGroundY) currentGroundY = rooftopY;
+            }
+            continue;
+        }
+        
+        const obstacleBox = new THREE.Box3().setFromObject(obs);
+        // 空洞建物の場合、床のジオメトリーから高さを取得
+        const geometry = obs.geometry || (obs.children && obs.children[0] ? obs.children[0].geometry : null);
+        const height = geometry ? geometry.parameters.height : 4;
+        const topOfObstacle = obs.position.y + height / 2;
+        const obstacleHorizontalBox = new THREE.Box2(
+            new THREE.Vector2(obstacleBox.min.x, obstacleBox.min.z),
+            new THREE.Vector2(obstacleBox.max.x, obstacleBox.max.z)
+        );
+        if (horizontalBox.intersectsBox(obstacleHorizontalBox)) {
+            if (topOfObstacle > currentGroundY) currentGroundY = topOfObstacle;
+        }
+    }
+    return currentGroundY;
+}
+
+// プレイヤーが障害物にめり込んでいる場合に、外側に押し出す関数
+function resolvePlayerCollision(playerObj, obstaclesArray, pushOutDistance = 0.05) { // pushOutDistanceを少し小さく設定
+    let playerBoundingBox;
+    if (playerObj === player) {
+        const pos = playerObj.position;
+        playerBoundingBox = new THREE.Box3();
+        // checkCollision と同じロジックでバウンディングボックスを定義
+        playerBoundingBox.min.set(pos.x - 0.2, pos.y - playerTargetHeight, pos.z - 0.2);
+        playerBoundingBox.max.set(pos.x + 0.2, pos.y, pos.z + 0.2);
+    } else {
+        // AIなどの場合は既存のロジックを維持
+        playerBoundingBox = new THREE.Box3().setFromObject(playerObj);
+    }
+
+    let resolved = false;
+
+    for (const obstacle of obstaclesArray) {
+        // 梯子昇降中は屋上床のみ除外。遮蔽物は除外しない。
+        if (obstacle.userData.isRooftop && !obstacle.userData.isHouseRoof && !obstacle.userData.isRooftopCover) continue;
+        // 梯子を登っている最中は、そのタワーとは衝突しないようにする
+        if (obstacle.userData.isTower && playerObj === player && isIgnoringTowerCollision && obstacle === lastClimbedTower) {
+            continue;
+        }
+        // 屋上にいる場合は、登った塔との衝突を無視
+        if (obstacle.userData.isTower && playerObj === player && player.userData.onRooftop && obstacle === player.userData.lastClimbedTower) {
+            continue;
+        }
+        // 屋上にいる場合は、梯子との衝突も無視
+        if (playerObj === player && player.userData.onRooftop && obstacle.userData.isLadder) {
+            continue;
+        }
+
+        const obstacleBoundingBox = new THREE.Box3().setFromObject(obstacle);
+
+        if (playerBoundingBox.intersectsBox(obstacleBoundingBox)) {
+            const overlap = playerBoundingBox.intersect(obstacleBoundingBox);
+            
+            const overlapX = overlap.max.x - overlap.min.x;
+            const overlapY = overlap.max.y - overlap.min.y;
+            const overlapZ = overlap.max.z - overlap.min.z;
+
+            // X-Z平面での最小オーバーラップ軸を見つける
+            // プレイヤーが障害物の上にいる場合（Y軸のオーバーラップが大きい場合）は、XまたはZで押し出す。
+            // 逆に、Y軸のオーバーラップが小さい場合は、垂直方向の衝突とみなし、ここでは水平方向の解決を優先する。
+            let minHorizontalOverlap = Math.min(overlapX, overlapZ);
+            let pushVector = new THREE.Vector3();
+
+            // プレイヤーの中心と障害物の中心を比較して押し出す方向を決定
+            const playerCenter = playerBoundingBox.getCenter(new THREE.Vector3());
+            const obstacleCenter = obstacleBoundingBox.getCenter(new THREE.Vector3());
+
+            if (minHorizontalOverlap === overlapX && overlapX > 0.001) { // わずかなオーバーラップも考慮
+                const pushAmount = overlapX / 2 + pushOutDistance;
+                pushVector.x = (playerCenter.x < obstacleCenter.x) ? -pushAmount : pushAmount;
+            } 
+            else if (minHorizontalOverlap === overlapZ && overlapZ > 0.001) { // わずかなオーバーラップも考慮
+                const pushAmount = overlapZ / 2 + pushOutDistance;
+                pushVector.z = (playerCenter.z < obstacleCenter.z) ? -pushAmount : pushAmount;
+            }
+            
+            if (pushVector.lengthSq() > 0) { // 押し出しベクトルが0でなければ適用
+                playerObj.position.add(pushVector);
+                resolved = true;
+            }
+            // 複数衝突する場合でも、一度解決を試みる
+            // ただし、一度に複数の衝突を解決しようとすると、かえって不安定になる可能性があるため、
+            // ここでは一つの衝突解決でbreakし、animateループで再度チェックするアプローチとする
+            break; 
+        }
+    }
+    return resolved;
+}
+
+function showSettingsAndPause() {
+    if (!isGameRunning && !isPaused) return;
+
+    forceResetTouchState();
+    destroyJoystick();
+    isGameRunning = false;
+    if (!isPaused) {
+        originalSettings = JSON.parse(JSON.stringify(gameSettings));
+    }
+    isPaused = true;
+    document.body.classList.add('settings-screen-active');
+
+    document.exitPointerLock();
+
+    const elementsToHide = ['joystick-move', 'fire-button', 'crouch-button', 'zoom-button', 'follow-button', 'crosshair', 'scope-overlay', 'kill-count-display', 'billbattle-kills-remaining', 'player-hp-display', 'player-weapon-display', 'ai-hp-display', 'ai2-hp-display', 'ai3-hp-display', 'pause-button'];
+    elementsToHide.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+    
+    startScreen.style.display = 'flex';
+    document.getElementById('start-game-btn').style.display = 'none';
+    document.getElementById('resume-game-btn').style.display = 'inline-block';
+    document.getElementById('restart-pause-btn').style.display = 'inline-block';
+    applySettingsScreenLighting(true);
+    
+    // 統合マップセレクターを更新して現在マップを表示
+    updateUnifiedMapSelector();
+    updateMenuBGM();
+}
+
+function resumeGame() {
+    debugLog('resumeGame() called');
+    const settingsChanged = JSON.stringify(originalSettings) !== JSON.stringify(gameSettings);
+
+    applySettingsScreenLighting(false);
+    document.body.classList.remove('settings-screen-active');
+    startScreen.style.display = 'none';
+    document.getElementById('resume-game-btn').style.display = 'none';
+    document.getElementById('restart-pause-btn').style.display = 'none';
+    document.getElementById('start-game-btn').style.display = 'inline-block';
+
+    if (settingsChanged) {
+        restartGame({ rerollRandomMap: gameSettings.mapType === 'random' });
+    } else {
+        isPaused = false;
+        
+        const uiToShow = ['crosshair', 'player-hp-display', 'player-weapon-display'];
+        uiToShow.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'block';
+        });
+
+        const aiDisplays = ['ai-hp-display', 'ai2-hp-display', 'ai3-hp-display'];
+        ais.forEach((ai, index) => {
+            const display = document.getElementById(aiDisplays[index]);
+            if (display) {
+                if (ai.hp > 0) {
+                    display.style.display = 'block';
+                } else {
+                    // 既存ロジックに従い、非表示または死亡表示を維持する
+                     display.style.display = 'block'; 
+                }
+            }
+        });
+        
+        if (gameSettings.gameMode === 'arcade' && document.getElementById('kill-count-display')) {
+            document.getElementById('kill-count-display').style.display = 'block';
+        }
+
+        if (shouldShowTouchControls()) {
+            // resumeGame(): モバイル端末を検出。UIをblock/flexに設定。
+            const joy = document.getElementById('joystick-move');
+            const fire = document.getElementById('fire-button');
+            const crouch = document.getElementById('crouch-button');
+            const zoom = document.getElementById('zoom-button');
+            const pause = document.getElementById('pause-button');
+            if (joy) { joy.style.display = 'block'; }
+            if (fire) { fire.style.display = 'flex'; }
+            if (crouch) { crouch.style.display = 'flex'; }
+            if (zoom) { zoom.style.display = 'flex'; }
+            if (pause) { pause.style.display = 'block'; }
+            initJoystick();
+        } else {
+            // resumeGame(): PC端末を検出。
+            const joy = document.getElementById('joystick-move');
+            const fire = document.getElementById('fire-button');
+            const crouch = document.getElementById('crouch-button');
+            const zoom = document.getElementById('zoom-button');
+            if (joy) { joy.style.display = 'none'; }
+            if (fire) { fire.style.display = 'none'; }
+            if (crouch) { crouch.style.display = 'none'; }
+            if (zoom) { zoom.style.display = 'none'; }
+            destroyJoystick();
+            canvas.requestPointerLock();
+        }
+        enforceTouchUIVisibility();
+
+        isGameRunning = true;
+        updateMobileWeaponButtonVisibility();
+    }
+    updateMenuBGM();
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+    const delta = clock.getDelta();
+    if (window.GFACharacterModels && GFACharacterModels.update) {
+        GFACharacterModels.update(delta);
+    }
+    
+    if (window.justRestarted) {
+        window.justRestarted = false;
+    }
+
+    enforceTouchUIVisibility();
+    if (killCamPhysics.active) {
+        updateKillCamPhysics(delta);
+    }
+
+    if (isPlayerDeathPlaying) {
+        renderPlayerDeathKillCamFrame();
+        return;
+    }
+    
+    if (!isGameRunning) {
+        // ゲームが実行中でない場合は最小限の処理のみ
+        updateCharacterBlobShadows();
+        renderer.render(scene, camera);
+        return;
+    }
+
+    // Update before AI firing so positional sounds use the current view direction.
+    updateAudioListenerFromCamera(camera);
+
+    if (isBillBattleMode() && player && player.userData) {
+        player.userData.onRooftop = false;
+        player.userData.lastClimbedTower = null;
+        isIgnoringTowerCollision = false;
+        lastClimbedTower = null;
+    }
+
+    // 軌跡ドロップ処理
+    if (isGameRunning) {
+        timeSinceLastBreadcrumb += delta;
+        if (timeSinceLastBreadcrumb > 0.25) {
+            playerBreadcrumbs.push(player.position.clone());
+            if (playerBreadcrumbs.length > 100) {
+                playerBreadcrumbs.shift(); // 配列サイズの上限を維持
+            }
+            timeSinceLastBreadcrumb = 0;
+        }
+    }
+
+    if (isIgnoringTowerCollision) {
+        ignoreTowerTimer -= delta;
+        if (ignoreTowerTimer <= 0) {
+            isIgnoringTowerCollision = false;
+            lastClimbedTower = null;
+        }
+    }
+    const timeElapsed = clock.getElapsedTime();
+    updateBillBattleAIRespawns(timeElapsed);
+    updateBillBattleEntry();
+    updateBillBattleAttackDelay(timeElapsed);
+    updateBillBattleElevator(timeElapsed);
+    updateBillBattleLightFlicker(timeElapsed);
+    cleanupOrphanProjectiles(timeElapsed);
+    const isTeamModeOrTeamArcade = isTeamBasedAIMode();
+
+    // 定期的に浮遊屋根パーツをクリーンアップ（ビルバトルは除外）
+    if (!isBillBattleMode()) {
+        if (typeof lastFloatingCleanupTime === 'undefined') {
+            lastFloatingCleanupTime = timeElapsed;
+            // 開始直後はローディングで組み立てたシーンを再構築しない。
+            // ここでの全量リセットは初回フレームを止める原因になる。
+            debugLog('Initial cleanup timer armed.');
+        }
+        if (timeElapsed - lastFloatingCleanupTime > 10.0) { // 10秒ごとに軽量クリーンアップ
+            debugLog('Periodic cleanup - using lightweight cleanup...');
+            const removedCount = cleanupFloatingRooftopParts(); // 軽量なクリーンアップを使用
+            lastFloatingCleanupTime = timeElapsed;
+        }
+    }
+
+    // プレイヤーMGのリロード完了処理（非射撃中でも実行が必要）
+    if (playerMGReloadUntil > 0 && timeElapsed >= playerMGReloadUntil) {
+        playerMGReloadUntil = 0;
+        if (gameSettings.defaultWeaponPlayer === WEAPON_MG) {
+            ammoMG = MAX_AMMO_MG;
+            hideReloadingText();
+        }
+    }
+    if (playerPistolReloadUntil > 0 && timeElapsed >= playerPistolReloadUntil) {
+        playerPistolReloadUntil = 0;
+        ammoPistolClip = MAX_AMMO_PISTOL_CLIP;
+        hideReloadingText();
+    }
+    if (playerMRReloadUntil > 0 && timeElapsed >= playerMRReloadUntil) {
+        playerMRReloadUntil = 0;
+        const nextClip = isDefaultM1Weapon() ? MAX_AMMO_MR : Math.min(MAX_AMMO_MR, ammoMR);
+        setPlayerMRClipAmmo(nextClip);
+        hideReloadingText();
+    }
+    
+    // しゃがみ状態変化時の補正
+    const oldPlayerTargetHeight = playerTargetHeight;
+    // プレイヤー当たり判定/拾得判定が崩れない高さに固定
+      const baseStandingHeight = isBillBattleMode() ? BILL_BATTLE_PLAYER_HEIGHT : 2.2;
+      const baseCrouchHeight = 0.9;
+      playerTargetHeight = isCrouchingToggle ? baseCrouchHeight : baseStandingHeight;
+    // しゃがむ/立つときに高さを即座に反映させる
+    if (playerTargetHeight < oldPlayerTargetHeight) { // しゃがみ開始
+        player.position.y -= oldPlayerTargetHeight - playerTargetHeight;
+    } else if (playerTargetHeight > oldPlayerTargetHeight) { // 立ち上がり
+        player.position.y += playerTargetHeight - oldPlayerTargetHeight;
+    }
+
+    const currentMoveSpeed = ((isCrouchingToggle || isRifleZoomed) ? moveSpeed / 2 : moveSpeed) * getMoveSpeedMultiplier();
+    for (let i = debris.length - 1; i >= 0; i--) {
+        const d = debris[i];
+        d.velocity.y -= GRAVITY * delta;
+        d.mesh.position.add(d.velocity.clone().multiplyScalar(delta));
+        d.mesh.rotation.x += d.angularVelocity.x * delta;
+        d.mesh.rotation.y += d.angularVelocity.y * delta;
+        d.mesh.rotation.z += d.angularVelocity.z * delta;
+        d.life -= delta;
+        if (d.mesh.position.y < -FLOOR_HEIGHT) {
+            d.mesh.position.y = -FLOOR_HEIGHT;
+            d.velocity.y *= -0.4;
+            d.velocity.x *= 0.8;
+            d.velocity.z *= 0.8;
+            d.angularVelocity.multiplyScalar(0.8);
+        }
+        if (d.life <= 0) {
+            if (d.mesh.parent) {
+                d.mesh.parent.remove(d.mesh);
+            }
+            debris.splice(i, 1);
+        }
+    }
+    if (isAIDeathPlaying) {
+        TWEEN.update();
+        if (cinematicTargetAI) {
+            if (shouldHoldDeathActorAboveGround(cinematicTargetAI)) liftDeathActorAboveGround(cinematicTargetAI, 0.03);
+            if (isBillBattleMode() && shouldHoldDeathActorAboveGround(cinematicTargetAI)) enforceBillBattleInsideActor(cinematicTargetAI, 1.2, false);
+        }
+        const followBtn = document.getElementById('follow-button');
+        const zoomBtn = document.getElementById('zoom-button');
+        const crouchBtn = document.getElementById('crouch-button');
+        if (followBtn) followBtn.style.display = 'none';
+        if (zoomBtn) zoomBtn.style.display = 'none';
+        if (crouchBtn) crouchBtn.style.display = 'none';
+        if (aiDeathFocusObject.children.length > 0) {
+            const focusPos = new THREE.Vector3();
+            let partsInFocus = 0;
+            const tempVector = new THREE.Vector3();
+            for (const part of aiDeathFocusObject.children) {
+                if (part.userData.velocity) {
+                    part.userData.velocity.y -= GRAVITY * delta;
+                    part.position.add(part.userData.velocity.clone().multiplyScalar(delta));
+                    part.rotation.x += part.userData.angularVelocity.x * delta;
+                    part.rotation.y += part.userData.angularVelocity.y * delta;
+                    part.rotation.z += part.userData.angularVelocity.z * delta;
+                    if (part.position.y < -FLOOR_HEIGHT) {
+                        part.position.y = -FLOOR_HEIGHT;
+                        part.userData.velocity.y *= -0.4;
+                        part.userData.velocity.x *= 0.8;
+                        part.userData.velocity.z *= 0.8;
+                        part.userData.angularVelocity.multiplyScalar(0.8);
+                    }
+                    focusPos.add(part.getWorldPosition(tempVector));
+                    partsInFocus++;
+                }
+            }
+            if (partsInFocus > 0) {
+                focusPos.divideScalar(partsInFocus);
+            }
+            cinematicCamera.lookAt(focusPos);
+        }
+        else if (cinematicTargetAI) {
+            const lookAtTarget = cinematicTargetAI.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+            if (aiDeathCamOffset) {
+                let nextCameraPos = lookAtTarget.clone().add(aiDeathCamOffset);
+                const focusPoints = getKillCamFocusPoints(cinematicTargetAI.position, lookAtTarget);
+                const visibility = scoreKillCamCandidate(nextCameraPos, focusPoints, obstacles);
+                if (visibility.clearCount < Math.max(3, focusPoints.length - 1)) {
+                    nextCameraPos = findClearKillCameraPosition(cinematicTargetAI.position, lookAtTarget, obstacles, null);
+                    aiDeathCamOffset = nextCameraPos.clone().sub(lookAtTarget);
+                }
+                cinematicCamera.position.copy(nextCameraPos);
+            }
+            cinematicCamera.lookAt(lookAtTarget);
+        }
+        cinematicCamera.updateProjectionMatrix();
+        renderKillCamScene();
+        return;
+    }
+
+    if (isPlayerDeathPlaying) {
+        renderPlayerDeathKillCamFrame();
+        return;
+    }
+
+    if (!isGameRunning) {
+        updateCharacterBlobShadows();
+        renderer.render(scene, camera);
+        return;
+    }
+
+    syncFollowButtonVisibility();
+
+    // プレイヤーモデルを常に非表示にする
+    if (playerModel) {
+        playerModel.visible = false;
+    }
+    if (playerWeaponDisplay) { // グローバル変数を使用し、nullチェック
+        let weaponName = currentWeapon;
+        let ammoCount = 0;
+        switch (currentWeapon) {
+            case WEAPON_MG: weaponName = 'Machinegun'; ammoCount = ammoMG; break;
+            case WEAPON_RR: weaponName = 'Rocket'; ammoCount = ammoRR; break;
+            case WEAPON_SR: weaponName = 'Sniper'; ammoCount = ammoSR; break;
+            case WEAPON_SG: weaponName = 'Shotgun'; ammoCount = ammoSG; break;
+            case WEAPON_MR: weaponName = 'M1 Rifle'; ammoCount = getPlayerMRDisplayAmmo(); break;
+            case WEAPON_PISTOL: weaponName = 'Pistol'; ammoCount = playerPistolReloadUntil > 0 ? `Reloading (${MAX_AMMO_PISTOL_CLIP}/∞)` : `${ammoPistolClip}/∞`; break;
+        }
+        const displayHTML = `Weapon: ${weaponName}<br>Ammo: ${ammoCount}`;
+        if (displayHTML !== lastPlayerWeaponDisplayHTML) {
+            playerWeaponDisplay.innerHTML = displayHTML; // playerWeaponDisplayを使用
+            lastPlayerWeaponDisplayHTML = displayHTML;
+        }
+    }
+    if (isRifleZoomed && !canUseRifleZoom(currentWeapon)) {
+        setRifleZoom(false);
+    } else if (isRifleZoomed && zoomedWeaponType !== currentWeapon) {
+        zoomedWeaponType = currentWeapon;
+        new TWEEN.Tween(camera)
+            .to({ fov: WEAPON_ZOOM_FOV[currentWeapon] || 46 }, 100)
+            .easing(TWEEN.Easing.Quadratic.Out)
+            .onUpdate(() => camera.updateProjectionMatrix())
+            .start();
+    }
+    if (isMouseButtonDown && (currentWeapon === WEAPON_MG || currentWeapon === WEAPON_SG)) {
+        shoot();
+    }
+    if (lastCrosshairWeaponType !== currentWeapon) {
+        updateCrosshairForWeapon();
+        updateMobileWeaponButtonVisibility();
+        lastCrosshairWeaponType = currentWeapon;
+    }
+    if (isScoping) {
+        setCrosshairVisible(false);
+        updateSniperScopeAutoAim(delta);
+    } else {
+        if (scopeOverlay.style.display === 'none') {
+            setCrosshairVisible(true);
+        }
+    }
+    keyboardMoveVector.set(0, 0);
+    if (keySet.has('KeyW')) keyboardMoveVector.y += 1;
+    if (keySet.has('KeyS')) keyboardMoveVector.y -= 1;
+    if (keySet.has('KeyA')) keyboardMoveVector.x -= 1;
+    if (keySet.has('KeyD')) keyboardMoveVector.x += 1;
+    
+    // デバッグ: キーボード移動ベクトルをログ
+    if (keyboardMoveVector.length() > 0) {
+        debugLog('Keyboard move vector:', keyboardMoveVector, 'keys:', Array.from(keySet));
+    }
+    
+    let finalMoveVector = joystickMoveVector.length() > 0 ? joystickMoveVector.clone() : keyboardMoveVector.clone();
+
+    if (finalMoveVector.length() > 0) finalMoveVector.normalize();
+    // リスポーン直後の移動を強制的に停止させる
+    if (window.justRestarted || isPlayerDeathPlaying || isElevating) {
+        debugLog('Movement blocked - justRestarted:', window.justRestarted, 'isPlayerDeathPlaying:', isPlayerDeathPlaying, 'isElevating:', isElevating);
+        finalMoveVector.set(0, 0); // 移動を強制的にキャンセル
+        keyboardMoveVector.set(0, 0); // 念のためキーボード移動もリセット
+        joystickMoveVector.set(0, 0); // 念のためジョイスティック移動もリセット
+        // isPlayerDeathPlayingはプレイヤー死亡中、isElevatingは梯子昇降中なので、その間は移動させない
+    }
+    const forwardMove = finalMoveVector.y * currentMoveSpeed * delta;
+    const rightMove = finalMoveVector.x * currentMoveSpeed * delta;
+
+    const moveDirection = new THREE.Vector3(rightMove, 0, -forwardMove);
+
+    moveDirection.applyQuaternion(player.quaternion);
+
+    if (isElevating) {
+        const elevateSpeed = 5.0;
+        player.position.y += elevateSpeed * getMoveSpeedMultiplier() * delta;
+        if (player.position.y >= elevatingTargetY) {
+            // debugLog('Climb completed! Dropping to rooftop...');
+            player.position.y = elevatingTargetY;
+            isElevating = false;
+            // debugLog('isElevating set to false');
+            isIgnoringTowerCollision = true;
+            ignoreTowerTimer = 5.0; // 屋上安全性確保のため5.0秒へ延長
+            lastClimbedTower = elevatingTargetObstacle;
+            setCrouchToggle(false); // 強制的に立ち状態に
+            
+            // 前方押し出しなしで自然落下させて屋上へ着地させる
+            // debugLog('Dropping from height to rooftop');
+            
+            // 屋上判定フラグを立て、恒久的な衝突無視対象として扱う
+            player.userData.onRooftop = true;
+            player.userData.lastClimbedTower = elevatingTargetObstacle;
+
+            if (elevatingLandingPosition) {
+                player.position.x = elevatingLandingPosition.x;
+                player.position.z = elevatingLandingPosition.z;
+                elevatingLandingPosition = null;
+            } else if (elevatingTargetObstacle && elevatingTargetObstacle.position) {
+                const inward = elevatingTargetObstacle.position.clone().sub(player.position);
+                inward.y = 0;
+                if (inward.lengthSq() > 1e-6) {
+                    inward.normalize();
+                    player.position.addScaledVector(
+                        inward,
+                        PLAYER_LADDER_VIEW_OFFSET + PLAYER_ROOFTOP_LANDING_INSET
+                    );
+                }
+            }
+            
+            // 重力を有効化して自然落下させる
+            playerVelocityY = 0; // 速度をリセットし、以後は重力に任せる
+        }    } else {
+        let inSensorArea = false;
+        const playerBoundingBox = new THREE.Box3().setFromCenterAndSize(
+            player.position.clone().add(new THREE.Vector3(0, -playerTargetHeight / 2, 0)),
+            new THREE.Vector3(1, playerTargetHeight, 1)
+        );
+        const playerFeetYForLadder = player.position.y - playerTargetHeight;
+        if (player.userData.onRooftop && playerFeetYForLadder <= -FLOOR_HEIGHT + 0.5) {
+            player.userData.onRooftop = false;
+            player.userData.lastClimbedTower = null;
+            player.userData.ladderReentryBlockedUntil = 0;
+            isIgnoringTowerCollision = false;
+            lastClimbedTower = null;
+        }
+        const ladderNow = clock.getElapsedTime();
+        let ladderBlockedUntil = player.userData.ladderReentryBlockedUntil || 0;
+        // clock.start()後に前試合の絶対時刻が残っても、通常の1.8秒を超えて梯子を封鎖しない。
+        if (ladderBlockedUntil - ladderNow > 2.5) {
+            ladderBlockedUntil = 0;
+            player.userData.ladderReentryBlockedUntil = 0;
+        }
+        const ladderReentryBlocked = ladderNow < ladderBlockedUntil;
+        const canStartLadderClimb = !player.userData.onRooftop && !ladderReentryBlocked;
+        for (const sensorArea of canStartLadderClimb ? ladderSwitches : []) {
+            const sensorBoundingBox = new THREE.Box3().setFromObject(sensorArea);
+            if (playerBoundingBox.intersectsBox(sensorBoundingBox)) {
+                // debugLog('Ladder detected! Starting climb...');
+                inSensorArea = true; const obs = sensorArea.userData.obstacle;
+                isElevating = true;
+                elevatingTargetObstacle = obs;
+                elevatingLandingPosition = sensorArea.userData.landingPos
+                    ? sensorArea.userData.landingPos.clone()
+                    : null;
+                // 空洞建物の場合、床のジオメトリーから高さを取得
+                const geometry = obs.geometry || (obs.children && obs.children[0] ? obs.children[0].geometry : null);
+                const height = geometry ? geometry.parameters.height : 4;
+                const rooftopY = Number.isFinite(sensorArea.userData.targetY)
+                    ? sensorArea.userData.targetY
+                    : obs.position.y + height / 2;
+                elevatingTargetY = rooftopY + playerTargetHeight + 0.05;
+                const ladderPos = sensorArea.userData.ladderPos;
+                if (ladderPos) {
+                    const outward = ladderPos.clone().sub(obs.position);
+                    outward.y = 0;
+                    if (outward.lengthSq() > 1e-6) outward.normalize();
+                    player.position.x = ladderPos.x + outward.x * PLAYER_LADDER_VIEW_OFFSET;
+                    player.position.z = ladderPos.z + outward.z * PLAYER_LADDER_VIEW_OFFSET;
+                }
+                // Face the ladder when climbing starts. Mouse/touch look remains
+                // active during elevation, so the player can look away afterward.
+                const towardTower = obs.position.clone().sub(player.position);
+                towardTower.y = 0;
+                if (towardTower.lengthSq() > 1e-6) {
+                    player.rotation.y = Math.atan2(towardTower.x, towardTower.z) + Math.PI;
+                    camera.rotation.set(0, 0, 0);
+                }
+                break;
+            }
+        }
+        if (!inSensorArea || player.userData.onRooftop) {
+            // debugLog('Movement check - inSensorArea:', inSensorArea, 'onRooftop:', player.userData.onRooftop);
+            if (player.userData.onRooftop) {
+                // debugLog('On rooftop - allowing movement');
+            }
+            if (finalMoveVector.length() > 0) {
+                // debugLog('Input detected - finalMoveVector length:', finalMoveVector.length());
+                finalMoveVector.normalize();
+            } else {
+                // debugLog('No input detected');
+            }
+            const forwardMove = finalMoveVector.y * currentMoveSpeed * delta;
+            const rightMove = finalMoveVector.x * currentMoveSpeed * delta;
+            const oldPlayerPosition = player.position.clone();
+            const forwardVector = new THREE.Vector3();
+            player.getWorldDirection(forwardVector);
+            forwardVector.y = 0;
+            forwardVector.normalize();
+            const rightVector = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), forwardVector);
+            let moveX = rightVector.x * rightMove + forwardVector.x * -forwardMove;
+            let moveZ = rightVector.z * rightMove + forwardVector.z * -forwardMove;
+            
+            // debugLog('Movement calculated - moveX:', moveX, 'moveZ:', moveZ);
+            
+            const ignoreObstacle = isIgnoringTowerCollision ? lastClimbedTower : currentGroundObstacle;
+
+            // 薄い壁のすり抜け対策：移動ベクトルのスイープチェック
+            const moveVec = new THREE.Vector3(moveX, 0, moveZ);
+            const moveLen = moveVec.length();
+            if (moveLen > 0) {
+                const origin = player.position.clone().add(new THREE.Vector3(0, -playerTargetHeight * 0.5, 0));
+                const dir = moveVec.clone().normalize();
+                raycaster.set(origin, dir);
+                raycaster.far = moveLen + 0.35;
+                const hits = raycaster.intersectObjects(obstacles, true);
+                let blockingHit = null;
+                for (const hit of hits) {
+                    const obj = hit.object;
+                    if (obj.userData && obj.userData.isRooftop && !obj.userData.isHouseRoof && !obj.userData.isRooftopCover) continue;
+                    if (obj.userData && obj.userData.isLadder && player.userData.onRooftop) continue;
+                    if (obj === ignoreObstacle) continue;
+                    blockingHit = hit;
+                    break;
+                }
+                if (blockingHit && blockingHit.distance < moveLen + 0.35) {
+                    const safeLen = Math.max(0, blockingHit.distance - 0.35);
+                    if (safeLen < moveLen) {
+                        const scale = safeLen / moveLen;
+                        moveX *= scale;
+                        moveZ *= scale;
+                    }
+                }
+            }
+
+            // まず、プレイヤーのXとZの位置を更新
+            player.position.x += moveX;
+            player.position.z += moveZ;
+            
+            // 屋上にいる場合はY座標を地面高さに更新
+            if (player.userData.onRooftop) {
+                const groundY = getGroundSurfaceY(player.position);
+                if (groundY > -FLOOR_HEIGHT) {
+                    // player.position is the camera/body-top coordinate, not the feet.
+                    player.position.y = groundY + playerTargetHeight;
+                } else {
+                    // 地面高さが低すぎる場合は屋上状態を解除
+                    player.userData.onRooftop = false;
+                    player.userData.lastClimbedTower = null;
+                    player.userData.ladderReentryBlockedUntil = clock.getElapsedTime() + 1.8;
+                }
+            }
+
+            // 新しい位置で衝突があるかチェックし、あれば解決を試みる
+            if (checkCollision(player, obstacles, ignoreObstacle)) {
+                // debugLog('Collision detected, resolving...');
+                // 屋上にいる場合は押し出し距離を増やす
+                const pushDistance = player.userData.onRooftop ? 0.2 : 0.05;
+                // debugLog('Using push distance:', pushDistance);
+                // 衝突解決を試みる。resolvePlayerCollisionはplayer.positionを直接変更する
+                const collisionResolved = resolvePlayerCollision(player, obstacles, pushDistance);
+
+                // もし衝突解決後もまだ衝突している場合は、元の位置に戻す
+                // これはresolvePlayerCollisionが全ての衝突を一度に解決できない場合のフォールバック
+                if (!collisionResolved || checkCollision(player, obstacles, ignoreObstacle)) {
+                    debugLog('Collision resolution failed, reverting to old position');
+                    debugLog('Old position:', oldPlayerPosition);
+                    debugLog('Current position before revert:', player.position);
+                    player.position.copy(oldPlayerPosition); 
+                    debugLog('Position after revert:', player.position);
+                } else {
+                    debugLog('Collision resolved successfully');
+                }
+            } else {
+                debugLog('No collision detected');
+            }
+            debugLog('Final position after movement:', player.position);
+            const playerDistFromCenter = Math.sqrt(player.position.x * player.position.x + player.position.z * player.position.z);
+            if (playerDistFromCenter > ARENA_PLAY_AREA_RADIUS) {
+                const ratio = ARENA_PLAY_AREA_RADIUS / playerDistFromCenter;
+                player.position.x *= ratio;
+                player.position.z *= ratio;
+            }
+            let onGround = false;
+            currentGroundObstacle = null;
+            let groundY = -FLOOR_HEIGHT;
+            const playerFeetY = player.position.y - playerTargetHeight;
+
+            const houseDeckY = getTwoStoryHouseDeckSurfaceY(player.position);
+            if (houseDeckY !== null && playerFeetY >= houseDeckY - 0.65 && playerFeetY <= houseDeckY + 1.0) {
+                onGround = true;
+                groundY = houseDeckY;
+            }
+
+            // 登坂直後または屋上では許容値を緩め、それ以外は厳しめにする。
+            let yTolerance = 0.5;
+            if (isIgnoringTowerCollision || (currentGroundObstacle && currentGroundObstacle.userData.isRooftop && !currentGroundObstacle.userData.isHouseRoof)) {
+                yTolerance = 2.0;
+            }
+
+            for (const obs of onGround ? [] : obstacles) {
+                // Indoor combat objects are solid cover, never walkable ground.
+                if (isBillBattleMode()) continue;
+                const obstacleBox = new THREE.Box3().setFromObject(obs);
+                // 空洞建物の場合、床のジオメトリーから高さを取得
+                const geometry = obs.geometry || (obs.children && obs.children[0] ? obs.children[0].geometry : null);
+                const height = geometry ? geometry.parameters.height : 4;
+                const topOfObstacle = obs.userData && obs.userData.isRooftop && Number.isFinite(obs.userData.surfaceY)
+                    ? obs.userData.surfaceY
+                    : obstacleBox.max.y;
+                const playerHorizontalBox = new THREE.Box2(new THREE.Vector2(player.position.x - 0.5, player.position.z - 0.5), new THREE.Vector2(player.position.x + 0.5, player.position.z + 0.5));
+                const obstacleHorizontalBox = new THREE.Box2(new THREE.Vector2(obstacleBox.min.x, obstacleBox.min.z), new THREE.Vector2(obstacleBox.max.x, obstacleBox.max.z));
+                if (playerHorizontalBox.intersectsBox(obstacleHorizontalBox)) {
+                    if (((obs.userData.isRooftop && !obs.userData.isHouseRoof) || !obs.userData.isWall) && playerFeetY >= topOfObstacle - yTolerance && playerFeetY <= topOfObstacle + 1.0) {
+                        onGround = true;
+                        currentGroundObstacle = obs;
+                        groundY = topOfObstacle;
+                        break;
+                    }
+                }
+            }
+            if (!onGround && playerFeetY < -FLOOR_HEIGHT + 0.1) {
+                onGround = true;
+                groundY = -FLOOR_HEIGHT;
+            }
+            if (onGround) {
+                if (currentGroundObstacle && currentGroundObstacle.userData.isRooftop && !currentGroundObstacle.userData.isHouseRoof) {
+                    const rooftopY = Number.isFinite(currentGroundObstacle.userData.surfaceY)
+                        ? currentGroundObstacle.userData.surfaceY
+                        : new THREE.Box3().setFromObject(currentGroundObstacle).max.y;
+                    player.position.y = THREE.MathUtils.lerp(player.position.y, rooftopY + playerTargetHeight, 0.2);
+                } else {
+                    const targetY = groundY + playerTargetHeight;
+                    player.position.y = THREE.MathUtils.lerp(player.position.y, targetY, 0.2);
+                }
+            } else {
+                player.position.y -= GRAVITY * delta;
+            }        }
+    }
+    for (let i = weaponPickups.length - 1; i >= 0; i--) {
+        const pickup = weaponPickups[i];
+        if (!pickup.parent) continue;
+        const pickupBoundingBox = new THREE.Box3().setFromObject(pickup);
+        const playerPos = player.position;
+        const playerCollisionBox = new THREE.Box3();
+        const pickupReach = Math.max(2.0, playerTargetHeight + 0.2);
+        playerCollisionBox.min.set(playerPos.x - 0.5, playerPos.y - pickupReach, playerPos.z - 0.5);
+        playerCollisionBox.max.set(playerPos.x + 0.5, playerPos.y + 0.5, playerPos.z + 0.5);
+        if (playerCollisionBox.intersectsBox(pickupBoundingBox)) {
+            if (pickup.userData.type === 'weaponPickup') {
+                let weaponName = '';
+                switch (pickup.userData.weaponType) {
+                    case WEAPON_MG: 
+                        if (currentWeapon === WEAPON_MG) { ammoMG = Math.min(ammoMG + MAX_AMMO_MG, MAX_AMMO_MG * 2); } 
+                        else { currentWeapon = WEAPON_MG; ammoMG = MAX_AMMO_MG; } 
+                        weaponName = 'MACHINEGUN'; break;
+                    case WEAPON_RR: 
+                        if (currentWeapon === WEAPON_RR) { ammoRR = Math.min(ammoRR + MAX_AMMO_RR, MAX_AMMO_RR * 2); } 
+                        else { currentWeapon = WEAPON_RR; ammoRR = MAX_AMMO_RR; } 
+                        weaponName = 'ROCKET LAUNCHER'; break;
+                    case WEAPON_SR: 
+                        if (currentWeapon === WEAPON_SR) { ammoSR = Math.min(ammoSR + MAX_AMMO_SR, MAX_AMMO_SR * 2); } 
+                        else { currentWeapon = WEAPON_SR; ammoSR = MAX_AMMO_SR; } 
+                        weaponName = 'SNIPER RIFLE'; break;
+                    case WEAPON_SG: 
+                        if (currentWeapon === WEAPON_SG) { ammoSG = Math.min(ammoSG + MAX_AMMO_SG, MAX_AMMO_SG * 2); } 
+                        else { currentWeapon = WEAPON_SG; ammoSG = MAX_AMMO_SG; } 
+                        weaponName = 'SHOTGUN'; break;
+                    case WEAPON_MR:
+                        {
+                            const isDefaultM1 = isDefaultM1Weapon();
+                            const wasUsingM1 = currentWeapon === WEAPON_MR;
+                            if (!wasUsingM1) currentWeapon = WEAPON_MR;
+
+                            if (!isDefaultM1) {
+                                ammoMR += PICKUP_AMMO_MR;
+                                if (!wasUsingM1) {
+                                    ammoMRClip = Math.min(MAX_AMMO_MR, ammoMR);
+                                } else if (ammoMRClip <= 0 && playerMRReloadUntil <= 0) {
+                                    ammoMRClip = Math.min(MAX_AMMO_MR, ammoMR);
+                                }
+                            }
+
+                            weaponName = 'M1 RIFLE';
+                            break;
+                        }
+                }
+                updateMobileWeaponButtonVisibility();
+                const setSound = document.getElementById('setSound');
+                if (setSound) playSound(setSound);
+                const weaponGetDisplay = document.getElementById('weapon-get-display');
+                if (weaponGetDisplay) {
+                    weaponGetDisplay.textContent = `${weaponName} GET!`;
+                    weaponGetDisplay.style.display = 'block';
+                    setTimeout(() => { weaponGetDisplay.style.display = 'none'; }, 1000);
+                }
+                scene.remove(pickup);
+                weaponPickups.splice(i, 1);
+                respawningPickups.push({ type: 'weapon', weaponType: pickup.userData.weaponType, respawnTime: timeElapsed + RESPAWN_DELAY });
+                continue;
+            } else if (pickup.userData.type === 'medikitPickup') {
+                const healAmount = getMedikitHealAmount();
+                if (playerHP !== Infinity) {
+                    playerHP += healAmount;
+                    playerHPDisplay.textContent = `HP: ${playerHP}`;
+                }
+                const setSound = document.getElementById('setSound');
+                if (setSound) playSound(setSound);
+                const weaponGetDisplay = document.getElementById('weapon-get-display');
+                if (weaponGetDisplay) {
+                    weaponGetDisplay.textContent = `HP +${healAmount}!`;
+                    weaponGetDisplay.style.display = 'block';
+                    setTimeout(() => { weaponGetDisplay.style.display = 'none'; }, 1000);
+                }
+                scene.remove(pickup);
+                weaponPickups.splice(i, 1);
+                if (shouldSpawnMedikits()) {
+                    respawningPickups.push({ type: 'medikit', respawnTime: timeElapsed + RESPAWN_DELAY });
+                }
+                continue;
+            }
+        }
+    }
+    for (let i = respawningPickups.length - 1; i >= 0; i--) {
+        const respawnItem = respawningPickups[i];
+        if (timeElapsed >= respawnItem.respawnTime) {
+            if (respawnItem.type === 'weapon') {
+                const weaponText = respawnItem.weaponType === WEAPON_MG ? 'MG'
+                    : respawnItem.weaponType === WEAPON_RR ? 'RL'
+                    : respawnItem.weaponType === WEAPON_SR ? 'SR'
+                    : respawnItem.weaponType === WEAPON_MR ? 'MR'
+                    : 'SG';
+                const weaponBoxWidth = 1;
+                const weaponBoxHeight = 0.8;
+                const weaponBoxDepth = 2;
+                const pickupPos = isBillBattleMode()
+                    ? getBillBattleRandomPosition(weaponBoxWidth, weaponBoxHeight, weaponBoxDepth, false)
+                    : getRandomSafePosition(weaponBoxWidth, weaponBoxHeight, weaponBoxDepth);
+                createWeaponPickup(weaponText, pickupPos, respawnItem.weaponType);
+            } else if (respawnItem.type === 'medikit') {
+                if (shouldSpawnMedikits()) {
+                    createMedikitPickup(getMedikitSpawnPosition());
+                }
+            }
+            respawningPickups.splice(i, 1);
+        }
+    }
+    for (let i = respawningBarrels.length - 1; i >= 0; i--) {
+        const respawnBarrel = respawningBarrels[i];
+        if (timeElapsed >= respawnBarrel.respawnTime) {
+            createExplosiveBarrel(respawnBarrel.x, respawnBarrel.z, respawnBarrel.color, respawnBarrel.radius, respawnBarrel.height);
+            respawningBarrels.splice(i, 1);
+        }
+    }
+        const AI_SEPARATION_FORCE = 2.0;
+        ais.forEach((ai, index) => {
+            if (!ai) return;
+            if (ai.userData && (ai.userData.isDying || ai.userData.deathFallingToGround)) {
+                if (ai.targetPosition) ai.targetPosition.copy(ai.position);
+                ai.avoiding = false;
+                ai.isElevating = false;
+                return;
+            }
+            // Only an active ladder/rooftop state may raise an AI above the arena floor.
+            enforceAIGroundOnly(ai);
+            if (isBillBattleMode()) {
+                ensureBillBattleAIIntegrity(ai);
+              
+              // Build BattleではAIを開始時からアクティブにする
+                if (ai.hp <= 0 && !isBillBattlePlayerKillWindow(ai, timeElapsed)) {
+                    ai.visible = false;
+                    if (ai.userData) ai.userData.isDying = false;
+                    return;
+                }
+              
+              if (ai.hp <= 0) {
+                  ai.visible = false;
+                  return;
+              }
+              
+              // AIが可視かつアクティブであることを保証
+              if (!ai.visible) {
+                  ai.visible = true;
+              }
+              
+                // Build Battle向け強制Y軸ロック - AIを地面へ固定
+                if (isBillBattleMode()) {
+                    ai.position.y = getGroundSurfaceY(ai.position);
+                    ai.targetPosition.y = getGroundSurfaceY(ai.targetPosition);
+                  // 屋上関連ロジックをすべて無効化
+                  ai.userData.onRooftop = false;
+                  ai.userData.rooftopIntent = false;
+                  ai.userData.rooftopPhase = 'none';
+                  ai.isElevating = false;
+              }
+              
+              // AI状態が正しいことを保証
+              if (!ai.state || ai.state === 'IDLE') {
+                  ai.state = 'ATTACKING';
+              }
+              
+              // AIが建物境界内に留まることを保証
+                enforceBillBattleInsideActor(ai, 1.2, true, BODY_HEIGHT);
+                // Build BattleではAIを床面に固定する
+                ai.position.y = BODY_HEIGHT;
+                ai.targetPosition.y = 0;
+              }
+
+            // Build Battle以外のAI処理
+            if (!isBillBattleMode()) {
+              if (ai.hp <= 0 && gameSettings.gameMode !== 'arcade') {
+                  ai.visible = false;
+                  return;
+              }
+          }
+          
+        const aiStartPos = ai.position.clone();
+
+        // AI MGリロード完了処理
+        if (ai.userData && ai.userData.mgReloadUntil && timeElapsed >= ai.userData.mgReloadUntil) {
+            ai.userData.mgReloadUntil = 0;
+            ai.ammoMG = MAX_AMMO_MG;
+        }
+        if (ai.userData && ai.userData.pistolReloadUntil && timeElapsed >= ai.userData.pistolReloadUntil) {
+            ai.userData.pistolReloadUntil = 0;
+            ai.userData.pistolClipAmmo = MAX_AMMO_PISTOL_CLIP;
+        }
+        if (ai.userData && ai.userData.mrReloadUntil && timeElapsed >= ai.userData.mrReloadUntil) {
+            ai.userData.mrReloadUntil = 0;
+            const nextClip = isAIDefaultM1Weapon(ai) ? MAX_AMMO_MR : Math.min(MAX_AMMO_MR, ai.ammoMR);
+            setAIClipAmmo(ai, nextClip);
+        }
+
+        if (isTeamBasedAIMode() && ai.hp > 0) {
+            // team欠落個体を補正して、味方誤照準/誤射ロジックを防ぐ
+            if (!ai.team || (ai.team !== 'player' && ai.team !== 'enemy')) {
+                const slot = ai.userData && Number.isFinite(ai.userData.slotIndex) ? ai.userData.slotIndex : 2;
+                ai.team = (slot === 1) ? 'player' : 'enemy';
+            }
+            // 開始直後の戦闘強制: すべてのAI（味方+敵）を即時交戦状態にする。
+            if (timeElapsed < 2.5 && (ai.state === 'HIDING' || ai.state === 'FOLLOWING')) {
+                ai.state = 'ATTACKING';
+                ai.currentAttackTime = timeElapsed;
+                ai.lastAttackTime = -999;
+                if (ai.userData) {
+                    ai.userData.nextPerceptionTime = 0;
+                    ai.userData.cachedVisibleOpponentInfo = null;
+                    ai.userData.cachedIsAISeen = false;
+                }
+            }
+            // 初期向きも補正し、AIが外側を向いて開始しないようにする。
+            if (timeElapsed < 1.2) {
+                const initTarget = getClosestOpponentPosition(ai);
+                if (initTarget) {
+                    ai.targetPosition.copy(initTarget);
+                    ai.rotation.y = Math.atan2(initTarget.x - ai.position.x, initTarget.z - ai.position.z);
+                }
+            }
+        }
+
+        if (isBillBattleMode() && (ai.state === 'MOVING_TO_LADDER' || ai.state === 'CLIMBING' || ai.state === 'ROOFTOP_COMBAT' || ai.state === 'DESCENDING')) {
+            ai.state = 'MOVING';
+        }
+        if (!ENABLE_AI_ROOFTOP_LOGIC && (ai.userData.rooftopPhase || 'none') !== 'none') {
+            ai.state = 'ATTACKING';
+            ai.isElevating = false;
+            ai.userData.rooftopIntent = false;
+            ai.userData.onRooftop = false;
+            ai.userData.rooftopSensor = null;
+            ai.userData.rooftopObstacle = null;
+            ai.userData.rooftopLadderPos = null;
+            ai.userData.rooftopDecisionMade = false;
+            ai.userData.rooftopPhase = 'none';
+        }
+        const currentAISpeed = (ai.isCrouching ? AI_SPEED / 2 : AI_SPEED) * getMoveSpeedMultiplier();
+        const separation_vec = new THREE.Vector3(0, 0, 0);
+
+        // ais.forEachループ内で一度だけ定義
+        const isTeammateInTeamModeOrArcade = isTeamBasedAIMode() && ai.team === 'player';
+
+        // FOLLOWING_PLAYER ロジック
+        if (isTeammateInTeamModeOrArcade && isFollowingPlayerMode && ai.userData.followActive !== false) {
+            const playerPos = player.position.clone();
+            const avoidLockActive = ai.avoiding && ai.userData && ai.userData.avoidUntil && timeElapsed < ai.userData.avoidUntil;
+            if (ai.avoiding && ai.position.distanceTo(ai.targetPosition) < 0.7) {
+                ai.avoiding = false;
+                if (ai.userData) ai.userData.avoidUntil = 0;
+            }
+
+            // --- 照準・射撃ロジック ---
+            let targetToLookAt = player.position.clone(); // 既定ではプレイヤー方向を向く
+            let foundVisibleEnemy = false;
+            
+            for (const enemyAI of ais) {
+                if (enemyAI.team !== 'enemy' || enemyAI.hp <= 0) continue;
+                
+                const aiHeadPos = getAIHeadPos(ai);
+                const enemyHeadPos = getAIHeadPos(enemyAI);
+                const enemyTorsoPos = getAIUpperTorsoPos(enemyAI);
+
+                if (checkLineOfSight(aiHeadPos, enemyHeadPos, obstacles) || checkLineOfSight(aiHeadPos, enemyTorsoPos, obstacles)) {
+                    foundVisibleEnemy = true;
+                    targetToLookAt = enemyAI.position.clone();
+                    break;
+                }
+            }
+
+            const cachedOpponentInfo = ai.userData ? ai.userData.cachedVisibleOpponentInfo : null;
+            if (!foundVisibleEnemy && cachedOpponentInfo && cachedOpponentInfo.target && cachedOpponentInfo.target.team === 'enemy') {
+                const followTargetPos = cachedOpponentInfo.targetPos || (cachedOpponentInfo.target && cachedOpponentInfo.target.position);
+                if (followTargetPos) {
+                    foundVisibleEnemy = true;
+                    targetToLookAt = followTargetPos.clone();
+                }
+            }
+
+            if (foundVisibleEnemy) {
+                ai.userData.followCombatUntil = timeElapsed + 2.2;
+                ai.state = 'FOLLOWING';
+                ai.targetWeaponPickup = null;
+                ai.targetPosition.copy(getFollowSlotPosition(ai));
+                if (!ai.currentAttackTime) ai.currentAttackTime = timeElapsed;
+                aiShoot(ai, timeElapsed);
+            } else if (!avoidLockActive) {
+                const combatUntil = (ai.userData && ai.userData.followCombatUntil) ? ai.userData.followCombatUntil : 0;
+                ai.state = 'FOLLOWING';
+                if (ai.targetWeaponPickup && !ai.targetWeaponPickup.parent) {
+                    ai.targetWeaponPickup = null;
+                }
+                ai.targetWeaponPickup = null;
+                if (ai.state === 'MOVING') {
+                    targetToLookAt.copy(ai.targetPosition);
+                } else {
+                // 常にプレイヤー後方のスロットを追う（見失い対策はパンくず）
+                const desiredBehindPos = getFollowSlotPosition(ai);
+                // プレイヤーに近すぎると重なって見えなくなるため最低距離を維持
+                const minFollowDistance = 4.0;
+                const vecFromPlayer = desiredBehindPos.clone().sub(playerPos);
+                if (vecFromPlayer.lengthSq() > 1e-6 && ai.position.distanceTo(playerPos) < minFollowDistance) {
+                    vecFromPlayer.normalize();
+                    desiredBehindPos.copy(playerPos).add(vecFromPlayer.multiplyScalar(minFollowDistance + 1.8));
+                    desiredBehindPos.y = -FLOOR_HEIGHT;
+                }
+                const aiHeadPos = getAIHeadPos(ai);
+                const desiredHeadPos = desiredBehindPos.clone().add(new THREE.Vector3(0, 1.0, 0));
+
+                if (checkLineOfSight(aiHeadPos, desiredHeadPos, obstacles)) {
+                    ai.targetPosition.lerp(desiredBehindPos, 0.35);
+                } else {
+                    let foundCrumb = false;
+                    for (let i = playerBreadcrumbs.length - 1; i >= 0; i--) {
+                        const crumb = playerBreadcrumbs[i];
+                        const crumbDistToPlayer = crumb.distanceTo(playerPos);
+                        if (crumbDistToPlayer >= 4.2 && checkLineOfSight(aiHeadPos, crumb, obstacles)) {
+                            ai.targetPosition.copy(crumb);
+                            foundCrumb = true;
+                            break;
+                        }
+                    }
+                    if (!foundCrumb) {
+                        ai.targetPosition.copy(desiredBehindPos);
+                    }
+                }
+                targetToLookAt.copy(playerPos);
+                }
+            }
+
+            // follow中は基本プレイヤー向き（敵視認時は上で切替）
+            const targetAngle = Math.atan2(targetToLookAt.x - ai.position.x, targetToLookAt.z - ai.position.z);
+            ai.rotation.y = lerpAngle(ai.rotation.y, targetAngle, 5 * delta);
+            
+        } else if (isTeammateInTeamModeOrArcade && !isFollowingPlayerMode && ai.state === 'FOLLOWING') {
+            // AIチームメイトだが追従モードがOFFになり、かつ現在の状態がFOLLOWINGの場合、HIDINGに戻す
+            ai.state = 'HIDING';
+            ai.lastHiddenTime = timeElapsed;
+        }        ais.forEach((otherAI, otherIndex) => {
+            if (index === otherIndex) return;
+            const distance = ai.position.distanceTo(otherAI.position);
+            if (distance < MIN_DISTANCE_BETWEEN_AIS_AT_SPOT) {
+                const repulsion = new THREE.Vector3().subVectors(ai.position, otherAI.position);
+                if (repulsion.lengthSq() > 0) { // 距離0時のnormalize()でNaN発生を防ぐ
+                    const strength = (MIN_DISTANCE_BETWEEN_AIS_AT_SPOT - distance) / MIN_DISTANCE_BETWEEN_AIS_AT_SPOT;
+                    separation_vec.add(repulsion.normalize().multiplyScalar(strength));
+                }
+            }
+        });
+        separation_vec.multiplyScalar(delta * AI_SEPARATION_FORCE);
+        aiCheckPickup(ai);
+        let visibleOpponentInfo = ai.userData.cachedVisibleOpponentInfo;
+        let isAISeen = !!ai.userData.cachedIsAISeen;
+        if (timeElapsed >= (ai.userData.nextPerceptionTime || 0)) {
+            // LOSチェック間隔を約180-240msに広げ、CPU負荷を低減
+            visibleOpponentInfo = getVisibleOpponentInfo(ai);
+            isAISeen = !!visibleOpponentInfo;
+            ai.userData.cachedVisibleOpponentInfo = visibleOpponentInfo;
+            ai.userData.cachedIsAISeen = isAISeen;
+            // 味方AIはマップ差を受けにくくするため知覚更新を高頻度で一定化
+            if (isTeammateInTeamModeOrArcade) {
+                ai.userData.nextPerceptionTime = timeElapsed + 0.1;
+            } else {
+                ai.userData.nextPerceptionTime = timeElapsed + 0.18 + Math.random() * 0.06;
+            }
+        }
+        if (visibleOpponentInfo) {
+            ai.lastSeenEnemyTime = timeElapsed;
+            ai.lastKnownEnemyPos = visibleOpponentInfo.targetPos.clone();
+        }
+
+        // 味方をより積極化: 味方が待機状態（非追従時のHIDING/FOLLOWING）なら、
+        // 近傍の敵または巡回点へ探索/移動するパルスを与える。
+        if (isTeammateInTeamModeOrArcade && !isFollowingPlayerMode && (ai.state === 'HIDING' || ai.state === 'FOLLOWING') && timeElapsed >= (ai.userData.searchPulseAt || 0)) {
+            const close = getClosestEnemyAIPositionForTeammate(ai);
+            if (close) {
+                ai.state = 'MOVING';
+                ai.targetPosition.copy(close);
+            } else {
+                // 近くに敵がいない場合は、プレイヤー近傍の短距離巡回を選ぶ
+                const ang = Math.random() * Math.PI * 2;
+                const r = 6 + Math.random() * 6;
+                const patrol = player.position.clone().add(new THREE.Vector3(Math.cos(ang) * r, 0, Math.sin(ang) * r));
+                patrol.y = getGroundSurfaceY(patrol);
+                ai.state = 'MOVING';
+                ai.targetPosition.copy(patrol);
+            }
+            ai.userData.searchPulseAt = timeElapsed + 0.35; // 味方はより短い周期で前進判断
+        }
+
+        // フォールバック: 味方が長時間HIDING/FOLLOWING（プレイヤー非追従）を続ける場合、
+        // 長時間待機を避けるため、近傍の敵または巡回点への移動を強制する。
+        if (isTeammateInTeamModeOrArcade && !isFollowingPlayerMode && (ai.state === 'HIDING' || ai.state === 'FOLLOWING')) {
+            const stuckDuration = timeElapsed - (ai.lastHiddenTime || 0);
+            if (stuckDuration > 1.2) {
+                const close = getClosestEnemyAIPositionForTeammate(ai);
+                if (close) {
+                    ai.state = 'MOVING';
+                    ai.targetPosition.copy(close);
+                } else {
+                    const ang = Math.random() * Math.PI * 2;
+                    const r = 6 + Math.random() * 6;
+                    const patrol = player.position.clone().add(new THREE.Vector3(Math.cos(ang) * r, 0, Math.sin(ang) * r));
+                    patrol.y = getGroundSurfaceY(patrol);
+                    ai.state = 'MOVING';
+                    ai.targetPosition.copy(patrol);
+                }
+                ai.userData.searchPulseAt = timeElapsed + 0.4;
+                ai.lastHiddenTime = timeElapsed - 0.1; // 即時再発火を避けるため少しだけリセット
+            }
+        }
+
+        const isFollowLockedTeammate = isTeammateInTeamModeOrArcade && isFollowingPlayerMode && ai.userData.followActive !== false;
+
+        // Dense, low-visibility outdoor maps allow a limited number of enemy AIs to set a timed ambush.
+        if (!isAISeen) {
+            tryStartAIAmbush(ai, timeElapsed, isAISeen, isFollowLockedTeammate);
+        }
+
+        if (ENABLE_EXPERIMENTAL_AI_FLOW) {
+            // 先行探索: 「撃たれるまで棒立ち」を防止する。
+            if (!isFollowLockedTeammate && !isAISeen && !ai.isElevating) {
+                const lockedRooftopState = ai.state === 'MOVING_TO_LADDER' || ai.state === 'CLIMBING' || ai.state === 'ROOFTOP_COMBAT' || ai.state === 'DESCENDING';
+                if (!lockedRooftopState && timeElapsed >= (ai.userData.searchPulseAt || 0)) {
+                    const huntPosBase = ai.lastKnownEnemyPos || getClosestOpponentPosition(ai);
+                    if (huntPosBase) {
+                        const huntPos = huntPosBase.clone();
+                        huntPos.x += (Math.random() - 0.5) * 2.5;
+                        huntPos.z += (Math.random() - 0.5) * 2.5;
+                        huntPos.y = getGroundSurfaceY(huntPos);
+                        ai.state = 'MOVING';
+                        ai.targetPosition.copy(huntPos);
+                    } else {
+                        ai.state = 'ATTACKING';
+                        ai.currentAttackTime = timeElapsed;
+                        ai.strafeDirection = (Math.random() > 0.5 ? 1 : -1);
+                    }
+                    if (isTeammateInTeamModeOrArcade) {
+                        ai.userData.searchPulseAt = timeElapsed + 0.45 + Math.random() * 0.2;
+                    } else {
+                        ai.userData.searchPulseAt = timeElapsed + 1.1 + Math.random() * 0.8;
+                    }
+                }
+            } else if (isAISeen) {
+                ai.userData.searchPulseAt = isTeammateInTeamModeOrArcade ? (timeElapsed + 0.55) : (timeElapsed + 1.4);
+            }
+        }
+
+        // 屋上行動の判定（武器別確率。敵AI/味方AIの両方に適用）
+        if (ENABLE_AI_ROOFTOP_LOGIC) {
+            tryAssignAIRooftopGoal(ai, timeElapsed, isFollowLockedTeammate, isAISeen);
+        }
+
+        if (ENABLE_AI_ROOFTOP_LOGIC && ai.userData.rooftopPhase === 'to_ladder') {
+            if (!ai.userData.rooftopLadderPos || !ai.userData.rooftopObstacle) {
+                ai.userData.rooftopIntent = false;
+                ai.userData.rooftopPhase = 'none';
+            } else {
+                if (ai.userData.rooftopSniperPriority && isAISeen) {
+                    aiShoot(ai, timeElapsed);
+                }
+                const toLadderTimeout = ai.userData.rooftopPursuit
+                    ? 18.0
+                    : ai.userData.rooftopSniperPriority
+                    ? 16.0
+                    : (isTwoStoryHouseObstacle(ai.userData.rooftopObstacle) ? 10.0 : 6.0);
+                if ((timeElapsed - (ai.userData.rooftopStateSince || timeElapsed)) > toLadderTimeout) {
+                    ai.userData.rooftopIntent = false;
+                    ai.userData.rooftopPhase = 'none';
+                    ai.userData.rooftopSniperPriority = false;
+                    ai.userData.rooftopPursuit = false;
+                    ai.userData.rooftopPursuitTarget = null;
+                    ai.userData.nextRooftopDecisionAt = timeElapsed + 5.0;
+                    ai.state = 'ATTACKING';
+                    ai.currentAttackTime = timeElapsed;
+                    ai.strafeDirection = (Math.random() > 0.5 ? 1 : -1);
+                } else {
+                    ai.state = 'MOVING_TO_LADDER';
+                    ai.targetPosition.copy(ai.userData.rooftopLadderPos);
+                    ai.targetPosition.y = getGroundSurfaceY(ai.targetPosition);
+                    const flatLadderDist = new THREE.Vector3(
+                        ai.position.x - ai.targetPosition.x,
+                        0,
+                        ai.position.z - ai.targetPosition.z
+                    ).length();
+                    const ladderReach = (ai.userData.rooftopSniperPriority || ai.userData.rooftopPursuit) ? 1.8 : 0.8;
+                    if (flatLadderDist < ladderReach) {
+                        const ladderSnap = ai.userData.rooftopLadderSnap || ai.userData.rooftopSensor?.userData?.ladderPos || ai.userData.rooftopLadderPos;
+                        // 梯子にスムーズに接続するために位置を補完
+                        ai.position.x += (ladderSnap.x - ai.position.x) * 0.5;
+                        ai.position.z += (ladderSnap.z - ai.position.z) * 0.5;
+                        ai.isElevating = true;
+                        ai.userData.elevatingDirection = 1;
+                        ai.userData.rooftopTargetY = getRooftopSurfaceY(
+                            ai.userData.rooftopObstacle,
+                            ai.userData.rooftopSensor
+                        );
+                        ai.userData.rooftopPhase = 'climbing';
+                        ai.userData.rooftopStateSince = timeElapsed;
+                    }
+                }
+            }
+        }
+
+        if (ENABLE_AI_ROOFTOP_LOGIC && ai.userData.rooftopPhase === 'on_roof') {
+            ai.userData.onRooftop = true;
+            if (isTwoStoryHouseObstacle(ai.userData.rooftopObstacle)) {
+                ai.userData.rooftopPhase = 'entering_house';
+                ai.userData.rooftopStateSince = timeElapsed;
+                ai.userData.rooftopLeaveAt = timeElapsed + 16.0 + Math.random() * 10.0;
+                ai.userData.nextHouseInteriorMoveAt = timeElapsed + 1.0;
+                ai.state = 'ROOFTOP_COMBAT';
+                const entry = ai.userData.rooftopSensor?.userData?.interiorEntryPos;
+                if (entry) {
+                    ai.targetPosition.copy(entry);
+                    ai.targetPosition.y = ai.position.y;
+                }
+            } else {
+                ai.state = 'ATTACKING';
+                aiShoot(ai, timeElapsed);
+            }
+            if (!ai.userData.rooftopLeaveAt) {
+                ai.userData.rooftopLeaveAt = timeElapsed + 6.0 + Math.random() * 4.0;
+            }
+            if (!isTwoStoryHouseObstacle(ai.userData.rooftopObstacle) &&
+                isFollowLockedTeammate && player.userData?.onRooftop &&
+                player.userData.lastClimbedTower === ai.userData.rooftopObstacle) {
+                ai.userData.rooftopLeaveAt = timeElapsed + 2.0;
+            }
+            if (ai.userData.rooftopSniperPriority && aiHasUsableSniperRifle(ai) && isTowerObstacle(ai.userData.rooftopObstacle)) {
+                ai.userData.rooftopLeaveAt = timeElapsed + 4.0;
+            }
+            refreshAIRooftopPursuit(ai, timeElapsed);
+            if (ai.userData.rooftopObstacle && !isTwoStoryHouseObstacle(ai.userData.rooftopObstacle)) {
+                setAIRandomRooftopTarget(ai, 0.32);
+            }
+            // 屋上で弾切れしたAIは強制的に降下させる。
+            if (isAIWeaponOutOfAmmo(ai) && !ai.userData.rooftopDecisionMade) {
+                ai.userData.rooftopDecisionMade = true;
+                ai.userData.rooftopPhase = 'to_ground';
+                ai.userData.rooftopStateSince = timeElapsed;
+            }
+            if (ai.userData.rooftopLeaveAt && timeElapsed > ai.userData.rooftopLeaveAt) {
+                const canSee = canAISeeAnyOpponent(ai);
+                if (canSee && (ai.currentWeapon === WEAPON_SR || ai.currentWeapon === WEAPON_MG)) {
+                    ai.userData.rooftopLeaveAt = timeElapsed + 2.0;
+                } else {
+                    ai.userData.rooftopDecisionMade = true;
+                    ai.userData.rooftopPhase = 'to_ground';
+                    ai.userData.rooftopStateSince = timeElapsed;
+                }
+            }
+        }
+
+        const houseRooftopPhase = ai.userData.rooftopPhase || 'none';
+        if (ENABLE_AI_ROOFTOP_LOGIC &&
+            (houseRooftopPhase === 'entering_house' || houseRooftopPhase === 'inside_house' || houseRooftopPhase === 'exiting_house')) {
+            ai.userData.onRooftop = true;
+            ai.state = 'ROOFTOP_COMBAT';
+            aiShoot(ai, timeElapsed);
+            refreshAIRooftopPursuit(ai, timeElapsed);
+            if (houseRooftopPhase === 'inside_house' &&
+                (isAIWeaponOutOfAmmo(ai) || timeElapsed >= (ai.userData.rooftopLeaveAt || Infinity))) {
+                ai.userData.rooftopPhase = 'exiting_house';
+                ai.userData.rooftopStateSince = timeElapsed;
+                const landing = ai.userData.rooftopSensor?.userData?.landingPos;
+                if (landing) {
+                    ai.targetPosition.copy(landing);
+                    ai.targetPosition.y = ai.position.y;
+                }
+            }
+        }
+
+        if (ENABLE_AI_ROOFTOP_LOGIC && ai.userData.rooftopPhase === 'to_ground') {
+            if (!ai.userData.rooftopLadderPos) {
+                ai.userData.rooftopPhase = 'none';
+                ai.userData.rooftopIntent = false;
+                ai.userData.onRooftop = false;
+            } else {
+                ai.state = 'DESCENDING';
+                const descentApproach = ai.userData.rooftopSensor?.userData?.landingPos || ai.userData.rooftopLadderPos;
+                ai.targetPosition.copy(descentApproach);
+                ai.targetPosition.y = ai.position.y;
+                const flatDist = new THREE.Vector3(ai.position.x - ai.targetPosition.x, 0, ai.position.z - ai.targetPosition.z).length();
+                if (flatDist < 0.9) {
+                    const ladderSnap = ai.userData.rooftopLadderSnap || ai.userData.rooftopLadderPos;
+                    ai.position.x = ladderSnap.x;
+                    ai.position.z = ladderSnap.z;
+                    ai.isElevating = true;
+                    ai.userData.elevatingDirection = -1;
+                    ai.userData.rooftopTargetY = -FLOOR_HEIGHT;
+                    ai.userData.rooftopPhase = 'descending';
+                    ai.userData.rooftopStateSince = timeElapsed;
+                }
+            }
+        }
+
+        // 梯子によるAIの上下移動アニメーション
+        if (ENABLE_AI_ROOFTOP_LOGIC && ai.isElevating) {
+            const vDir = ai.userData.elevatingDirection || 1;
+            const climbSpeed = 3.6;
+            
+            // 梯子登り中は水平位置を梯子に固定してふわふわを防止
+            if (ai.userData.rooftopLadderSnap || ai.userData.rooftopLadderPos) {
+                const snap = ai.userData.rooftopLadderSnap || ai.userData.rooftopLadderPos;
+                const targetX = snap.x;
+                const targetZ = snap.z;
+                const lerpFactor = 0.15; // 滑らかに梯子位置に補完
+                ai.position.x += (targetX - ai.position.x) * lerpFactor;
+                ai.position.z += (targetZ - ai.position.z) * lerpFactor;
+            }
+            
+            ai.position.y += vDir * climbSpeed * getMoveSpeedMultiplier() * delta;
+            ai.targetPosition.copy(ai.position);
+            const targetY = ai.userData.rooftopTargetY ?? -FLOOR_HEIGHT;
+            if ((vDir > 0 && ai.position.y >= targetY) || (vDir < 0 && ai.position.y <= targetY)) {
+                ai.position.y = targetY;
+                ai.isElevating = false;
+                ai.userData.elevatingDirection = 0;
+                if (vDir > 0) {
+                    // 上昇完了時の安全チェック
+                    if (targetY < 2 || !ai.userData.rooftopObstacle) {
+                        // ルーフトップに到達できなかった場合、地上に戻す
+                        ai.position.y = 0;
+                        ai.targetPosition.y = 0;
+                        ai.userData.rooftopIntent = false;
+                        ai.userData.onRooftop = false;
+                        ai.userData.rooftopPhase = 'none';
+                        ai.state = 'ATTACKING';
+                        ai.currentAttackTime = timeElapsed;
+                    } else {
+                        ai.userData.onRooftop = true;
+                        ai.userData.rooftopIntent = true;
+                        ai.userData.rooftopPhase = 'on_roof';
+                        ai.userData.rooftopStateSince = timeElapsed;
+                        ai.userData.rooftopDecisionMade = false;
+                        ai.userData.rooftopLeaveAt = timeElapsed + 6.0 + Math.random() * 4.0;
+                        if (ai.userData.rooftopSniperPriority && aiHasUsableSniperRifle(ai) && isTowerObstacle(ai.userData.rooftopObstacle)) {
+                            ai.userData.rooftopLeaveAt = timeElapsed + 4.0;
+                        }
+                        if (ai.userData.rooftopObstacle) {
+                            const ladderPos = ai.userData.rooftopLadderSnap || ai.userData.rooftopSensor?.userData?.ladderPos || ai.userData.rooftopLadderPos || ai.position.clone();
+                            const landing = findSafeRooftopLanding(
+                                ai,
+                                ai.userData.rooftopObstacle,
+                                ladderPos,
+                                ai.userData.rooftopSensor
+                            );
+                            ai.position.copy(landing);
+                            ai.targetPosition.copy(landing);
+                        }
+                    }
+                } else {
+                    ai.userData.onRooftop = false;
+                    ai.userData.rooftopIntent = false;
+                    ai.userData.rooftopSensor = null;
+                    ai.userData.rooftopObstacle = null;
+                    ai.userData.rooftopLadderPos = null;
+                    ai.userData.rooftopLadderSnap = null;
+                    ai.userData.rooftopDecisionMade = false;
+                    ai.userData.rooftopPhase = 'none';
+                    ai.userData.rooftopStateSince = timeElapsed;
+                    ai.userData.rooftopLeaveAt = 0;
+                    ai.userData.rooftopSniperPriority = false;
+                    ai.userData.rooftopPursuit = false;
+                    ai.userData.rooftopPursuitTarget = null;
+                }
+            }
+        }
+
+        if (!isFollowLockedTeammate && ai.state !== 'CLIMBING' && ai.state !== 'EVADING' && ai.state !== 'AVOIDING' && ai.state !== 'MOVING_TO_LADDER' && ai.state !== 'ROOFTOP_COMBAT' && ai.state !== 'DESCENDING') {
+            if (!isAISeen && ai.state === 'ATTACKING' && !isOutdoorPvAIMode()) {
+                if ((timeElapsed - (ai.lastSeenEnemyTime || -999)) < 2.0 && ai.lastKnownEnemyPos) {
+                    ai.state = 'MOVING';
+                    ai.targetPosition.copy(ai.lastKnownEnemyPos);
+                } else {
+                    ai.state = 'HIDING';
+                    ai.lastHiddenTime = timeElapsed;
+                }
+            }
+        }
+        if (isAISeen && ai.state !== 'ATTACKING' && ai.state !== 'CLIMBING' && ai.state !== 'EVADING' && ai.state !== 'AVOIDING' && ai.state !== 'MOVING_TO_LADDER' && ai.state !== 'ROOFTOP_COMBAT' && ai.state !== 'DESCENDING') {
+            if (ai.state === 'AMBUSH' || ai.state === 'MOVING_TO_AMBUSH') {
+                ai.userData.ambushUntil = 0;
+                ai.userData.nextAmbushAt = timeElapsed + 6.0 + Math.random() * 4.0;
+            }
+            ai.state = 'ATTACKING';
+            ai.currentAttackTime = timeElapsed;
+            ai.strafeDirection = (Math.random() > 0.5 ? 1 : -1);
+        }
+        if (isFollowLockedTeammate && !isAIRooftopFlowActive(ai)) {
+            ai.state = 'FOLLOWING';
+            ai.targetWeaponPickup = null;
+            if (ai.targetPosition.distanceTo(player.position) > 13) {
+                ai.targetPosition.copy(getSafeFollowSlotPosition(ai));
+                ai.avoiding = false;
+                if (ai.userData) ai.userData.avoidUntil = 0;
+            }
+        }
+        const distanceToTarget = ai.position.distanceTo(ai.targetPosition);
+        const isArrived = distanceToTarget < ARRIVAL_THRESHOLD;
+        const isMoving = !isArrived;
+        if (ai.state !== 'CLIMBING' && ai.state !== 'DESCENDING' && !ai.isElevating) {
+            if (ai.state === 'HIDING' || ai.state === 'AMBUSH') {
+                ai.isCrouching = ai.state === 'HIDING' || !!ai.userData.ambushCrouch;
+            } else if (ai.state === 'FOLLOWING') { // FOLLOWING状態ではしゃがまない
+                ai.isCrouching = false;
+            } else {
+                // 戦術的しゃがみ：時間経過で解除
+                if (ai.crouchUntilTime && timeElapsed > ai.crouchUntilTime) {
+                    ai.isCrouching = false;
+                    ai.crouchUntilTime = null;
+                }
+                // HIDING状態でない場合は基本立つ
+                if (!ai.crouchUntilTime) {
+                    ai.isCrouching = false;
+                }
+            }
+            ai.scale.y = 1.0;
+            const rooftopPhase = ai.userData ? (ai.userData.rooftopPhase || 'none') : 'none';
+            const mayStandOnRooftop = ai.userData && ai.userData.onRooftop && ai.userData.rooftopObstacle
+                && (rooftopPhase === 'on_roof' || rooftopPhase === 'to_ground' || ai.state === 'ROOFTOP_COMBAT');
+            if (mayStandOnRooftop) {
+                ai.position.y = getRooftopSurfaceY(
+                    ai.userData.rooftopObstacle,
+                    ai.userData.rooftopSensor
+                );
+            } else {
+                // Ordinary obstacles are not walkable ground; only the ladder flow may elevate an AI.
+                ai.position.y = -FLOOR_HEIGHT;
+                if (ai.targetPosition) ai.targetPosition.y = -FLOOR_HEIGHT;
+            }
+        }
+        if ((ai.state === 'ATTACKING' || isMoving) && ai.state !== 'FOLLOWING') {
+            let targetAngle;
+            const closestOpponentPos = getClosestOpponentPosition(ai);
+            if (closestOpponentPos) {
+                targetAngle = Math.atan2(closestOpponentPos.x - ai.position.x, closestOpponentPos.z - ai.position.z);
+            } else {
+                targetAngle = ai.rotation.y;
+            }
+            ai.rotation.y = lerpAngle(ai.rotation.y, targetAngle, 5 * delta);
+        }
+        switch (ai.state) {
+            case 'MOVING_TO_AMBUSH':
+                ai.isCrouching = false;
+                if (isAISeen) {
+                    ai.state = 'ATTACKING';
+                    ai.currentAttackTime = timeElapsed;
+                    ai.userData.ambushUntil = 0;
+                } else if (ai.avoiding) {
+                    if (isArrived || timeElapsed >= (ai.userData.avoidUntil || 0)) {
+                        ai.avoiding = false;
+                        if (ai.userData.ambushPosition) ai.targetPosition.copy(ai.userData.ambushPosition);
+                    }
+                } else if (isArrived) {
+                    ai.state = 'AMBUSH';
+                    ai.targetPosition.copy(ai.position);
+                    ai.userData.ambushUntil = timeElapsed + 3.5 + Math.random() * 3.0;
+                    ai.userData.stallStartTime = 0;
+                } else if ((timeElapsed - (ai.userData.ambushStartedAt || timeElapsed)) > 8.0) {
+                    releaseAIAmbush(ai, timeElapsed);
+                }
+                break;
+            case 'AMBUSH':
+                ai.avoiding = false;
+                ai.targetPosition.copy(ai.position);
+                if (player && playerHP > 0) {
+                    const watchAngle = Math.atan2(player.position.x - ai.position.x, player.position.z - ai.position.z);
+                    ai.rotation.y = lerpAngle(ai.rotation.y, watchAngle, 3.5 * delta);
+                }
+                if (isAISeen) {
+                    ai.state = 'ATTACKING';
+                    ai.currentAttackTime = timeElapsed;
+                    ai.strafeDirection = (Math.random() > 0.5 ? 1 : -1);
+                    ai.userData.ambushUntil = 0;
+                } else if (timeElapsed >= (ai.userData.ambushUntil || 0)) {
+                    releaseAIAmbush(ai, timeElapsed);
+                }
+                break;
+            case 'HIDING':
+                ai.avoiding = false;
+                // const isTeammate = gameSettings.gameMode === 'team' && ai.team === 'player'; // この行は削除
+                // const isTeammateInTeamModeOrArcade = isTeammateInTeamModeOrArcade && ai.team === 'player'; // この行は削除
+                if (isTeammateInTeamModeOrArcade) {
+                    // 味方AIは積極的に攻撃する（HIDING状態を回避）
+                    if (!findAndTargetWeapon(ai)) {
+                        ai.state = 'ATTACKING';
+                        ai.currentAttackTime = timeElapsed;
+                        ai.strafeDirection = (Math.random() > 0.5 ? 1 : -1);
+                    }
+                    break;
+                }
+                if (ai.currentWeapon === WEAPON_SR && ai.ammoSR > 0) {
+                    let targetAngle;
+                    if (isTeammateInTeamModeOrArcade) {
+                        // 味方AIは最も近い敵AIの方向を向く
+                        let closestEnemyAI = null;
+                        let closestDistance = Infinity;
+                        for (const enemyAI of ais) {
+                            if (enemyAI === ai || enemyAI.team !== 'enemy' || enemyAI.hp <= 0) continue;
+                            const distance = ai.position.distanceTo(enemyAI.position);
+                            if (distance < closestDistance) {
+                                closestDistance = distance;
+                                closestEnemyAI = enemyAI;
+                            }
+                        }
+                        if (closestEnemyAI) {
+                            targetAngle = Math.atan2(closestEnemyAI.position.x - ai.position.x, closestEnemyAI.position.z - ai.position.z);
+                        } else {
+                            targetAngle = ai.rotation.y;
+                        }
+                    } else {
+                        targetAngle = Math.atan2(player.position.x - ai.position.x, player.position.z - ai.position.z);
+                    }
+                    ai.rotation.y = lerpAngle(ai.rotation.y, targetAngle, 2 * delta);
+                    aiShoot(ai, timeElapsed);
+                    if (isAISeen && (timeElapsed - ai.lastHiddenTime) > 1.0) {
+                        if (!findNewHidingSpot(ai)) { // 隠れ場所が見つからない場合でも停滞させない
+                            ai.state = 'ATTACKING'; // 強制的に攻撃状態に遷移
+                            ai.currentAttackTime = timeElapsed;
+                            ai.strafeDirection = (Math.random() > 0.5 ? 1 : -1);
+                        } else {
+                            ai.lastHiddenTime = timeElapsed;
+                        }
+                    }
+                } else {
+                    if (!findAndTargetWeapon(ai)) { // 武器を探してターゲットにする
+                        if (isAISeen) { // プレイヤーが見える場合
+                            ai.state = 'ATTACKING';
+                            ai.currentAttackTime = timeElapsed;
+                            ai.strafeDirection = (Math.random() > 0.5 ? 1 : -1);
+                        } else { // プレイヤーが見えない場合
+                            let effectiveHideDuration = HIDE_DURATION * (1.0 + (1.0 - ai.aggression) * 1.5);
+                            // 味方の隠れ行動を大幅に減らし、攻撃的にする。
+                            if (isTeammateInTeamModeOrArcade) effectiveHideDuration *= 0.35;
+                            if ((timeElapsed - ai.lastHiddenTime) >= effectiveHideDuration) {
+                                if (!findNewHidingSpot(ai)) { // 新しい隠れ場所を探すのに失敗した場合
+                                    ai.state = 'ATTACKING'; // 強制的に攻撃状態に遷移
+                                    ai.currentAttackTime = timeElapsed;
+                                    ai.strafeDirection = (Math.random() > 0.5 ? 1 : -1);
+                                } else {
+                                    ai.lastHiddenTime = timeElapsed;
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+            case 'FOLLOWING': // 新しい追従状態
+                // 常にプレイヤーへの追従移動ロジックを実行する
+                if (!player || !ai.targetPosition) {
+                    break;
+                }
+                if (!Number.isFinite(ai.targetPosition.x) || !Number.isFinite(ai.targetPosition.y) || !Number.isFinite(ai.targetPosition.z)) {
+                    ai.targetPosition.copy(player.position);
+                    break;
+                }
+                const oldAIPosition_follow = ai.position.clone();
+                const toFollowTarget = new THREE.Vector3().subVectors(ai.targetPosition, ai.position);
+                const followDistance = toFollowTarget.length();
+                if (!Number.isFinite(followDistance) || followDistance < 0.35) {
+                    break;
+                }
+                let moveDirection_follow = toFollowTarget.multiplyScalar(1 / followDistance);
+                const moveVectorDelta_follow = moveDirection_follow.clone().multiplyScalar(currentAISpeed * delta);
+                moveVectorDelta_follow.add(separation_vec); // AI間の分離力も考慮
+                if (moveVectorDelta_follow.lengthSq() < 1e-8) {
+                    break;
+                }
+                moveDirection_follow = moveVectorDelta_follow.normalize(); // separation_vec加算後に正規化する
+
+                raycaster.set(oldAIPosition_follow.clone().add(new THREE.Vector3(0, 1.0, 0)), moveDirection_follow);
+                const intersects = raycaster.intersectObjects(obstacles, true);
+
+                if (intersects.length > 0 && intersects[0].distance < AVOIDANCE_RAY_DISTANCE && !ai.avoiding && ai.state !== 'EVADING') {
+                    // 移動する前に障害物を検知したら回避
+                    findObstacleAvoidanceSpot(ai, moveDirection_follow, ai.targetPosition);
+                } else {
+                    // 障害物がなければ移動
+                    const finalMove_follow = moveDirection_follow.multiplyScalar(currentAISpeed * delta);
+                    const moved = applyAIMovementWithSweep(ai, finalMove_follow);
+                    if (!moved) {
+                        ai.position.copy(oldAIPosition_follow);
+                        findObstacleAvoidanceSpot(ai, moveDirection_follow, ai.targetPosition);
+                    }
+                    
+                    // Build BattleではAIを地面に固定する
+                    if (isBillBattleMode()) {
+                        ai.position.y = getGroundSurfaceY(ai.position);
+                        ai.targetPosition.y = getGroundSurfaceY(ai.targetPosition);
+                    }
+                }
+                break; // FOLLOWING状態の処理終了
+
+            case 'MOVING_TO_LADDER':
+                ai.avoiding = false;
+                if (ai.userData.rooftopSniperPriority && isAISeen) {
+                    aiShoot(ai, timeElapsed);
+                }
+                const movingToLadderTimeout = ai.userData.rooftopPursuit
+                    ? 20.0
+                    : ai.userData.rooftopSniperPriority
+                    ? 18.0
+                    : (isTwoStoryHouseObstacle(ai.userData.rooftopObstacle) ? 11.0 : 7.0);
+                if ((timeElapsed - (ai.userData.rooftopStateSince || timeElapsed)) > movingToLadderTimeout) {
+                    ai.userData.rooftopIntent = false;
+                    ai.userData.onRooftop = false;
+                    ai.userData.rooftopSensor = null;
+                    ai.userData.rooftopObstacle = null;
+        ai.userData.rooftopLadderPos = null;
+        ai.userData.rooftopLadderSnap = null;
+                    ai.userData.rooftopDecisionMade = false;
+                    ai.userData.rooftopSniperPriority = false;
+                    ai.userData.rooftopPursuit = false;
+                    ai.userData.rooftopPursuitTarget = null;
+                    ai.state = 'ATTACKING';
+                    ai.currentAttackTime = timeElapsed;
+                    ai.userData.nextRooftopDecisionAt = timeElapsed + 5.0;
+                    
+                    // 梯子移動タイムアウト時に地上に安全に戻す
+                    if (ai.position.y > 2) {
+                        ai.position.y = 0; // 地上に戻す
+                        ai.targetPosition.y = 0;
+                    }
+                    break;
+                }
+                if (!ai.userData.rooftopLadderPos || !ai.userData.rooftopObstacle) {
+                    ai.userData.rooftopIntent = false;
+                    ai.state = 'ATTACKING';
+                    break;
+                }
+                ai.targetPosition.copy(ai.userData.rooftopLadderPos);
+                ai.targetPosition.y = getGroundSurfaceY(ai.targetPosition);
+                const flatLadderDist = new THREE.Vector3(
+                    ai.position.x - ai.targetPosition.x,
+                    0,
+                    ai.position.z - ai.targetPosition.z
+                ).length();
+                const ladderReach = (ai.userData.rooftopSniperPriority || ai.userData.rooftopPursuit) ? 1.8 : 1.05;
+                if (flatLadderDist < ladderReach) {
+                    const ladderSnap = ai.userData.rooftopSensor?.userData?.ladderPos || ai.userData.rooftopLadderPos;
+                    ai.position.x = ladderSnap.x;
+                    ai.position.z = ladderSnap.z;
+                    ai.isElevating = true;
+                    ai.userData.elevatingDirection = 1;
+                    ai.userData.rooftopTargetY = getRooftopSurfaceY(
+                        ai.userData.rooftopObstacle,
+                        ai.userData.rooftopSensor
+                    );
+                    ai.state = 'CLIMBING';
+                    ai.userData.rooftopStateSince = timeElapsed;
+                }
+                break;
+
+            case 'CLIMBING':
+                ai.avoiding = false;
+                if ((timeElapsed - (ai.userData.rooftopStateSince || timeElapsed)) > 5.5) {
+                    ai.isElevating = false;
+                    ai.userData.elevatingDirection = 0;
+                    ai.userData.rooftopIntent = false;
+                    ai.state = 'ATTACKING';
+                    ai.currentAttackTime = timeElapsed;
+                    
+                    // 梯子登り失敗時に地上に安全に戻す
+                    if (ai.position.y > 2) {
+                        ai.position.y = 0; // 地上に戻す
+                        ai.targetPosition.y = 0;
+                    }
+                }
+                // 垂直移動は上側のai.isElevatingブロックで処理する。
+                break;
+
+            case 'ROOFTOP_COMBAT':
+                ai.avoiding = false;
+                ai.userData.onRooftop = true;
+                aiShoot(ai, timeElapsed);
+                ai.isCrouching = Math.random() < 0.35;
+                if (isTwoStoryHouseObstacle(ai.userData.rooftopObstacle)) {
+                    const phase = ai.userData.rooftopPhase || 'none';
+                    const flatToTarget = ai.targetPosition.clone().sub(ai.position);
+                    flatToTarget.y = 0;
+                    const flatDistance = flatToTarget.length();
+                    if (flatDistance > 0.25) {
+                        const step = flatToTarget.normalize().multiplyScalar(Math.min(flatDistance, currentAISpeed * 0.42 * delta));
+                        applyAIMovementWithSweep(ai, step);
+                    }
+
+                    if (phase === 'entering_house') {
+                        if (flatDistance < 0.55 || (timeElapsed - ai.userData.rooftopStateSince) > 5.0) {
+                            const entry = ai.userData.rooftopSensor?.userData?.interiorEntryPos;
+                            if (entry) {
+                                ai.position.x = entry.x;
+                                ai.position.z = entry.z;
+                            }
+                            ai.userData.rooftopPhase = 'inside_house';
+                            ai.userData.rooftopStateSince = timeElapsed;
+                            ai.userData.nextHouseInteriorMoveAt = timeElapsed;
+                            setAIHouseInteriorTarget(ai);
+                        }
+                    } else if (phase === 'inside_house') {
+                        if (flatDistance < 0.6 || timeElapsed >= (ai.userData.nextHouseInteriorMoveAt || 0)) {
+                            setAIHouseInteriorTarget(ai);
+                            ai.userData.nextHouseInteriorMoveAt = timeElapsed + 1.8 + Math.random() * 2.2;
+                        }
+                    } else if (phase === 'exiting_house') {
+                        if (flatDistance < 0.6 || (timeElapsed - ai.userData.rooftopStateSince) > 5.0) {
+                            const landing = ai.userData.rooftopSensor?.userData?.landingPos;
+                            if (landing) {
+                                ai.position.x = landing.x;
+                                ai.position.z = landing.z;
+                            }
+                            ai.userData.rooftopPhase = 'to_ground';
+                            ai.userData.rooftopStateSince = timeElapsed;
+                        }
+                    }
+                    break;
+                }
+                if (ai.userData.rooftopObstacle) {
+                    setAIRandomRooftopTarget(ai, 0.35);
+                    const move = ai.targetPosition.clone().sub(ai.position);
+                    move.y = 0;
+                    if (move.lengthSq() > 0.01) {
+                        move.normalize().multiplyScalar(currentAISpeed * 0.35 * delta);
+                        ai.position.add(move);
+                    }
+                }
+                // 屋上武器が弾切れなら即座に降下を開始する。
+                if (isAIWeaponOutOfAmmo(ai) && !ai.userData.rooftopDecisionMade) {
+                    ai.userData.rooftopDecisionMade = true;
+                    ai.state = 'DESCENDING';
+                    ai.userData.rooftopStateSince = timeElapsed;
+                }
+                break;
+
+            case 'DESCENDING':
+                ai.avoiding = false;
+                ai.isCrouching = false;
+                if ((timeElapsed - (ai.userData.rooftopStateSince || timeElapsed)) > 7.0) {
+                    ai.isElevating = false;
+                    ai.userData.elevatingDirection = 0;
+                    ai.userData.onRooftop = false;
+                    ai.userData.rooftopIntent = false;
+                    ai.state = 'ATTACKING';
+                    ai.currentAttackTime = timeElapsed;
+                    break;
+                }
+                if (!ai.userData.rooftopLadderPos || !ai.userData.rooftopObstacle) {
+                    ai.userData.rooftopIntent = false;
+                    ai.userData.onRooftop = false;
+                    ai.state = 'ATTACKING';
+                    break;
+                }
+                const descentApproach = ai.userData.rooftopSensor?.userData?.landingPos || ai.userData.rooftopLadderPos;
+                ai.targetPosition.copy(descentApproach);
+                ai.targetPosition.y = ai.position.y;
+                if (ai.position.distanceTo(new THREE.Vector3(ai.targetPosition.x, ai.position.y, ai.targetPosition.z)) < 0.9) {
+                    const ladderSnap = ai.userData.rooftopLadderSnap || ai.userData.rooftopLadderPos;
+                    ai.position.x = ladderSnap.x;
+                    ai.position.z = ladderSnap.z;
+                    ai.isElevating = true;
+                    ai.userData.elevatingDirection = -1;
+                    ai.userData.rooftopTargetY = -FLOOR_HEIGHT;
+                    ai.userData.rooftopStateSince = timeElapsed;
+                }
+                break;
+
+            case 'MOVING':
+                ai.avoiding = false;
+                if (isOutdoorPvAIMode() && isAISeen) {
+                    ai.targetWeaponPickup = null;
+                    ai.state = 'ATTACKING';
+                    ai.currentAttackTime = timeElapsed;
+                    ai.strafeDirection = (Math.random() > 0.5 ? 1 : -1);
+                    break;
+                }
+                if (isTeammateInTeamModeOrArcade) {
+                    // 味方AIは武器を拾った後、すぐに攻撃状態に移行
+                    if (isArrived) {
+                        ai.targetWeaponPickup = null;
+                        if (isFollowingPlayerMode && ai.userData.followActive !== false) {
+                            ai.state = 'FOLLOWING';
+                        } else {
+                            ai.state = 'ATTACKING';
+                            ai.currentAttackTime = timeElapsed;
+                            ai.strafeDirection = (Math.random() > 0.5 ? 1 : -1);
+                        }
+                    }
+                } else {
+                                                    if (isAISeen) {
+                                                        ai.targetWeaponPickup = null;
+                                                        ai.state = 'ATTACKING';
+                                                        ai.currentAttackTime = timeElapsed;
+                                                        ai.strafeDirection = (Math.random() > 0.5 ? 1 : -1);
+                                                    } else if (isArrived) {
+                                                        if (ai.lastKnownEnemyPos && (timeElapsed - (ai.lastSeenEnemyTime || -999)) < 2.0) {
+                                                            ai.targetPosition.copy(ai.lastKnownEnemyPos);
+                                                        } else if (!findNewHidingSpot(ai)) {
+                                                            ai.state = 'HIDING';
+                                                            ai.lastHiddenTime = timeElapsed;
+                                                        }
+                                                    }                }
+                break;
+            case 'FLANKING':
+                ai.avoiding = false;
+                if (isArrived) {
+                    ai.state = 'ATTACKING';
+                    ai.currentAttackTime = timeElapsed;
+                    ai.strafeDirection = (Math.random() > 0.5 ? 1 : -1);
+                } else if (!isAISeen && isBehindObstacle(ai)) {
+                    ai.state = 'HIDING';
+                    ai.lastHiddenTime = timeElapsed;
+                }
+                break;
+            case 'EVADING':
+            case 'AVOIDING':
+                if (isArrived) {
+                    ai.state = 'HIDING';
+                    ai.lastHiddenTime = timeElapsed;
+                }
+                break;
+            case 'ATTACKING':
+                ai.avoiding = false;
+                if (isOutdoorPvAIMode()) {
+                    ai.userData.searchPulseAt = timeElapsed + 0.35;
+                }
+                if (isTeammateInTeamModeOrArcade && isFollowingPlayerMode && ai.userData.followActive !== false) {
+                    const combatUntil = (ai.userData && ai.userData.followCombatUntil) ? ai.userData.followCombatUntil : 0;
+                    if (combatUntil <= timeElapsed) {
+                        ai.state = 'FOLLOWING';
+                        break;
+                    }
+                }
+                if (isTeammateInTeamModeOrArcade && isFollowingPlayerMode && ai.userData.followActive !== false && ai.position.distanceTo(player.position) > 16) {
+                    ai.state = 'FOLLOWING';
+                    ai.targetPosition.copy(getSafeFollowSlotPosition(ai));
+                    break;
+                }
+                let attackTargetPos = getClosestOpponentPosition(ai);
+                if (!attackTargetPos) {
+                    if (isTeammateInTeamModeOrArcade && isFollowingPlayerMode && ai.userData.followActive !== false) {
+                        ai.state = 'FOLLOWING';
+                        break;
+                    }
+                    attackTargetPos = isTeammateInTeamModeOrArcade
+                        ? (getClosestEnemyAIPositionForTeammate(ai) || ai.lastKnownEnemyPos || ai.position.clone().add(new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5).normalize().multiplyScalar(4)))
+                        : player.position.clone();
+                }
+                const directionToTarget = new THREE.Vector3().subVectors(attackTargetPos, ai.position);
+                directionToTarget.y = 0;
+                if (directionToTarget.lengthSq() < 1e-6) break;
+                directionToTarget.normalize();
+                const strafeVector = new THREE.Vector3(directionToTarget.z, 0, -directionToTarget.x);
+                const strafeSpeed = currentAISpeed * 0.5;
+                const moveVectorDelta_attack = strafeVector.multiplyScalar(ai.strafeDirection * strafeSpeed * delta);
+                moveVectorDelta_attack.add(separation_vec);
+                const attackStartPosition = ai.position.clone();
+                applyAIMovementWithSweep(ai, moveVectorDelta_attack);
+                const attackMoveDistanceSq = ai.position.distanceToSquared(attackStartPosition);
+                
+                // Build BattleではAIを地面に固定する
+                if (isBillBattleMode()) {
+                    ai.position.y = getGroundSurfaceY(ai.position);
+                    ai.targetPosition.y = getGroundSurfaceY(ai.targetPosition);
+                }
+                
+                if (attackMoveDistanceSq < 0.000025 && timeElapsed >= (ai.userData.nextStrafeTurnAt || 0)) {
+                    ai.strafeDirection *= -1;
+                    ai.userData.nextStrafeTurnAt = timeElapsed + 0.6;
+                }
+                aiShoot(ai, timeElapsed);
+                if (ENABLE_EXPERIMENTAL_AI_FLOW) {
+                    // 敵を視認し続けても発砲しない場合、戦術的再配置を強制する。
+                    const attackStall = isAISeen && (timeElapsed - ai.lastAttackTime) > 1.2;
+                    if (attackStall) {
+                        if (Math.random() < 0.65 && findFlankingSpot(ai, timeElapsed)) {
+                            break;
+                        }
+                        const threatPos = (visibleOpponentInfo && visibleOpponentInfo.targetPos)
+                            ? visibleOpponentInfo.targetPos
+                            : (ai.lastKnownEnemyPos || getClosestOpponentPosition(ai));
+                        const coverPos = threatPos ? findSmartCoverPosition(ai, threatPos) : null;
+                        if (coverPos) {
+                            ai.state = 'MOVING';
+                            ai.targetPosition.copy(coverPos);
+                            ai.userData.searchPulseAt = timeElapsed + 0.8;
+                            break;
+                        }
+                        ai.strafeDirection *= -1;
+                        const nudge = new THREE.Vector3(Math.random() - 0.5, 0, Math.random() - 0.5);
+                        if (nudge.lengthSq() > 1e-6) {
+                            nudge.normalize().multiplyScalar(2.0);
+                            ai.state = 'MOVING';
+                            ai.targetPosition.copy(ai.position.clone().add(nudge));
+                            ai.targetPosition.y = getGroundSurfaceY(ai.targetPosition);
+                            break;
+                        }
+                    }
+                }
+                const attackDurationLimit = isTeammateInTeamModeOrArcade ? (ATTACK_DURATION * 2.0) : ATTACK_DURATION;
+                if ((timeElapsed - ai.currentAttackTime) >= attackDurationLimit) {
+                    if (isTeammateInTeamModeOrArcade) {
+                        // 味方AIは攻撃状態を維持して撃ち続ける（MOVING/HIDINGへ落ちにくくする）
+                        ai.currentAttackTime = timeElapsed;
+                        if (Math.random() < 0.35) ai.strafeDirection *= -1;
+                        break;
+                    }
+                    if (isAISeen && Math.random() < ai.flankAggression && (timeElapsed - ai.lastFlankTime) > FLANK_COOLDOWN) {
+                        if (findFlankingSpot(ai, timeElapsed)) {
+                            break;
+                        }
+                    }
+                    if (!findAndTargetWeapon(ai)) {
+                        if (isTeammateInTeamModeOrArcade) {
+                            const reengagePos = getClosestEnemyAIPositionForTeammate(ai) || ai.lastKnownEnemyPos;
+                            if (reengagePos) {
+                                ai.state = 'MOVING';
+                                ai.targetPosition.copy(reengagePos);
+                            } else {
+                                // 目標喪失時も待たずに再攻撃ループへ戻す
+                                ai.currentAttackTime = timeElapsed;
+                            }
+                        } else {
+                            findEvasionSpot(ai);
+                        }
+                    }
+                }
+                break;
+        }
+
+        if (ENABLE_AI_ROOFTOP_LOGIC) {
+            // 地上アンチアイドル: 屋上ロジック有効時でも地上で棒立ちしないようにする。
+            const groundRooftopStates = ['MOVING_TO_LADDER', 'CLIMBING', 'ROOFTOP_COMBAT', 'DESCENDING'];
+            const isInRooftopFlow = groundRooftopStates.includes(ai.state) || ai.isElevating || ai.userData.onRooftop;
+            const movedNow = ai.position.distanceTo(ai.lastPosition) > 0.02;
+            const canGroundIdleCheck = !isInRooftopFlow && ai.state !== 'FOLLOWING' && ai.state !== 'AMBUSH' && !ai.userData.rooftopSniperPriority;
+            if (canGroundIdleCheck && !movedNow) {
+                if (!ai.userData.groundIdleSince) ai.userData.groundIdleSince = timeElapsed;
+                const noFireTooLong = (timeElapsed - (ai.lastAttackTime || 0)) > 1.6;
+                if ((timeElapsed - ai.userData.groundIdleSince) > 1.5 && noFireTooLong) {
+                    const chase = isTeammateInTeamModeOrArcade
+                        ? (ai.lastKnownEnemyPos || getClosestEnemyAIPositionForTeammate(ai) || ai.position.clone())
+                        : (ai.lastKnownEnemyPos || getClosestOpponentPosition(ai) || player.position.clone());
+                    const vec = new THREE.Vector3().subVectors(chase, ai.position);
+                    vec.y = 0;
+                    if (vec.lengthSq() < 1e-6) vec.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+                    vec.normalize();
+                    const side = new THREE.Vector3(vec.z, 0, -vec.x).multiplyScalar((Math.random() > 0.5 ? 1 : -1) * 2.0);
+                    const moveTo = ai.position.clone().add(vec.multiplyScalar(2.6)).add(side);
+                    moveTo.y = getGroundSurfaceY(moveTo);
+                    ai.state = 'MOVING';
+                    ai.targetPosition.copy(moveTo);
+                    ai.userData.groundIdleSince = 0;
+                }
+            } else {
+                ai.userData.groundIdleSince = 0;
+            }
+        }
+
+        if (ENABLE_EXPERIMENTAL_AI_FLOW) {
+            // 強制監視: 視認有無を問わず長時間停止したら必ず移動へ移行させる。
+            const movedSinceLastFrame = ai.position.distanceTo(ai.lastPosition) > 0.03;
+            const protectedStates = ['CLIMBING', 'DESCENDING', 'FOLLOWING', 'AMBUSH', 'ROOFTOP_COMBAT'];
+            const canWatchdog = !protectedStates.includes(ai.state) && !ai.isElevating;
+            if (canWatchdog && !movedSinceLastFrame && !ai.userData.rooftopSniperPriority) {
+                if (!ai.userData.stallStartTime) ai.userData.stallStartTime = timeElapsed;
+                const stallLimit = isAISeen ? 1.0 : 1.8;
+                if ((timeElapsed - ai.userData.stallStartTime) > stallLimit) {
+                    if (ai.state === 'MOVING_TO_LADDER' || ai.state === 'ROOFTOP_COMBAT') {
+                        ai.userData.rooftopIntent = false;
+                        ai.userData.onRooftop = false;
+                        ai.userData.rooftopSensor = null;
+                        ai.userData.rooftopObstacle = null;
+        ai.userData.rooftopLadderPos = null;
+        ai.userData.rooftopLadderSnap = null;
+                        ai.userData.rooftopDecisionMade = false;
+                    }
+                    const anchor = (visibleOpponentInfo && visibleOpponentInfo.targetPos)
+                        ? visibleOpponentInfo.targetPos
+                        : (
+                            isTeammateInTeamModeOrArcade
+                                ? (ai.lastKnownEnemyPos || getClosestEnemyAIPositionForTeammate(ai) || ai.position.clone())
+                                : (ai.lastKnownEnemyPos || getClosestOpponentPosition(ai) || player.position.clone())
+                        );
+                    const dir = new THREE.Vector3().subVectors(anchor, ai.position);
+                    dir.y = 0;
+                    if (dir.lengthSq() < 1e-6) dir.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+                    dir.normalize();
+                    const side = new THREE.Vector3(dir.z, 0, -dir.x).multiplyScalar((Math.random() > 0.5 ? 1 : -1) * 2.8);
+                    const stepTarget = ai.position.clone().add(dir.multiplyScalar(3.0)).add(side);
+                    stepTarget.y = getGroundSurfaceY(stepTarget);
+                    ai.state = 'MOVING';
+                    ai.targetPosition.copy(stepTarget);
+                    ai.currentAttackTime = timeElapsed;
+                    ai.strafeDirection = (Math.random() > 0.5 ? 1 : -1);
+                    ai.userData.searchPulseAt = timeElapsed + 0.7;
+                    ai.userData.nextRooftopDecisionAt = timeElapsed + 1.2;
+                    ai.userData.stallStartTime = 0;
+                }
+            } else {
+                ai.userData.stallStartTime = 0;
+            }
+        }
+
+        // ストール防止: LOSなしで隠れ続ける場合、最寄り敵の最終既知地点へ前進させる。
+        if (ai.state === 'HIDING' && !isAISeen) {
+            const isFollowLockedTeammate = isTeammateInTeamModeOrArcade && isFollowingPlayerMode && ai.userData.followActive !== false;
+            if (!isFollowLockedTeammate && (timeElapsed - ai.lastHiddenTime) > 1.2) {
+                const huntPos = ai.lastKnownEnemyPos || getClosestOpponentPosition(ai);
+                if (huntPos) {
+                    ai.state = 'MOVING';
+                    ai.targetPosition.copy(huntPos);
+                }
+            }
+        }
+        if (isMoving && ai.state !== 'HIDING' && ai.state !== 'ATTACKING' && ai.state !== 'CLIMBING' && ai.state !== 'FOLLOWING' && ai.state !== 'ROOFTOP_COMBAT' && !ai.isElevating) {
+            const oldAIPosition = ai.position.clone();
+            let moveDirection = new THREE.Vector3().subVectors(ai.targetPosition, ai.position).normalize();
+            
+            // Build Battleで水平方向移動を強制
+            if (isBillBattleMode()) {
+                moveDirection.y = 0;
+                ai.targetPosition.y = getGroundSurfaceY(ai.targetPosition);
+            }
+            
+            const moveVectorDelta = moveDirection.clone().multiplyScalar(currentAISpeed * delta);
+            moveVectorDelta.add(separation_vec);
+            moveDirection = moveVectorDelta.normalize();
+            raycaster.set(oldAIPosition.clone().add(new THREE.Vector3(0, 1.0, 0)), moveDirection);
+            const intersects = raycaster.intersectObjects(obstacles, true);
+            if (intersects.length > 0 && intersects[0].distance < AVOIDANCE_RAY_DISTANCE && !ai.avoiding && ai.state !== 'EVADING') {
+                findObstacleAvoidanceSpot(ai, moveDirection, ai.targetPosition);
+            } else {
+                const finalMove = moveDirection.multiplyScalar(currentAISpeed * delta);
+                const moved = applyAIMovementWithSweep(ai, finalMove);
+                if (!moved) {
+                    ai.position.copy(oldAIPosition);
+                    findObstacleAvoidanceSpot(ai, moveDirection, ai.targetPosition);
+                }
+                
+                // Build BattleではAIを地面に固定する
+                if (isBillBattleMode()) {
+                    ai.position.y = getGroundSurfaceY(ai.position);
+                    ai.targetPosition.y = getGroundSurfaceY(ai.targetPosition);
+                }
+            }
+        }
+        // FOLLOW中の味方は必ずプレイヤーに重ならないように強制分離する
+        if (isTeammateInTeamModeOrArcade && isFollowingPlayerMode && ai.userData.followActive !== false) {
+            const toAI = new THREE.Vector3().subVectors(ai.position, player.position);
+            toAI.y = 0;
+            const minSeparation = 4.2;
+            if (toAI.lengthSq() < minSeparation * minSeparation) {
+                if (toAI.lengthSq() < 1e-6) {
+                    const pf = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+                    pf.y = 0;
+                    toAI.copy(pf.lengthSq() > 1e-6 ? pf.normalize().negate() : new THREE.Vector3(0, 0, 1));
+                } else {
+                    toAI.normalize();
+                }
+                const desired = player.position.clone().add(toAI.multiplyScalar(minSeparation));
+                desired.y = getGroundSurfaceY(desired);
+                const oldPos = ai.position.clone();
+                ai.position.copy(desired);
+                const desiredHead = desired.clone().add(new THREE.Vector3(0, 1.0, 0));
+                const aiHead = oldPos.clone().add(new THREE.Vector3(0, 1.0, 0));
+                if (checkCollision(ai, obstacles) || !checkLineOfSight(aiHead, desiredHead, obstacles)) {
+                    ai.position.copy(oldPos);
+                }
+            }
+        }
+        
+        // 最終Y軸ロック - Build BattleでAIが浮かないよう保証
+        if (isBillBattleMode()) {
+            ai.position.y = getGroundSurfaceY(ai.position);
+            ai.targetPosition.y = getGroundSurfaceY(ai.targetPosition);
+            // 設定済みの可能性がある屋上状態を無効化
+            if (ai.state === 'ROOFTOP_COMBAT' || ai.state === 'CLIMBING' || ai.state === 'MOVING_TO_LADDER' || ai.state === 'DESCENDING') {
+                ai.state = 'ATTACKING';
+            }
+        }
+        
+        if (!isBillBattleMode()) {
+            const aiDistFromCenter = Math.sqrt(ai.position.x * ai.position.x + ai.position.z * ai.position.z);
+            if (aiDistFromCenter > ARENA_PLAY_AREA_RADIUS) {
+                const ratio = ARENA_PLAY_AREA_RADIUS / aiDistFromCenter;
+                ai.position.x *= ratio;
+                ai.position.z *= ratio;
+            }
+        }
+
+        // AI四肢のアニメーション
+        if (ai.userData.parts) {
+            const parts = ai.userData.parts;
+
+            applyGunStyle(parts.gun, ai.currentWeapon);
+            applyWeaponPose(parts, ai.currentWeapon);
+
+            // 照準: aimGroupをターゲットへ向ける
+            let targetHeadPos = new THREE.Vector3();
+            if (isTeamModeOrTeamArcade && ai.team === 'player') { // isTeamModeOrTeamArcadeを使用
+                // 味方AIは最も近い敵AIを向く
+                let closestEnemyAI = null;
+                let closestDistance = Infinity;
+                for (const enemyAI of ais) {
+                    if (enemyAI === ai || enemyAI.team !== 'enemy' || enemyAI.hp <= 0) continue;
+                    const distance = ai.position.distanceTo(enemyAI.position);
+                    if (distance < closestDistance) {
+                        closestDistance = distance;
+                        closestEnemyAI = enemyAI;
+                    }
+                }
+                if (closestEnemyAI) {
+                    targetHeadPos.copy(getAIUpperTorsoPos(closestEnemyAI));
+                } else {
+                    // 味方AIはプレイヤーへ照準を向けない。敵の既知位置へ安定して向ける。
+                    if (ai.lastKnownEnemyPos) {
+                        targetHeadPos.copy(ai.lastKnownEnemyPos);
+                        targetHeadPos.y = ai.position.y + BODY_HEIGHT * 0.75;
+                    } else {
+                        const fwd = new THREE.Vector3(0, 0, 1).applyEuler(ai.rotation);
+                        targetHeadPos.copy(ai.position).add(fwd.multiplyScalar(6));
+                        targetHeadPos.y = ai.position.y + BODY_HEIGHT * 0.75;
+                    }
+                }
+            } else {
+                // 通常モードまたは敵AIはプレイヤーを向く
+                const aimOrigin = ai.position.clone().add(new THREE.Vector3(0, BODY_HEIGHT * 0.75, 0));
+                const pHead = getPlayerHeadPos();
+                const pUpper = getPlayerUpperTorsoPos();
+                const pBody = getPlayerBodyPos();
+                if (checkLineOfSight(aimOrigin, pHead, obstacles)) targetHeadPos.copy(pHead);
+                else if (checkLineOfSight(aimOrigin, pUpper, obstacles)) targetHeadPos.copy(pUpper);
+                else targetHeadPos.copy(pBody);
+            }
+            if (!ai.userData.visualAimTarget) {
+                ai.userData.visualAimTarget = targetHeadPos.clone();
+            } else {
+                const targetBlend = 1 - Math.exp(-10 * delta);
+                ai.userData.visualAimTarget.lerp(targetHeadPos, targetBlend);
+            }
+            const aimBlend = 1 - Math.exp(-14 * delta);
+            applyAimConstraints(parts, ai.rotation.y, ai.userData.visualAimTarget, aimBlend);
+            syncHeadToAimDirection(parts);
+
+            // 銃を両手の中間点へ整列させる
+            alignGunGripToHands(parts, 0.8);
+
+            // 脚アニメーション
+            const moveDirWorld = ai.position.clone().sub(ai.lastPosition);
+            moveDirWorld.y = 0;
+            if (!ai.userData) ai.userData = {};
+            if (!ai.userData.visualMoveVelocity) ai.userData.visualMoveVelocity = new THREE.Vector3();
+            const frameSeconds = Math.max(delta, 1 / 240);
+            const instantVelocity = moveDirWorld.clone().multiplyScalar(1 / frameSeconds);
+            const velocityBlend = Math.min(1, frameSeconds * 10);
+            ai.userData.visualMoveVelocity.lerp(instantVelocity, velocityBlend);
+            const visualSpeed = ai.userData.visualMoveVelocity.length();
+            // Hysteresis prevents a one-frame collision correction from restarting footsteps.
+            const footstepStopSpeed = ai.isCrouching ? 0.45 : 1.0;
+            const footstepStartSpeed = ai.isCrouching ? 1.5 : 3.0;
+            if (ai.userData.visualFootstepsActive) {
+                if (visualSpeed < footstepStopSpeed) ai.userData.visualFootstepsActive = false;
+            } else if (visualSpeed > footstepStartSpeed) {
+                ai.userData.visualFootstepsActive = true;
+            }
+            const actuallyMoving = !!ai.userData.visualFootstepsActive;
+            let lowerBodyYaw = 0;
+            if (actuallyMoving) {
+                const moveYaw = Math.atan2(moveDirWorld.x, moveDirWorld.z);
+                const relYaw = normalizeAngle(moveYaw - ai.rotation.y);
+                const maxYaw = Math.PI * 0.4;
+                const targetYaw = Math.max(-maxYaw, Math.min(maxYaw, relYaw));
+                const lastYaw = ai.userData.lowerBodyMoveYaw;
+                if (!Number.isFinite(lastYaw) || Math.abs(normalizeAngle(moveYaw - lastYaw)) > 0.35) {
+                    ai.userData.lowerBodyMoveYaw = moveYaw;
+                    ai.userData.lowerBodyMoveSince = timeElapsed;
+                }
+                if (!Number.isFinite(ai.userData.lowerBodyMoveSince)) ai.userData.lowerBodyMoveSince = timeElapsed;
+                const moveElapsed = timeElapsed - ai.userData.lowerBodyMoveSince;
+                if (moveElapsed > 0.15) {
+                    const prevYaw = Number.isFinite(ai.userData.lowerBodyYaw) ? ai.userData.lowerBodyYaw : 0;
+                    const lerp = Math.min(1, 10 * delta);
+                    ai.userData.lowerBodyYaw = prevYaw + (targetYaw - prevYaw) * lerp;
+                    lowerBodyYaw = ai.userData.lowerBodyYaw;
+                } else {
+                    ai.userData.lowerBodyYaw = 0;
+                }
+            } else {
+                ai.userData.lowerBodyMoveSince = 0;
+                ai.userData.lowerBodyYaw = 0;
+            }
+            applyCrouchPose(parts, ai.isCrouching, timeElapsed, actuallyMoving, lowerBodyYaw);
+        }
+        // 最終的な衝突チェック（薄い壁のすり抜け対策）
+        if (checkCollision(ai, obstacles)) {
+            const resolved = resolvePlayerCollision(ai, obstacles, 0.06);
+            if (!resolved && checkCollision(ai, obstacles)) {
+                ai.position.copy(aiStartPos);
+            }
+        }
+        enforceAIGroundOnly(ai);
+        clampAIToRooftop(ai);
+        // AIの現在の位置を保存して次フレームで比較できるようにする
+        ai.lastPosition.copy(ai.position);
+
+    });
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+        const p = projectiles[i];
+        // Death and explosion handlers can remove other projectiles during this loop.
+        if (!p) continue;
+        const prevProjectilePos = p.mesh.position.clone();
+        let hitSomething = false;
+        let hitObject = null;
+        let hitType = '';
+        if (p.life !== Infinity) {
+            p.life -= delta;
+                if (p.life <= 0) {
+                    scene.remove(p.mesh);
+                    clearAIRocketInFlight(p);
+                    const removeIndex = projectiles.indexOf(p);
+                    if (removeIndex !== -1) projectiles.splice(removeIndex, 1);
+                    continue;
+                }
+        }
+          const moveVector = p.velocity.clone().multiplyScalar(delta);
+          const moveDistance = moveVector.length();
+          if (moveDistance > 0) {
+              const moveDir = moveVector.clone().normalize();
+              raycaster.set(prevProjectilePos, moveDir);
+              raycaster.far = moveDistance;
+              const hit = getFirstProjectileHit(raycaster, obstacles);
+              if (hit) {
+                  hitSomething = true;
+                  hitObject = hit.object;
+                  hitType = 'obstacle';
+                  p.mesh.position.copy(hit.point);
+                  if (isBillBattleMode() && hitObject && hitObject.userData && hitObject.userData.isBillBattleCeiling && billBattleLights.length > 0) {
+                      const hitDist = prevProjectilePos.distanceTo(hit.point);
+                      for (const entry of billBattleLights) {
+                          if (!entry || !entry.mesh || !entry.mesh.parent) continue;
+                          const lightPos = entry.mesh.position;
+                          const dist = distancePointToSegment(lightPos, prevProjectilePos, p.mesh.position);
+                          const along = prevProjectilePos.distanceTo(lightPos);
+                          if (dist < 1.2 && along <= hitDist) {
+                              hitObject = entry.mesh;
+                              hitType = 'obstacle';
+                              break;
+                          }
+                      }
+                  }
+              } else {
+                  p.mesh.position.copy(prevProjectilePos).add(moveVector);
+              }
+          }
+          if (isBillBattleMode() && billBattleLights.length > 0) {
+              if (!hitSomething || (hitObject && hitObject.userData && hitObject.userData.isBillBattleCeiling)) {
+                  for (const entry of billBattleLights) {
+                      if (!entry || !entry.mesh || !entry.mesh.parent) continue;
+                      const lightPos = entry.mesh.position;
+                      const dist = distancePointToSegment(lightPos, prevProjectilePos, p.mesh.position);
+                    if (dist < 1.0) {
+                        hitSomething = true;
+                        hitObject = entry.mesh;
+                        hitType = 'obstacle';
+                        break;
+                      }
+                  }
+              }
+          }
+          if (p.isRocket) {
+              const trailInterval = shouldShowTouchControls() ? 0.075 : 0.045;
+              if (!Number.isFinite(p.lastTrailTime) || timeElapsed - p.lastTrailTime >= trailInterval) {
+                  p.lastTrailTime = timeElapsed;
+                  createRocketTrail(p.mesh.position, p.source, p.shooter);
+              }
+              if (p.source === 'ai' && rr2GunSound && !p.nearMissPlayed && player && player.position) {
+                  const distanceToPlayer = p.mesh.position.distanceTo(player.position);
+                  const approaching = distanceToPlayer < (Number.isFinite(p.prevPlayerDist) ? p.prevPlayerDist : Infinity);
+                  // プレイヤー近傍を通過する瞬間のみSEを鳴らす（連打防止）。
+                  if (approaching && distanceToPlayer <= 18) {
+                      const t = Math.max(0, Math.min(1, (18 - distanceToPlayer) / 18));
+                      const gainBoost = 0.22 + (t * 0.45);
+                      playSpatialSound(rr2GunSound, p.mesh.position, {
+                          distanceScale: 16,
+                          gainBoost: gainBoost,
+                          panScale: 1.35,
+                          behindGain: 1.0,
+                          frontCutoff: 15000,
+                          behindCutoff: 12000
+                      });
+                      p.nearMissPlayed = true;
+                  }
+                  p.prevPlayerDist = distanceToPlayer;
+              }
+          }
+          const bulletSphereRadius = p.isRocket ? 0.5 : (p.isSniper ? 0.045 : 0.1);
+          const bulletSphere = new THREE.Sphere(p.mesh.position, bulletSphereRadius);
+          // 障害物ヒットは上のセグメントレイキャストで処理済み。
+          // 弾ごと・フレームごとの全障害物再走査を避ける。
+          // AI弾の床ヒット判定はプレイヤーヒット判定後に遅延実行する。
+          if (!hitSomething && isBillBattleMode() && billBattleLights.length > 0) {
+              for (const entry of billBattleLights) {
+                  if (!entry || !entry.mesh || !entry.mesh.parent) continue;
+                  const lightBox = new THREE.Box3().setFromObject(entry.mesh);
+                  if (lightBox.intersectsSphere(bulletSphere)) {
+                      hitSomething = true;
+                      hitObject = entry.mesh;
+                      hitType = 'obstacle';
+                      break;
+                  }
+              }
+          }
+        if (!hitSomething && p.source !== 'ai' && new THREE.Box3().setFromObject(floor).intersectsSphere(bulletSphere)) {
+            hitSomething = true;
+            hitObject = floor;
+            hitType = 'floor';
+        }
+        if (!hitSomething && p.source === 'player') {
+            if (!(isBillBattleMode() && !billBattlePlayerEntered)) {
+                for (let j = ais.length - 1; j >= 0; j--) {
+                    const ai = ais[j];
+                    const aiHitBoxes = p.isSniper ? getAISniperHitBoxes(ai) : [new THREE.Box3().setFromObject(ai)];
+                    const directHit = aiHitBoxes.some(box => box.intersectsSphere(bulletSphere));
+                    const sweptHit = !directHit
+                        && aiHitBoxes.some(box => doesSegmentHitBox(prevProjectilePos, p.mesh.position, box.clone().expandByScalar(p.isSniper ? 0.0 : 0.02)));
+                    if (directHit || sweptHit) {
+                        if (ai.hp <= 0) continue;
+                        if (isTeamBasedAIMode() && ai.team === 'player') {
+                            continue;
+                        }
+
+                        hitSomething = true;
+                        hitObject = ai;
+                        hitType = 'ai';
+                        let damageAmount = 1;
+                        if (p.weaponType === WEAPON_SG) damageAmount = SHOTGUN_PELLET_DAMAGE;
+                        else if (p.weaponType === WEAPON_MR) damageAmount = 9;
+                        else if (p.isSniper || p.isRocket) damageAmount = ai.hp;
+
+                        if (ai.hp !== Infinity) {
+                              if (isBillBattleMode()) {
+                                  markBillBattlePlayerDamage(ai, timeElapsed);
+                              }
+                              ai.hp -= damageAmount;
+                              createRedSmokeEffect(ai.position.clone().add(new THREE.Vector3(0, 1.5, 0)));
+                                ai.lastUnderFireTime = timeElapsed;
+                              if (p.shooter) ai.lastKnownThreatPos = p.shooter.position.clone();
+
+                            // 戦術的しゃがみ：被弾時に障害物近くならしゃがんで隠れる
+                            if (ai.state !== 'CLIMBING' && ai.state !== 'DESCENDING' && !ai.isElevating) {
+                                // クールダウンチェック（0.5秒に1回まで）
+                                if (timeElapsed - ai.lastCoverSearchTime > 0.5) {
+                                    ai.lastCoverSearchTime = timeElapsed;
+                                    const nearbyCover = findNearbyCover(ai.position, obstacles);
+                                    if (nearbyCover) {
+                                        ai.isCrouching = true;
+                                        ai.scale.y = 1.0;
+                                        // しゃがみ状態を2-4秒維持
+                                        ai.crouchUntilTime = timeElapsed + 2 + Math.random() * 2;
+                                    }
+                                }
+                            } else {
+                                ai.lastKnownThreatPos = prevProjectilePos.clone();
+                            }
+                        }
+
+                        if (ai.hp > 0) {
+                            triggerCharacterHitReaction(ai, p.velocity);
+                        }
+
+                        if (ai.hp <= 0) {
+                            // 【修正】チームデスマッチ時のスコア加算
+                            if (isTeamBasedAIMode()) {
+                                addPlayerTeamKillScore();
+                            }
+                            // FFA/Arcade用
+                            if (gameSettings.gameMode === 'ffa' || gameSettings.gameMode === 'arcade') {
+                                playerKills++;
+                            }
+                            registerPlayerEnemyKillForCombo(ai);
+                            aiFallDownCinematicSequence(p.velocity, ai, 'player', p);
+                        } else if (ai.state !== 'CLIMBING' && ai.state !== 'DESCENDING' && !ai.isElevating) {
+                            ai.state = 'ATTACKING';
+                            ai.currentAttackTime = timeElapsed;
+                        }
+                        if (p.weaponType === WEAPON_SG) {
+                            scene.remove(p.mesh);
+                            clearAIRocketInFlight(p);
+                            const removeIndex = projectiles.indexOf(p);
+                            if (removeIndex !== -1) projectiles.splice(removeIndex, 1);
+                        }
+                    }
+                }
+            }
+            if (hitSomething) break;
+        }
+        if (!hitSomething && p.source === 'ai') {
+            const shooterAI = p.shooter;
+            const shooterTeam = shooterAI ? shooterAI.team : 'enemy';
+            const allowActorDamage = canApplyBillBattleDamage();
+            
+            if (allowActorDamage && (isTeamBasedAIMode() || gameSettings.gameMode === 'ffa') && shooterAI) {
+                for (let j = ais.length - 1; j >= 0; j--) {
+                    const ai = ais[j];
+                    if (ai === shooterAI || ai.hp <= 0) continue; 
+                    
+                    if (gameSettings.gameMode !== 'ffa' && ai.team === shooterTeam) continue;
+                    
+                    if (new THREE.Box3().setFromObject(ai).intersectsSphere(bulletSphere)) {
+                        hitSomething = true;
+                        hitObject = ai;
+                        hitType = 'ai';
+                        let damageAmount = 1;
+                        if (p.weaponType === WEAPON_SG) damageAmount = SHOTGUN_PELLET_DAMAGE;
+                        else if (p.weaponType === WEAPON_MR) damageAmount = 9;
+                          else if (p.isSniper || p.isRocket) damageAmount = ai.hp;
+                          if (ai.hp !== Infinity) {
+                              ai.hp -= damageAmount;
+                              createRedSmokeEffect(ai.position.clone().add(new THREE.Vector3(0, 1.5, 0)));
+                              ai.lastUnderFireTime = timeElapsed;
+                            if (p.shooter) ai.lastKnownThreatPos = p.shooter.position.clone();
+                            
+                            // 戦術的しゃがみ：被弾時に障害物近くならしゃがんで隠れる
+                            if (ai.state !== 'CLIMBING' && ai.state !== 'DESCENDING' && !ai.isElevating) {
+                                // クールダウンチェック（0.5秒に1回まで）
+                                if (timeElapsed - ai.lastCoverSearchTime > 0.5) {
+                                    ai.lastCoverSearchTime = timeElapsed;
+                                    const nearbyCover = findNearbyCover(ai.position, obstacles);
+                                    if (nearbyCover) {
+                                        ai.isCrouching = true;
+                                        ai.scale.y = 1.0;
+                                        // しゃがみ状態を2-4秒維持
+                                        ai.crouchUntilTime = timeElapsed + 2 + Math.random() * 2;
+                                    }
+                                }
+                            }
+                            else ai.lastKnownThreatPos = prevProjectilePos.clone();
+                        }
+                        if (ai.hp > 0) {
+                            triggerCharacterHitReaction(ai, p.velocity);
+                        }
+                        if (ai.hp <= 0) {
+                            if (p.shooter && p.shooter.kills !== undefined) {
+                                p.shooter.kills++;
+                            }
+                            // 【修正】AI同士のキルによるスコア加算
+                            if (isTeamBasedAIMode()) {
+                                if (shooterTeam === 'player' && ai.team === 'enemy') addPlayerTeamKillScore();
+                                if (shooterTeam === 'enemy' && ai.team === 'player') addEnemyTeamKillScore();
+                            }
+
+                            aiFallDownCinematicSequence(p.velocity, ai, 'ai', p);
+                        } else if (ai.state !== 'CLIMBING' && ai.state !== 'DESCENDING' && !ai.isElevating) {
+                            ai.state = 'ATTACKING';
+                            ai.currentAttackTime = timeElapsed;
+                        }
+                        if (p.weaponType === WEAPON_SG) {
+                            scene.remove(p.mesh);
+                            clearAIRocketInFlight(p);
+                            const removeIndex = projectiles.indexOf(p);
+                            if (removeIndex !== -1) projectiles.splice(removeIndex, 1);
+                        }
+                        break;
+                    }
+                }
+                if (hitSomething) break;
+            }
+            
+            if (allowActorDamage && !hitSomething && (!isTeamBasedAIMode() || shooterTeam === 'enemy')) {
+                const playerPos = player.position;
+                const playerBoundingBox = new THREE.Box3();
+                const bounds = getPlayerCombatBounds();
+                const playerTopY = bounds.topY;
+                const playerBottomY = bounds.bottomY;
+                playerBoundingBox.min.set(playerPos.x - 0.7, playerBottomY, playerPos.z - 0.7);
+                playerBoundingBox.max.set(playerPos.x + 0.7, playerTopY, playerPos.z + 0.7);
+                let hitPlayer = playerBoundingBox.intersectsSphere(bulletSphere);
+                if (!hitPlayer) {
+                    const segDir = new THREE.Vector3().subVectors(p.mesh.position, prevProjectilePos);
+                    const segLen = segDir.length();
+                    if (segLen > 1e-6) {
+                        segDir.normalize();
+                        const segRay = new THREE.Ray(prevProjectilePos.clone(), segDir);
+                        const hitPoint = segRay.intersectBox(playerBoundingBox, new THREE.Vector3());
+                        if (hitPoint) {
+                            hitPlayer = prevProjectilePos.distanceTo(hitPoint) <= segLen;
+                        }
+                    }
+                }
+                if (!hitPlayer) {
+                    // フォールバック: しゃがみ時の境界ミスを避けるため、カプセル風の中心球チェックを行う。
+                    const centerY = (playerTopY + playerBottomY) * 0.5;
+                    const center = new THREE.Vector3(playerPos.x, centerY, playerPos.z);
+                    const seg = new THREE.Vector3().subVectors(p.mesh.position, prevProjectilePos);
+                    const segLen = seg.length();
+                    if (segLen > 1e-6) {
+                        const segDir = seg.clone().normalize();
+                        const toCenter = new THREE.Vector3().subVectors(center, prevProjectilePos);
+                        const t = THREE.MathUtils.clamp(toCenter.dot(segDir), 0, segLen);
+                        const closest = prevProjectilePos.clone().add(segDir.multiplyScalar(t));
+                        const r = isCrouchingToggle ? 0.75 : 0.8;
+                        if (closest.distanceToSquared(center) <= r * r) {
+                            hitPlayer = true;
+                        }
+                    }
+                }
+                if (hitPlayer) {
+                    hitSomething = true;
+                    hitObject = player;
+                    hitType = 'player';
+                    let damageAmount = 1;
+                    if (p.weaponType === WEAPON_SG) damageAmount = SHOTGUN_PELLET_DAMAGE;
+                    else if (p.weaponType === WEAPON_MR) damageAmount = 9;
+                    else if (p.isSniper || p.isRocket) damageAmount = playerHP;
+                    if (playerHP !== Infinity) {
+                        playerHP -= damageAmount;
+                        if (playerHP <= 0 && isScoping) {
+                            cancelScope();
+                        }
+                        screenShakeDuration = SHAKE_DURATION_MAX;
+                        if (redFlashOverlay) {
+                            // 死亡アニメーション用のクラスを一旦クリアし、初期状態をリセット
+                            redFlashOverlay.classList.remove('fade-to-black', 'fade-out', 'red-flash');
+                            redFlashOverlay.style.opacity = '0'; // 初期状態を透明に
+                            redFlashOverlay.style.backgroundColor = 'rgba(0,0,0,0)'; // 背景色をリセット
+                            redFlashOverlay.style.display = 'block'; // 表示を有効に
+
+                            // 短時間後に赤フラッシュクラスを追加し、アニメーションを開始
+                            // red-flashクラスがopacityを制御する場合、ここでのopacity設定は不要か、調整が必要
+                            // CSS側のred-flashアニメーションがopacity: 1; を持つことを前提とする
+                            setTimeout(() => {
+                                redFlashOverlay.classList.add('red-flash');
+                                redFlashOverlay.style.opacity = '1'; 
+                            }, 10); // 短い遅延でクラス追加をトリガー
+
+                            // 一定時間後に赤フラッシュクラスを削除し、透明に戻す
+                            setTimeout(() => {
+                                redFlashOverlay.classList.remove('red-flash');
+                                redFlashOverlay.style.opacity = '0'; // 透明に戻す
+                                // フェードアウトが完了するまで待ってからdisplayをnoneにする
+                                setTimeout(() => { redFlashOverlay.style.display = 'none'; }, 500); 
+                            }, 300); // フラッシュの継続時間（ms）
+                        }
+                    }
+                    if (playerHP > 0) {
+                        triggerCharacterHitReaction(player, p.velocity);
+                    }
+                    if (playerHP <= 0 && !isPlayerDeathPlaying) {
+                        if (p.shooter && p.shooter.kills !== undefined) {
+                            p.shooter.kills++;
+                        }
+                        // 【修正】プレイヤーが倒された時の敵チームスコア加算
+                        if (isTeamBasedAIMode() && shooterTeam === 'enemy') {
+                            addEnemyTeamKillScore();
+                        } else if (gameSettings.gameMode === 'arcade') {
+                            enemyTeamKills++;
+                        }
+                        startPlayerDeathSequence(p);
+                    }
+                    if (p.weaponType === WEAPON_SG) {
+                        scene.remove(p.mesh);
+                        clearAIRocketInFlight(p);
+                        const removeIndex = projectiles.indexOf(p);
+                        if (removeIndex !== -1) projectiles.splice(removeIndex, 1);
+                    }
+                    break;
+                }
+            }
+        }
+        // AI弾の床判定を遅延実行（プレイヤー/AIヒット判定後）。
+        if (!hitSomething && p.source === 'ai' && new THREE.Box3().setFromObject(floor).intersectsSphere(bulletSphere)) {
+            hitSomething = true;
+            hitObject = floor;
+            hitType = 'floor';
+        }
+        if (hitSomething) {
+                const hitIsBarrel = hitType === 'obstacle' && hitObject && hitObject.userData && hitObject.userData.type === 'barrel';
+                if (hitIsBarrel) {
+                    explodeBarrel(hitObject, p.source, p.shooter || null);
+                    queueExplosionClear(hitObject.position, BARREL_EXPLOSION_RADIUS);
+                } else if (p.isRocket) {
+                    const explosionPos = p.mesh.position.clone();
+                    if (explosionSound) {
+                        playSpatialSound(explosionSound, explosionPos, {
+                            distanceScale: 48,
+                            gainBoost: 1.35,
+                            behindGain: 1.0
+                        });
+                    }
+                    createExplosionEffect(explosionPos);
+                    applyExplosionEffectsToBillLights(explosionPos, ROCKET_EXPLOSION_RADIUS);
+                    queueExplosionClear(explosionPos, ROCKET_EXPLOSION_RADIUS);
+                    const EXPLOSION_RADIUS_ACTUAL = ROCKET_EXPLOSION_RADIUS;
+                const allowActorDamage = canApplyBillBattleDamage();
+                if (allowActorDamage && p.source === 'player') {
+                    for (let j = ais.length - 1; j >= 0; j--) {
+                        const ai = ais[j];
+                        if (ai.hp <= 0) continue;
+                        const distance = ai.position.distanceTo(explosionPos);
+                        if (distance < EXPLOSION_RADIUS_ACTUAL) {
+                            const aiCenter = ai.position.clone().add(new THREE.Vector3(0, 1.5, 0));
+                            if (checkLineOfSight(explosionPos, aiCenter, obstacles)) {
+                            if (ai.hp !== Infinity) {
+                                if (isBillBattleMode()) {
+                                    markBillBattlePlayerDamage(ai, timeElapsed);
+                                }
+                                ai.hp = 0;
+                                createRedSmokeEffect(ai.position.clone().add(new THREE.Vector3(0, 1.5, 0)));
+                            }
+                                if (ai.hp <= 0) {
+                                    registerPlayerEnemyKillForCombo(ai);
+                                    aiFallDownCinematicSequence(new THREE.Vector3().subVectors(ai.position, explosionPos), ai, 'player');
+                                }
+                            }
+                        }
+                    }
+                    if (playerHP > 0) {
+                        const distanceToPlayer = player.position.distanceTo(explosionPos);
+                        if (distanceToPlayer < EXPLOSION_RADIUS_ACTUAL) {
+                            const playerCenter = player.position.clone().add(new THREE.Vector3(0, 1, 0));
+                            if (checkLineOfSight(explosionPos, playerCenter, obstacles)) {
+                                if (playerHP !== Infinity) {
+                                    playerHP = 0;
+                                    screenShakeDuration = SHAKE_DURATION_MAX;
+                                    redFlashOverlay.style.backgroundColor = 'rgba(255, 0, 0, 0.5)';
+                                    setTimeout(() => { redFlashOverlay.style.backgroundColor = 'transparent'; }, 100);
+                                }
+                                if (playerHP <= 0 && !isPlayerDeathPlaying) {
+                                    startPlayerDeathSequence(p);
+                                }
+                            }
+                        }
+                    }
+                }
+                if (allowActorDamage && p.source === 'ai' && playerHP > 0) {
+                    const distanceToPlayer = player.position.distanceTo(explosionPos);
+                    if (distanceToPlayer < EXPLOSION_RADIUS_ACTUAL) {
+                        const playerCenter = player.position.clone().add(new THREE.Vector3(0, 1, 0));
+                        if (checkLineOfSight(explosionPos, playerCenter, obstacles)) {
+                            if (playerHP !== Infinity) {
+                                playerHP = 0;
+                                screenShakeDuration = SHAKE_DURATION_MAX;
+                                redFlashOverlay.style.backgroundColor = 'rgba(255, 0, 0, 0.5)';
+                                setTimeout(() => { redFlashOverlay.style.backgroundColor = 'transparent'; }, 100);
+                            }
+                            if (playerHP <= 0 && !isPlayerDeathPlaying) {
+                                if (p.shooter && p.shooter.kills !== undefined) {
+                                    p.shooter.kills++;
+                                }
+                                startPlayerDeathSequence(p);
+                            }
+                        }
+                    }
+                }
+                if (hitType === 'obstacle') {
+                    if (hitObject && hitObject.userData && hitObject.userData.type === 'billLight') {
+                        destroyObstacle(hitObject, p.mesh.position);
+                    } else 
+                    if (hitObject.userData && (hitObject.userData.isHouseWall || hitObject.userData.isHouseDeck || hitObject.userData.isIndestructibleSurface)) {
+                        // 家の壁・2階床は弾を止めるが、個別パーツとしては破壊しない
+                    } else if (hitObject.userData && hitObject.userData.type === 'barrel') {
+                        // 樽の爆発処理は上で実行済み
+                    } else {
+                    if (hitObject.userData.hp === undefined) {
+                        hitObject.userData.hp = 1;
+                    }
+                    hitObject.userData.hp -= 1;
+                    if (hitObject.userData.hp <= 0) {
+                        destroyObstacle(hitObject, p.mesh.position);
+                    }
+                    }
+                }
+            } else {
+                if (hitType === 'obstacle' || hitType === 'floor') {
+                    const sparkColor = p.isRocket ? 0xff8c00 : (p.weaponType === WEAPON_SG ? 0xffbb66 : 0xffdd88);
+                    createImpactSparkEffect(p.mesh.position, sparkColor, p.velocity);
+                }
+                createSmokeEffect(p.mesh.position);
+            }
+            if (p.weaponType !== WEAPON_SG) {
+                scene.remove(p.mesh);
+                clearAIRocketInFlight(p);
+                const removeIndex = projectiles.indexOf(p);
+                if (removeIndex !== -1) projectiles.splice(removeIndex, 1);
+            }
+            continue;
+        }
+        if (!p.lastPos) {
+            p.lastPos = p.mesh.position.clone();
+            p.stuckTime = 0;
+        } else {
+            const movedDist = p.mesh.position.distanceTo(p.lastPos);
+            if (movedDist < 0.001) {
+                p.stuckTime = (p.stuckTime || 0) + delta;
+            } else {
+                p.stuckTime = 0;
+            }
+            p.lastPos.copy(p.mesh.position);
+            if (p.stuckTime > 0.3) {
+                clearAIRocketInFlight(p);
+                if (p.mesh) {
+                    if (p.mesh.parent) {
+                        p.mesh.parent.remove(p.mesh);
+                    } else {
+                        scene.remove(p.mesh);
+                    }
+                    disposeProjectileMeshResources(p.mesh);
+                }
+                const removeIndex = projectiles.indexOf(p);
+                if (removeIndex !== -1) projectiles.splice(removeIndex, 1);
+                continue;
+            }
+        }
+        const projArenaR = Math.sqrt(p.mesh.position.x * p.mesh.position.x + p.mesh.position.z * p.mesh.position.z);
+        if (projArenaR > ARENA_PLAY_AREA_RADIUS) {
+            scene.remove(p.mesh);
+            clearAIRocketInFlight(p);
+            const removeIndex = projectiles.indexOf(p);
+            if (removeIndex !== -1) projectiles.splice(removeIndex, 1);
+        }
+    }
+    applyExplosionClears();
+    const aiHPDisplays = [aiHPDisplay, ai2HPDisplay, ai3HPDisplay]; // グローバル変数を使用
+    for (let i = 0; i < aiHPDisplays.length; i++) {
+        const display = aiHPDisplays[i];
+        if (!display) continue;
+        const ai = ais[i]; // ais配列から削除されていないことを前提
+
+        if (ai && ai.hp > 0) {
+            display.style.display = 'block';
+            if (isTeamModeOrTeamArcade) { // isTeamModeOrTeamArcadeに変更
+                if (i === 0) {
+                    display.textContent = `Teammate HP: ${ai.hp === Infinity ? '∞' : ai.hp}`;
+                    display.style.color = 'cyan';
+                } else if (i === 1) {
+                    display.textContent = `Enemy 1 HP: ${ai.hp === Infinity ? '∞' : ai.hp}`;
+                    display.style.color = 'limegreen';
+                } else if (i === 2) {
+                    display.textContent = `Enemy 2 HP: ${ai.hp === Infinity ? '∞' : ai.hp}`;
+                    display.style.color = 'orange';
+                }
+            } else if (gameSettings.gameMode === 'ffa') {
+                display.textContent = `AI ${i + 1} HP: ${ai.hp === Infinity ? '∞' : ai.hp} | Kills: ${ai.kills}`;
+                if (i === 0) display.style.color = 'limegreen';
+                else if (i === 1) display.style.color = 'cyan';
+                else if (i === 2) display.style.color = 'orange';
+            } else {
+                display.textContent = `AI ${i + 1} HP: ${ai.hp === Infinity ? '∞' : ai.hp}`;
+                if (i === 0) display.style.color = 'limegreen';
+                else if (i === 1) display.style.color = 'cyan';
+                else if (i === 2) display.style.color = 'orange';
+            }
+            display.classList.remove('dead-ai-hp'); // 生きている場合はクラスを削除
+        } else if (ai && ai.hp <= 0) { // AIが存在し、HPが0以下の場合
+            display.style.display = 'block';
+            if (isTeamModeOrTeamArcade) { // isTeamModeOrTeamArcadeに変更
+                if (i === 0) {
+                    display.textContent = `Teammate HP: 0`;
+                    display.style.color = 'cyan';
+                } else if (i === 1) {
+                    display.textContent = `Enemy 1 HP: 0`;
+                    display.style.color = 'limegreen';
+                } else if (i === 2) {
+                    display.textContent = `Enemy 2 HP: 0`;
+                    display.style.color = 'orange';
+                }
+            } else if (gameSettings.gameMode === 'ffa') {
+                display.textContent = `AI ${i + 1} HP: 0 | Kills: ${ai.kills}`;
+                if (i === 0) display.style.color = 'limegreen';
+                else if (i === 1) display.style.color = 'cyan';
+                else if (i === 2) display.style.color = 'orange';
+            } else {
+                display.textContent = `AI ${i + 1} HP: 0`;
+                if (i === 0) display.style.color = 'limegreen';
+                else if (i === 1) display.style.color = 'cyan';
+                else if (i === 2) display.style.color = 'orange';
+            }
+            display.classList.add('dead-ai-hp'); // 死んでいる場合はクラスを追加
+        } else { // AIが存在しない場合 (AIの総数よりiが大きい場合)
+            display.style.display = 'none';
+        }
+    }
+    // インドアコンバット（build battle）の勝利条件
+    const hasPendingAIDeathForWin = isAnyRelevantAIDyingForVictory();
+    if (isClassicBillBattleMode()) {
+        if (isBillBattleFloorCleared() && isGameRunning && !isAIDeathPlaying && !hasPendingAIDeathForWin) {
+            showWinScreen();
+        }
+    } else if (gameSettings.gameMode === 'team') {
+        // チームモードの場合、敵チーム全滅で勝利
+        const enemyAIsDefeated = ais.filter(ai => ai.team === 'enemy').every(ai => ai.hp <= 0);
+        if (enemyAIsDefeated && ais.filter(ai => ai.team === 'enemy').length > 0 && isGameRunning && !isAIDeathPlaying && !hasPendingAIDeathForWin) {
+            showWinScreen();
+        }
+    } else {
+        const allAIsDefeated = ais.every(ai => ai.hp <= 0);
+        if (allAIsDefeated && ais.length > 0 && isGameRunning && !isAIDeathPlaying && !hasPendingAIDeathForWin && (gameSettings.gameMode === 'battle' || gameSettings.gameMode === 'ffa') && !isBillBattleMode()) {
+            showWinScreen();
+        }
+    }
+    if (playerHPDisplay) { 
+        playerHPDisplay.textContent = `HP: ${playerHP === Infinity ? '∞' : playerHP}`;
+    }
+
+    // 【修正】チームデスマッチ時のスコア表示更新
+    if (isTeamBasedAIMode()) {
+        if (playerTeamKillsDisplay) playerTeamKillsDisplay.textContent = `PLAYER TEAM KILLS: ${playerTeamKills}`;
+        if (enemyTeamKillsDisplay) enemyTeamKillsDisplay.textContent = `ENEMY TEAM KILLS: ${enemyTeamKills}`;
+        if (killCountDisplay) killCountDisplay.style.display = 'none';
+    } else if (gameSettings.gameMode === 'arcade' || gameSettings.gameMode === 'ffa') {
+        if (killCountDisplay) {
+            killCountDisplay.style.display = 'block';
+            killCountDisplay.textContent = `KILLS: ${playerKills}`;
+        }
+    } else {
+        if (killCountDisplay) killCountDisplay.style.display = 'none';
+    }
+    if (screenShakeDuration > 0) {
+        screenShakeDuration -= delta;
+        const shakeFactor = screenShakeDuration / SHAKE_DURATION_MAX;
+        camera.position.x = (Math.random() - 0.5) * SHAKE_INTENSITY * shakeFactor;
+        camera.position.y = (Math.random() - 0.5) * SHAKE_INTENSITY * shakeFactor;
+    } else camera.position.set(0, 0, 0);
+    TWEEN.update();
+    
+    // アニメーションループ内でタイムラプスの滑らか遷移を適用
+      if (isTimeLapseMode) {
+          applySmoothNightMode();
+      }
+      
+      if (isBillBattleMode()) {
+          enforceBillBattleInsideActor(player, 1.2, true, playerTargetHeight);
+          // インドアコンバットでは屋上ワープ防止のためプレイヤーを床面に固定
+          if (player && player.position) {
+              player.position.y = -FLOOR_HEIGHT + playerTargetHeight;
+          }
+      }
+
+      if (isPlayerDeathPlaying) {
+          renderPlayerDeathKillCamFrame();
+          return;
+      }
+
+      updateCharacterWallClipping();
+      updateCharacterBlobShadows();
+      renderer.render(scene, camera);
+  }
+const startBtn = document.getElementById('start-game-btn');
+if (startBtn) {
+    startBtn.addEventListener('click', async () => {
+        if (startBtn.dataset.loading === 'true') return;
+        isPreparingGameStart = true;
+        stopMenuBGM(false);
+        stopGameBGM(false);
+        startBtn.dataset.loading = 'true';
+        startBtn.disabled = true;
+        const playerHpSelect = document.getElementById('player-hp');
+        if (playerHpSelect) gameSettings.playerHP = playerHpSelect.value;
+        const aiHpSelect = document.getElementById('ai-hp');
+        if (aiHpSelect) gameSettings.aiHP = aiHpSelect.value;
+        const mgCountEl = document.getElementById('mg-count');
+        if (mgCountEl) gameSettings.mgCount = parseInt(mgCountEl.value, 10);
+        const rrCountEl = document.getElementById('rr-count');
+        if (rrCountEl) gameSettings.rrCount = parseInt(rrCountEl.value, 10);
+        const srCountEl = document.getElementById('sr-count');
+        if (srCountEl) gameSettings.srCount = parseInt(srCountEl.value, 10);
+        const sgCountEl = document.getElementById('sg-count');
+        if (sgCountEl) gameSettings.sgCount = parseInt(sgCountEl.value, 10);
+        const mrCountEl = document.getElementById('mr-count');
+        if (mrCountEl) {
+            gameSettings.mrCount = parseInt(mrCountEl.value, 10);
+        }
+        // 統合セレクターからマップ選択を取得
+        const unifiedMapSelectorOnStart = document.getElementById('unified-map-selector');
+        if (unifiedMapSelectorOnStart && unifiedMapSelectorOnStart.value) {
+            const selectedValue = unifiedMapSelectorOnStart.value;
+                if (selectedValue === 'default') {
+                    gameSettings.mapType = 'default';
+                    gameSettings.customMapName = '';
+                    activeRandomMapData = null;
+                } else if (selectedValue === RANDOM_MAP_OPTION_VALUE) {
+                    gameSettings.mapType = 'random';
+                    gameSettings.customMapName = '';
+                    activeRandomMapData = null;
+                } else if (selectedValue && selectedValue !== '---') {
+                    gameSettings.mapType = 'custom';
+                    gameSettings.customMapName = selectedValue;
+                    activeRandomMapData = null;
+                }
+            }
+        const aiCountRadio = document.querySelector('input[name="ai-count"]:checked');
+        if (aiCountRadio) {
+            gameSettings.aiCount = parseInt(aiCountRadio.value, 10);
+        } else if (!Number.isFinite(gameSettings.aiCount)) {
+            gameSettings.aiCount = 3;
+        }
+        const durationRadio = document.querySelector('input[name="game-duration"]:checked');
+        if (durationRadio) {
+            gameSettings.gameDuration = parseInt(durationRadio.value, 10);
+        }
+        saveSettings();
+        let stageReady = false;
+        try {
+            await prepareGameStartAssets();
+            if (gameSettings.mapType === 'random') {
+                setLoadingStatus('MAP制作中');
+                await waitForNextFrame();
+            }
+            startGame();
+            setLoadingStatus('Building stage...');
+            await waitForNextFrame();
+            restartGame({ deferGameplay: true });
+            setLoadingStatus('Preparing graphics...');
+            await waitForNextFrame();
+            await warmRendererForGameStart();
+            stageReady = true;
+        } finally {
+            hideLoadingScreen();
+            isPreparingGameStart = false;
+            if (stageReady) {
+                isGameRunning = true;
+                isPaused = false;
+                enforceTouchUIVisibility();
+                updateMobileWeaponButtonVisibility();
+                startStageBGM(true);
+                playMatchStartVoice();
+            }
+            startBtn.disabled = false;
+            startBtn.dataset.loading = 'false';
+            const deployButton = document.getElementById('title-deploy-button');
+            if (deployButton) deployButton.disabled = false;
+        }
+    });
+}
+const rButtons = document.querySelectorAll('.restart-button');
+rButtons.forEach(button => button.addEventListener('click', () => {
+    initializeAudio();
+    const parentScreen = button.closest('.end-screen');
+    const isWinScreen = parentScreen && parentScreen.id === 'win-screen';
+    const nextRoomRequested = button.dataset.nextRoom === 'true';
+    if (isWinScreen && nextRoomRequested && isClassicBillBattleMode()) {
+        if (winScreen) winScreen.style.display = 'none';
+        advanceBillBattleFloor();
+        if (!(shouldShowTouchControls())) canvas.requestPointerLock();
+        return;
+    }
+    restartGame({ rerollRandomMap: gameSettings.mapType === 'random' });
+    if (!(shouldShowTouchControls())) canvas.requestPointerLock();
+})); // rButtons.forEachコールバック終了
+    
+    const settingsLinks = document.querySelectorAll('.settings-link');
+settingsLinks.forEach(link => {
+    link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const screenToHideId = link.dataset.screenToHide;
+        document.getElementById(screenToHideId).style.display = 'none';
+        startScreen.style.display = 'flex';
+        updateMenuBGM();
+    });
+});
+window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+let hasInitializedMenuAudio = false;
+const tryInitMenuAudio = () => {
+    if (hasInitializedMenuAudio) return;
+    hasInitializedMenuAudio = true;
+    initializeAudio();
+    updateMenuBGM();
+    document.removeEventListener('pointerdown', tryInitMenuAudio, true);
+    document.removeEventListener('touchstart', tryInitMenuAudio, true);
+    document.removeEventListener('keydown', tryInitMenuAudio, true);
+};
+const SETTINGS_VERSION = 4;
+document.addEventListener('pointerdown', tryInitMenuAudio, { capture: true, passive: true });
+document.addEventListener('touchstart', tryInitMenuAudio, { capture: true, passive: true });
+document.addEventListener('keydown', tryInitMenuAudio, { capture: true });
+
+// --- ボタン設定ロジック ---
+const buttonSettingsScreen = document.getElementById('button-settings-screen');
+const startScreenElement = document.getElementById('start-screen');
+const openButtonSettingsBtn = document.getElementById('button-setting-btn');
+const saveButtonPositionsBtn = document.getElementById('save-button-positions');
+const backToSettingsBtn = document.getElementById('back-to-settings');
+const feedbackDiv = document.getElementById('button-setting-feedback');
+
+function updateButtonSettingsAvailability() {
+    if (!openButtonSettingsBtn) return;
+    const available = shouldShowTouchControls();
+    openButtonSettingsBtn.disabled = !available;
+    openButtonSettingsBtn.setAttribute('aria-disabled', String(!available));
+    openButtonSettingsBtn.style.opacity = available ? '1' : '0.45';
+    openButtonSettingsBtn.style.cursor = available ? 'pointer' : 'not-allowed';
+}
+
+updateButtonSettingsAvailability();
+window.addEventListener('resize', updateButtonSettingsAvailability);
+
+if (openButtonSettingsBtn) {
+    openButtonSettingsBtn.addEventListener('click', () => {
+        if (!shouldShowTouchControls()) return;
+        startScreenElement.style.display = 'none';
+        buttonSettingsScreen.style.display = 'block';
+        feedbackDiv.style.display = 'none'; // 開いた時はフィードバックを非表示
+        updateMenuBGM();
+    });
+}
+
+backToSettingsBtn.addEventListener('click', () => {
+    buttonSettingsScreen.style.display = 'none';
+    startScreenElement.style.display = 'block';
+    updateMenuBGM();
+});
+
+// --- BGM設定ロジック ---
+const bgmSettingsScreen = document.getElementById('bgm-settings-screen');
+const bgmSettingsBackBtn = document.getElementById('bgm-settings-back-btn');
+const bgmReloadBtn = document.getElementById('bgm-reload-btn');
+const bgmVolumeSlider = document.getElementById('bgm-volume');
+const bgmVolumeValue = document.getElementById('bgm-volume-value');
+const bgmModeOrder = document.getElementById('bgm-mode-order');
+const bgmModeRandom = document.getElementById('bgm-mode-random');
+const bgmTrackList = document.getElementById('bgm-track-list');
+const bgmPreviewAudio = new Audio();
+bgmPreviewAudio.preload = 'none';
+let currentBgmPreviewRow = null;
+bgmPreviewAudio.addEventListener('ended', () => {
+    if (currentBgmPreviewRow) {
+        currentBgmPreviewRow.style.backgroundColor = '';
+        currentBgmPreviewRow.style.borderRadius = '';
+        currentBgmPreviewRow = null;
+    }
+    updateMenuBGM();
+});
+
+function stopBgmPreview() {
+    if (!bgmPreviewAudio) return;
+    bgmPreviewAudio.pause();
+    bgmPreviewAudio.currentTime = 0;
+    if (currentBgmPreviewRow) {
+        currentBgmPreviewRow.style.backgroundColor = '';
+        currentBgmPreviewRow.style.borderRadius = '';
+        currentBgmPreviewRow = null;
+    }
+    updateMenuBGM();
+}
+
+function normalizeBgmTrackPath(path) {
+    if (!path) return null;
+    let clean = String(path).replace(/\\/g, '/');
+    clean = clean.split('?')[0].split('#')[0].replace(/^\.\//, '');
+    if (/^https?:\/\//i.test(clean)) {
+        try {
+            const url = new URL(clean, window.location.href);
+            clean = url.pathname;
+        } catch {
+            return null;
+        }
+    }
+    if (clean.startsWith('/')) clean = clean.slice(1);
+    if (!clean.toLowerCase().endsWith('.mp3')) return null;
+    if (!clean.toLowerCase().startsWith('bgm/')) {
+        clean = `bgm/${clean}`;
+    }
+    return clean;
+}
+
+async function fetchBgmTrackList() {
+    const jsonCandidates = ['bgm/tracklist.json', 'bgm/manifest.json', 'bgm/tracks.json'];
+    for (const url of jsonCandidates) {
+        try {
+            const resp = await fetch(`${url}?t=${Date.now()}`, { cache: 'no-store' });
+            if (!resp.ok) continue;
+            const data = await resp.json();
+            const rawTracks = Array.isArray(data) ? data : (Array.isArray(data.tracks) ? data.tracks : []);
+            if (rawTracks.length > 0) {
+                const normalized = rawTracks
+                    .map(normalizeBgmTrackPath)
+                    .filter(Boolean);
+                if (normalized.length > 0) return normalized;
+            }
+        } catch {
+            // 無視
+        }
+    }
+    try {
+        const host = window.location.hostname;
+        if (host && host.endsWith('github.io')) {
+            const owner = host.split('.')[0];
+            const pathParts = window.location.pathname.split('/').filter(Boolean);
+            const repo = pathParts.length > 0 ? pathParts[0] : `${owner}.github.io`;
+            const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/bgm`;
+            const resp = await fetch(`${apiUrl}?t=${Date.now()}`, { cache: 'no-store' });
+            if (resp.ok) {
+                const data = await resp.json();
+                if (Array.isArray(data)) {
+                    const fromApi = data
+                        .filter(item => item && item.type === 'file' && typeof item.name === 'string' && item.name.toLowerCase().endsWith('.mp3'))
+                        .map(item => `bgm/${item.name}`);
+                    if (fromApi.length > 0) return fromApi;
+                }
+            }
+            const branchCandidates = ['gh-pages', 'main', 'master'];
+            for (const branch of branchCandidates) {
+                const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/bgm/tracklist.json`;
+                try {
+                    const rawResp = await fetch(`${rawUrl}?t=${Date.now()}`, { cache: 'no-store' });
+                    if (!rawResp.ok) continue;
+                    const data = await rawResp.json();
+                    const rawTracks = Array.isArray(data) ? data : (Array.isArray(data.tracks) ? data.tracks : []);
+                    if (rawTracks.length > 0) {
+                        const normalized = rawTracks
+                            .map(normalizeBgmTrackPath)
+                            .filter(Boolean);
+                        if (normalized.length > 0) return normalized;
+                    }
+                } catch {
+                    // 無視
+                }
+            }
+        }
+    } catch {
+        // 無視
+    }
+    try {
+        const resp = await fetch(`bgm/?t=${Date.now()}`, { cache: 'no-store' });
+        if (!resp.ok) return [];
+        const html = await resp.text();
+        const matches = [];
+        const regex = /href=["']([^"']+\.mp3[^"']*)["']/gi;
+        let match;
+        while ((match = regex.exec(html)) !== null) {
+            matches.push(match[1]);
+        }
+        const normalized = matches
+            .map(normalizeBgmTrackPath)
+            .filter(Boolean);
+        return normalized;
+    } catch {
+        return [];
+    }
+}
+
+function applyBgmTrackList(newTracks) {
+    if (!Array.isArray(newTracks) || newTracks.length === 0) return false;
+    const unique = [];
+    const seen = new Set();
+    for (const track of newTracks) {
+        if (!seen.has(track)) {
+            seen.add(track);
+            unique.push(track);
+        }
+    }
+    unique.sort((a, b) => a.localeCompare(b, 'en', { numeric: true, sensitivity: 'base' }));
+    const prevTrackSet = new Set(BGM_TRACKS);
+    const prevEnabledSet = new Set(gameSettings.bgmEnabledTracks || []);
+    const nextEnabled = [];
+    for (const track of unique) {
+        if (prevEnabledSet.size === 0) {
+            nextEnabled.push(track);
+            continue;
+        }
+        if (prevEnabledSet.has(track)) {
+            nextEnabled.push(track);
+            continue;
+        }
+        if (!prevTrackSet.has(track)) {
+            nextEnabled.push(track);
+        }
+    }
+    BGM_TRACKS = unique;
+    gameSettings.bgmEnabledTracks = nextEnabled;
+    bgmOrderIndex = 0;
+    if (currentBgmTrack && !seen.has(currentBgmTrack)) {
+        currentBgmTrack = null;
+    }
+    saveSettings();
+    refreshBgmSettingsUI();
+    updateMenuBGM();
+    return true;
+}
+
+async function reloadBgmTracks() {
+    const tracks = await fetchBgmTrackList();
+    if (tracks.length > 0) {
+        applyBgmTrackList(tracks);
+    } else {
+        refreshBgmSettingsUI();
+    }
+}
+
+function refreshBgmSettingsUI() {
+    if (bgmVolumeSlider) {
+        const volume = normalizeBgmVolume(gameSettings.bgmVolume);
+        bgmVolumeSlider.value = Math.round(volume * 100);
+        if (bgmVolumeValue) bgmVolumeValue.textContent = `${Math.round(volume * 100)}%`;
+    }
+    if (bgmModeOrder && bgmModeRandom) {
+        bgmModeOrder.checked = gameSettings.bgmMode !== 'random';
+        bgmModeRandom.checked = gameSettings.bgmMode === 'random';
+    }
+    if (bgmPlayModeStage && bgmPlayModeContinuous) {
+        bgmPlayModeStage.checked = gameSettings.bgmPlayMode === 'stage';
+        bgmPlayModeContinuous.checked = gameSettings.bgmPlayMode === 'continuous';
+    }
+    if (bgmTrackList) {
+        bgmTrackList.innerHTML = '';
+        const enabled = new Set(getEnabledBgmTracks());
+        BGM_TRACKS.forEach(track => {
+            const label = document.createElement('label');
+            label.style.display = 'flex';
+            label.style.alignItems = 'center';
+            label.style.gap = '8px';
+            label.style.justifyContent = 'space-between';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = enabled.has(track);
+            checkbox.addEventListener('change', () => {
+                const current = new Set(gameSettings.bgmEnabledTracks || []);
+                if (checkbox.checked) {
+                    current.add(track);
+                } else {
+                    current.delete(track);
+                }
+                gameSettings.bgmEnabledTracks = BGM_TRACKS.filter(track => current.has(track));
+                bgmOrderIndex = 0;
+                saveSettings();
+                updateMenuBGM();
+            });
+            const nameSpan = document.createElement('span');
+            const parts = track.split('/');
+            nameSpan.textContent = parts[parts.length - 1];
+            const leftWrap = document.createElement('div');
+            leftWrap.style.display = 'flex';
+            leftWrap.style.alignItems = 'center';
+            leftWrap.style.gap = '8px';
+            leftWrap.appendChild(checkbox);
+            leftWrap.appendChild(nameSpan);
+            const rightWrap = document.createElement('div');
+            rightWrap.style.display = 'flex';
+            rightWrap.style.alignItems = 'center';
+            rightWrap.style.gap = '6px';
+            const playBtn = document.createElement('button');
+            playBtn.textContent = 'Play';
+            playBtn.style.padding = '4px 10px';
+            playBtn.style.fontSize = '0.9em';
+            playBtn.style.backgroundColor = '#2f6fed';
+            playBtn.style.color = 'white';
+            playBtn.style.border = 'none';
+            playBtn.style.borderRadius = '4px';
+            playBtn.style.cursor = 'pointer';
+            playBtn.addEventListener('click', () => {
+                if (bgmPreviewAudio) {
+                    bgmPreviewAudio.pause();
+                    bgmPreviewAudio.currentTime = 0;
+                    bgmPreviewAudio.src = track;
+                    bgmPreviewAudio.load();
+                    bgmPreviewAudio.muted = false;
+                    bgmPreviewAudio.volume = normalizeBgmVolume(gameSettings.bgmVolume);
+                    stopMenuBGM(false);
+                    if (currentBgmPreviewRow && currentBgmPreviewRow !== label) {
+                        currentBgmPreviewRow.style.backgroundColor = '';
+                        currentBgmPreviewRow.style.borderRadius = '';
+                    }
+                    currentBgmPreviewRow = label;
+                    label.style.backgroundColor = 'rgba(255, 255, 255, 0.12)';
+                    label.style.borderRadius = '6px';
+                    bgmPreviewAudio.play().catch(err => {
+                        console.warn('BGM preview play failed:', err);
+                    });
+                }
+            });
+            const stopBtn = document.createElement('button');
+            stopBtn.textContent = 'Stop';
+            stopBtn.style.padding = '4px 10px';
+            stopBtn.style.fontSize = '0.9em';
+            stopBtn.style.backgroundColor = '#555';
+            stopBtn.style.color = 'white';
+            stopBtn.style.border = 'none';
+            stopBtn.style.borderRadius = '4px';
+            stopBtn.style.cursor = 'pointer';
+            stopBtn.addEventListener('click', () => {
+                stopBgmPreview();
+            });
+            rightWrap.appendChild(playBtn);
+            rightWrap.appendChild(stopBtn);
+            label.appendChild(leftWrap);
+            label.appendChild(rightWrap);
+            bgmTrackList.appendChild(label);
+        });
+    }
+}
+
+if (bgmSettingsBackBtn) {
+    bgmSettingsBackBtn.addEventListener('click', () => {
+        stopBgmPreview();
+        if (bgmSettingsScreen) bgmSettingsScreen.style.display = 'none';
+        startScreenElement.style.display = 'flex';
+        updateMenuBGM();
+    });
+}
+
+if (bgmReloadBtn) {
+    bgmReloadBtn.addEventListener('click', () => {
+        reloadBgmTracks();
+    });
+}
+
+if (bgmVolumeSlider) {
+    bgmVolumeSlider.addEventListener('input', () => {
+        const volume = normalizeBgmVolume(Number(bgmVolumeSlider.value) / 100);
+        gameSettings.bgmVolume = volume;
+        if (bgmVolumeValue) bgmVolumeValue.textContent = `${Math.round(volume * 100)}%`;
+        applyBgmVolume();
+        saveSettings();
+    });
+}
+
+if (bgmModeOrder) {
+    bgmModeOrder.addEventListener('change', () => {
+        if (bgmModeOrder.checked) {
+            gameSettings.bgmMode = 'order';
+            saveSettings();
+        }
+    });
+}
+
+if (bgmModeRandom) {
+    bgmModeRandom.addEventListener('change', () => {
+        if (bgmModeRandom.checked) {
+            gameSettings.bgmMode = 'random';
+            saveSettings();
+        }
+    });
+}
+
+const bgmPlayModeStage = document.getElementById('bgm-play-mode-stage');
+const bgmPlayModeContinuous = document.getElementById('bgm-play-mode-continuous');
+
+if (bgmPlayModeStage && bgmPlayModeContinuous) {
+    bgmPlayModeStage.addEventListener('change', () => {
+        if (bgmPlayModeStage.checked) {
+            gameSettings.bgmPlayMode = 'stage';
+            saveSettings();
+        }
+    });
+    bgmPlayModeContinuous.addEventListener('change', () => {
+        if (bgmPlayModeContinuous.checked) {
+            gameSettings.bgmPlayMode = 'continuous';
+            saveSettings();
+        }
+    });
+}
+
+saveButtonPositionsBtn.addEventListener('click', () => {
+    const previewFireButton = document.getElementById('preview-fire-button');
+    const previewCrouchButton = document.getElementById('preview-crouch-button');
+    const previewZoomButton = document.getElementById('preview-zoom-button');
+    const previewJoystickZone = document.getElementById('preview-joystick-zone');
+    const previewFollowButton = document.getElementById('preview-follow-button'); // 追加
+
+    const toPercent = (value, size) => {
+        const safeSize = Math.max(1, size);
+        const normalized = Math.min(safeSize, Math.max(0, value));
+        return `${(normalized / safeSize) * 100}%`;
+    };
+    const getRightBottomPercent = (element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+            right: toPercent(window.innerWidth - rect.right, window.innerWidth),
+            bottom: toPercent(window.innerHeight - rect.bottom, window.innerHeight)
+        };
+    };
+    const getLeftBottomPercent = (element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+            left: toPercent(rect.left, window.innerWidth),
+            bottom: toPercent(window.innerHeight - rect.bottom, window.innerHeight)
+        };
+    };
+
+    const firePos = getRightBottomPercent(previewFireButton);
+    const crouchPos = getRightBottomPercent(previewCrouchButton);
+    const zoomPos = getRightBottomPercent(previewZoomButton);
+    const joystickPos = getLeftBottomPercent(previewJoystickZone);
+    const followPos = getRightBottomPercent(previewFollowButton);
+
+    const fireRight = firePos.right;
+    const fireBottom = firePos.bottom;
+    const crouchRight = crouchPos.right;
+    const crouchBottom = crouchPos.bottom;
+    const zoomRight = zoomPos.right;
+    const zoomBottom = zoomPos.bottom;
+    const joystickLeft = joystickPos.left;
+    const joystickBottom = joystickPos.bottom;
+    const followRight = followPos.right;
+    const followBottom = followPos.bottom;
+
+    gameSettings.buttonPositions.fire = { right: fireRight, bottom: fireBottom };
+    gameSettings.buttonPositions.crouch = { right: crouchRight, bottom: crouchBottom };
+    gameSettings.buttonPositions.zoom = { right: zoomRight, bottom: zoomBottom };
+    gameSettings.buttonPositions.joystick = { left: joystickLeft, bottom: joystickBottom };
+    gameSettings.buttonPositions.follow = { right: followRight, bottom: followBottom }; // 追加
+
+    saveSettings();
+    
+    // 実ボタンへ即時反映
+    const fireButton = document.getElementById('fire-button');
+    const crouchButton = document.getElementById('crouch-button');
+    const zoomButton = document.getElementById('zoom-button');
+    const joystickZone = document.getElementById('joystick-move');
+    const followButton = document.getElementById('follow-button'); // 追加
+
+    if (shouldShowTouchControls()) {
+        if(fireButton) {
+            fireButton.style.right = fireRight;
+            fireButton.style.bottom = fireBottom;
+            fireButton.style.left = '';
+            fireButton.style.top = '';
+        }
+        if(crouchButton) {
+            crouchButton.style.right = crouchRight;
+            crouchButton.style.bottom = crouchBottom;
+            crouchButton.style.left = '';
+            crouchButton.style.top = '';
+        }
+        if(zoomButton) {
+            zoomButton.style.right = zoomRight;
+            zoomButton.style.bottom = zoomBottom;
+            zoomButton.style.left = '';
+            zoomButton.style.top = '';
+        }
+        if(joystickZone) {
+            joystickZone.style.left = joystickLeft;
+            joystickZone.style.bottom = joystickBottom;
+            joystickZone.style.right = '';
+            joystickZone.style.top = '';
+        }
+        if (shouldShowTouchControls()) initJoystick();
+        if (followButton) {
+            followButton.style.right = followRight;
+            followButton.style.bottom = followBottom;
+            followButton.style.left = '';
+            followButton.style.top = '';
+        }
+    } else {
+        if(fireButton) fireButton.style.display = 'none';
+        if(crouchButton) crouchButton.style.display = 'none';
+        if(zoomButton) zoomButton.style.display = 'none';
+        if(joystickZone) joystickZone.style.display = 'none';
+        if (followButton) followButton.style.display = 'none';
+    }
+}); // saveButtonPositionsBtn.addEventListenerコールバック終了
+
+function makeDraggable(element, isJoystick = false) {
+    if (!element) return;
+    let isDragging = false;
+    let offsetX, offsetY;
+
+    const startDrag = (e) => {
+        isDragging = true;
+        const event = e.type === 'touchstart' ? e.touches[0] : e;
+        
+        const rect = element.getBoundingClientRect();
+        offsetX = event.clientX - rect.left;
+        offsetY = event.clientY - rect.top;
+
+        document.addEventListener('mousemove', onDrag);
+        document.addEventListener('touchmove', onDrag, { passive: false });
+        document.addEventListener('mouseup', endDrag);
+        document.addEventListener('touchend', endDrag);
+        document.addEventListener('touchcancel', endDrag);
+        if (e.type === 'touchstart') e.preventDefault();
+    };
+
+    const onDrag = (e) => {
+        if (!isDragging) return;
+        const event = e.type === 'touchmove' ? e.touches[0] : e;
+        e.preventDefault(); 
+
+        let newX = event.clientX - offsetX;
+        let newY = event.clientY - offsetY;
+
+        newX = Math.min(Math.max(0, newX), window.innerWidth - element.offsetWidth);
+        newY = Math.min(Math.max(0, newY), window.innerHeight - element.offsetHeight);
+
+        if (isJoystick) {
+            const newLeft = newX;
+            const newBottom = window.innerHeight - newY - element.offsetHeight;
+            element.style.left = `${newLeft}px`;
+            element.style.bottom = `${newBottom}px`;
+            element.style.right = '';
+            element.style.top = '';
+        } else {
+            const newRight = window.innerWidth - newX - element.offsetWidth;
+            const newBottom = window.innerHeight - newY - element.offsetHeight;
+            element.style.left = ''; 
+            element.style.top = '';
+            element.style.right = `${newRight}px`;
+            element.style.bottom = `${newBottom}px`;
+        }
+    };
+
+    const endDrag = () => {
+        isDragging = false;
+        document.removeEventListener('mousemove', onDrag);
+        document.removeEventListener('touchmove', onDrag);
+        document.removeEventListener('mouseup', endDrag);
+        document.removeEventListener('touchend', endDrag);
+        document.removeEventListener('touchcancel', endDrag);
+    };
+
+    element.addEventListener('mousedown', startDrag);
+    element.addEventListener('touchstart', startDrag, { passive: false });
+}
+
+makeDraggable(document.getElementById('preview-fire-button'));
+makeDraggable(document.getElementById('preview-crouch-button'));
+makeDraggable(document.getElementById('preview-zoom-button'));
+makeDraggable(document.getElementById('preview-joystick-zone'), true);
+makeDraggable(document.getElementById('preview-follow-button')); // 追加
+
+document.addEventListener('keydown', (event) => {
+    if (event.code === 'KeyP') {
+        showSettingsAndPause();
+    }
+});
+
+const pauseBtn = document.getElementById('pause-button');
+if (pauseBtn) {
+    pauseBtn.addEventListener('click', showSettingsAndPause);
+}
+
+const resumeGameBtn = document.getElementById('resume-game-btn');
+if (resumeGameBtn) {
+    resumeGameBtn.addEventListener('click', resumeGame);
+}
+
+// キャラクターエディタ関数群
+function getGunEditorFieldDefs() {
+    return [
+        { key: 'body.shape', label: 'Body Shape', type: 'select', options: ['box', 'cylinder'] },
+        { key: 'body.length', label: 'Body Length', type: 'range', min: 0.3, max: 3.5, step: 0.01 },
+        { key: 'body.thickness', label: 'Body Thickness', type: 'range', min: 0.03, max: 0.5, step: 0.005 },
+        { key: 'body.color', label: 'Body Color', type: 'color' },
+        { key: 'body.metalness', label: 'Body Metalness', type: 'range', min: 0, max: 1, step: 0.01 },
+        { key: 'body.roughness', label: 'Body Roughness', type: 'range', min: 0, max: 1, step: 0.01 },
+
+        { key: 'scope.enabled', label: 'Scope Enabled', type: 'checkbox' },
+        { key: 'scope.radius', label: 'Scope Radius', type: 'range', min: 0.01, max: 0.4, step: 0.005 },
+        { key: 'scope.length', label: 'Scope Length', type: 'range', min: 0.08, max: 1.5, step: 0.01 },
+        { key: 'scope.posX', label: 'Scope Pos X', type: 'range', min: -1.5, max: 1.5, step: 0.01 },
+        { key: 'scope.posY', label: 'Scope Pos Y', type: 'range', min: -1.5, max: 1.5, step: 0.01 },
+        { key: 'scope.posZ', label: 'Scope Pos Z', type: 'range', min: -2.5, max: 2.5, step: 0.01 },
+        { key: 'scope.color', label: 'Scope Color', type: 'color' },
+
+        { key: 'magazine.enabled', label: 'Magazine Enabled', type: 'checkbox' },
+        { key: 'magazine.width', label: 'Magazine Width', type: 'range', min: 0.02, max: 1.2, step: 0.01 },
+        { key: 'magazine.height', label: 'Magazine Height', type: 'range', min: 0.02, max: 1.2, step: 0.01 },
+        { key: 'magazine.depth', label: 'Magazine Depth', type: 'range', min: 0.02, max: 1.2, step: 0.01 },
+        { key: 'magazine.posX', label: 'Magazine Pos X', type: 'range', min: -1.5, max: 1.5, step: 0.01 },
+        { key: 'magazine.posY', label: 'Magazine Pos Y', type: 'range', min: -1.5, max: 1.5, step: 0.01 },
+        { key: 'magazine.posZ', label: 'Magazine Pos Z', type: 'range', min: -2.5, max: 2.5, step: 0.01 },
+        { key: 'magazine.color', label: 'Magazine Color', type: 'color' },
+
+        { key: 'barrel.enabled', label: 'Barrel Enabled', type: 'checkbox' },
+        { key: 'barrel.shape', label: 'Barrel Shape', type: 'select', options: ['box', 'cylinder'] },
+        { key: 'barrel.width', label: 'Barrel Width', type: 'range', min: 0.02, max: 1.2, step: 0.01 },
+        { key: 'barrel.height', label: 'Barrel Height', type: 'range', min: 0.02, max: 1.2, step: 0.01 },
+        { key: 'barrel.depth', label: 'Barrel Length', type: 'range', min: 0.05, max: 2.5, step: 0.01 },
+        { key: 'barrel.posX', label: 'Barrel Pos X', type: 'range', min: -1.5, max: 1.5, step: 0.01 },
+        { key: 'barrel.posY', label: 'Barrel Pos Y', type: 'range', min: -1.5, max: 1.5, step: 0.01 },
+        { key: 'barrel.posZ', label: 'Barrel Pos Z', type: 'range', min: -2.5, max: 2.5, step: 0.01 },
+        { key: 'barrel.color', label: 'Barrel Color', type: 'color' }
+    ];
+}
+
+function getByPath(obj, path) {
+    if (!obj) return undefined;
+    const parts = path.split('.');
+    let cur = obj;
+    for (const p of parts) {
+        if (!cur || typeof cur !== 'object') return undefined;
+        cur = cur[p];
+    }
+    return cur;
+}
+
+function setByPath(obj, path, value) {
+    const parts = path.split('.');
+    let cur = obj;
+    for (let i = 0; i < parts.length - 1; i++) {
+        if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+        cur = cur[parts[i]];
+    }
+    cur[parts[parts.length - 1]] = value;
+}
+
+function buildGunEditorControls() {
+    const controlsRoot = document.getElementById('gun-editor-controls');
+    if (!controlsRoot) return;
+    controlsRoot.innerHTML = '';
+    gunEditorInputs = {};
+
+    const createField = (field) => {
+        const wrap = document.createElement('div');
+        wrap.style.backgroundColor = '#333';
+        wrap.style.borderRadius = '4px';
+        wrap.style.padding = '8px';
+
+        const label = document.createElement('label');
+        label.textContent = field.label;
+        label.style.display = 'block';
+        label.style.color = 'white';
+        label.style.fontSize = '0.85em';
+        label.style.marginBottom = '6px';
+        wrap.appendChild(label);
+
+        let input;
+        if (field.type === 'select') {
+            input = document.createElement('select');
+            for (const opt of field.options) {
+                const o = document.createElement('option');
+                o.value = opt;
+                o.textContent = opt;
+                input.appendChild(o);
+            }
+        } else {
+            input = document.createElement('input');
+            input.type = field.type === 'checkbox' ? 'checkbox' : field.type;
+            if (field.type === 'range') {
+                input.min = String(field.min);
+                input.max = String(field.max);
+                input.step = String(field.step);
+            }
+        }
+        input.style.width = field.type === 'checkbox' ? 'auto' : '100%';
+        input.dataset.path = field.key;
+        gunEditorInputs[field.key] = input;
+
+        const valueLabel = document.createElement('div');
+        valueLabel.style.color = '#bbb';
+        valueLabel.style.fontSize = '0.75em';
+        valueLabel.style.marginTop = '4px';
+        valueLabel.dataset.valueLabel = field.key;
+        wrap.appendChild(input);
+        if (field.type === 'range') wrap.appendChild(valueLabel);
+
+        input.addEventListener('input', () => {
+            applyGunEditorInputsToModel();
+            updateGunEditorPreview();
+        });
+        input.addEventListener('change', () => {
+            applyGunEditorInputsToModel();
+            updateGunEditorPreview();
+        });
+        return wrap;
+    };
+
+    const defs = getGunEditorFieldDefs();
+    for (const field of defs) {
+        controlsRoot.appendChild(createField(field));
+    }
+}
+
+function refreshGunEditorInputValues() {
+    if (!gunEditorLiveModel) return;
+    const defs = getGunEditorFieldDefs();
+    for (const field of defs) {
+        const input = gunEditorInputs[field.key];
+        if (!input) continue;
+        const value = getByPath(gunEditorLiveModel, field.key);
+        if (field.type === 'checkbox') {
+            input.checked = !!value;
+        } else {
+            input.value = value;
+        }
+        if (field.type === 'range') {
+            const label = document.querySelector(`[data-value-label="${field.key}"]`);
+            if (label) label.textContent = Number(value).toFixed(2);
+        }
+    }
+}
+
+function applyGunEditorInputsToModel() {
+    if (!gunEditorLiveModel) return;
+    const defs = getGunEditorFieldDefs();
+    for (const field of defs) {
+        const input = gunEditorInputs[field.key];
+        if (!input) continue;
+        let value;
+        if (field.type === 'checkbox') value = !!input.checked;
+        else if (field.type === 'range') value = Number(input.value);
+        else value = input.value;
+        setByPath(gunEditorLiveModel, field.key, value);
+        if (field.type === 'range') {
+            const label = document.querySelector(`[data-value-label="${field.key}"]`);
+            if (label) label.textContent = Number(value).toFixed(2);
+        }
+    }
+    gunEditorLiveModel = sanitizeGunModel(gunEditorLiveModel, currentGunEditorWeapon);
+}
+
+function initGunPreview() {
+    const container = document.getElementById('gun-preview-container');
+    if (!container || gunEditorRenderer) return;
+
+    const initialWidth = Math.max(1, Math.floor(container.clientWidth || container.getBoundingClientRect().width || 1));
+    const initialHeight = Math.max(1, Math.floor(container.clientHeight || container.getBoundingClientRect().height || 1));
+
+    gunEditorScene = new THREE.Scene();
+    gunEditorScene.background = new THREE.Color(0x87ceeb);
+    gunEditorCamera = new THREE.PerspectiveCamera(60, initialWidth / initialHeight, 0.1, 100);
+    gunEditorCamera.position.set(0, 0.22, 3.0);
+    gunEditorCamera.lookAt(0, 0.08, 0);
+
+    gunEditorRenderer = new THREE.WebGLRenderer({ antialias: true });
+    gunEditorRenderer.setSize(initialWidth, initialHeight);
+    while (container.firstChild) container.removeChild(container.firstChild);
+    container.appendChild(gunEditorRenderer.domElement);
+    setupGunPreviewZoomControls(container);
+    updateGunPreviewCameraZoom();
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+    gunEditorScene.add(ambient);
+    const key = new THREE.DirectionalLight(0xffffff, 0.9);
+    key.position.set(2, 4, 3);
+    gunEditorScene.add(key);
+
+    const floor = new THREE.Mesh(
+        new THREE.PlaneGeometry(8, 8),
+        new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9, metalness: 0.1 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -0.6;
+    gunEditorScene.add(floor);
+
+    gunPreviewMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1, 0.1, 1.0),
+        new THREE.MeshStandardMaterial({ color: 0x999999 })
+    );
+    gunPreviewMesh.position.set(0, 0.08, 0);
+    gunEditorScene.add(gunPreviewMesh);
+
+    renderGunEditorFrame();
+}
+
+function resizeGunPreviewRenderer() {
+    const container = document.getElementById('gun-preview-container');
+    if (!container || !gunEditorRenderer || !gunEditorCamera) return;
+    const width = Math.max(1, Math.floor(container.clientWidth || container.getBoundingClientRect().width || 1));
+    const height = Math.max(1, Math.floor(container.clientHeight || container.getBoundingClientRect().height || 1));
+    gunEditorRenderer.setSize(width, height, false);
+    gunEditorCamera.aspect = width / height;
+    gunEditorCamera.updateProjectionMatrix();
+    updateGunPreviewCameraZoom();
+    renderGunEditorFrame();
+}
+
+function frameGunPreviewCameraToMesh(zoomLevel) {
+    if (!gunEditorCamera || !gunPreviewMesh) return;
+    const box = new THREE.Box3().setFromObject(gunPreviewMesh);
+    if (!box || box.isEmpty()) return;
+    const center = new THREE.Vector3();
+    const size = new THREE.Vector3();
+    box.getCenter(center);
+    box.getSize(size);
+
+    const maxDim = Math.max(0.6, size.x, size.y, size.z);
+    const fovRad = THREE.MathUtils.degToRad(gunEditorCamera.fov);
+    const baseDistance = (maxDim * 0.95) / Math.tan(fovRad / 2);
+    const zoom = Math.max(0.55, Math.min(3.5, zoomLevel || 1.0));
+    const distance = baseDistance / zoom;
+
+    gunEditorCamera.position.set(center.x, center.y + 0.08, center.z + distance);
+    gunEditorCamera.lookAt(center.x, center.y, center.z);
+    gunEditorCamera.updateProjectionMatrix();
+}
+
+function updateGunPreviewCameraZoom() {
+    if (!gunEditorCamera) return;
+    const zoom = Math.max(0.55, Math.min(3.5, gunPreviewZoomLevel));
+    gunPreviewZoomLevel = zoom;
+    frameGunPreviewCameraToMesh(zoom);
+}
+
+function getTouchDistance(touches) {
+    if (!touches || touches.length < 2) return 0;
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+function setupGunPreviewZoomControls(container) {
+    if (!container || container.dataset.zoomBound === '1') return;
+    container.dataset.zoomBound = '1';
+    container.style.touchAction = 'none';
+
+    container.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        gunPreviewZoomLevel += delta;
+        updateGunPreviewCameraZoom();
+        renderGunEditorFrame();
+    }, { passive: false });
+
+    container.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            gunPreviewTouchDistance = getTouchDistance(e.touches);
+        }
+    }, { passive: true });
+
+    container.addEventListener('touchmove', (e) => {
+        if (e.touches.length !== 2) return;
+        e.preventDefault();
+        const nextDistance = getTouchDistance(e.touches);
+        if (gunPreviewTouchDistance > 0 && nextDistance > 0) {
+            const scale = nextDistance / gunPreviewTouchDistance;
+            gunPreviewZoomLevel *= scale;
+            updateGunPreviewCameraZoom();
+            renderGunEditorFrame();
+        }
+        gunPreviewTouchDistance = nextDistance;
+    }, { passive: false });
+
+    container.addEventListener('touchend', () => {
+        gunPreviewTouchDistance = 0;
+    }, { passive: true });
+}
+
+function disposeGunPreviewMesh(mesh) {
+    if (!mesh) return;
+    while (mesh.children && mesh.children.length > 0) {
+        const child = mesh.children[0];
+        mesh.remove(child);
+        if (child.geometry) child.geometry.dispose();
+        disposeMaterial(child.material);
+    }
+    if (mesh.geometry) mesh.geometry.dispose();
+    disposeMaterial(mesh.material);
+}
+
+function destroyGunPreview() {
+    if (gunEditorScene && gunPreviewMesh) {
+        gunEditorScene.remove(gunPreviewMesh);
+    }
+    disposeGunPreviewMesh(gunPreviewMesh);
+    gunPreviewMesh = null;
+
+    if (gunEditorRenderer) {
+        if (gunEditorRenderer.domElement && gunEditorRenderer.domElement.parentElement) {
+            gunEditorRenderer.domElement.parentElement.removeChild(gunEditorRenderer.domElement);
+        }
+        gunEditorRenderer.dispose();
+    }
+    gunEditorRenderer = null;
+    gunEditorScene = null;
+    gunEditorCamera = null;
+}
+
+function startGunEditorAnimation() {
+    if (gunEditorAnimating) return;
+    gunEditorAnimating = true;
+    const loop = () => {
+        if (!gunEditorAnimating) return;
+        gunEditorAnimationId = requestAnimationFrame(loop);
+        renderGunEditorFrame();
+    };
+    loop();
+}
+
+function stopGunEditorAnimation() {
+    gunEditorAnimating = false;
+    if (gunEditorAnimationId) {
+        cancelAnimationFrame(gunEditorAnimationId);
+        gunEditorAnimationId = null;
+    }
+}
+
+function renderGunEditorFrame() {
+    if (!gunEditorRenderer || !gunEditorScene || !gunEditorCamera) return;
+    if (gunPreviewMesh) gunPreviewMesh.rotation.y += 0.008;
+    gunEditorRenderer.render(gunEditorScene, gunEditorCamera);
+}
+
+function updateGunEditorPreview() {
+    if (!gunPreviewMesh) return;
+    applyGunStyle(gunPreviewMesh, currentGunEditorWeapon, gunEditorLiveModel);
+    updateGunPreviewCameraZoom();
+    renderGunEditorFrame();
+}
+
+function setGunEditorScrollLock(locked) {
+    const body = document.body;
+    const html = document.documentElement;
+    if (!body || !html) return;
+    if (locked) {
+        gunEditorPrevBodyOverflow = body.style.overflow || '';
+        gunEditorPrevHtmlOverflow = html.style.overflow || '';
+        body.style.overflow = 'hidden';
+        html.style.overflow = 'hidden';
+    } else {
+        body.style.overflow = gunEditorPrevBodyOverflow || '';
+        html.style.overflow = gunEditorPrevHtmlOverflow || '';
+    }
+}
+
+function requestGunEditorLandscapeFullscreen() {
+    const gunEditorScreen = document.getElementById('gun-editor-screen');
+    const target = gunEditorScreen || document.documentElement;
+    try {
+        if (target.requestFullscreen) {
+            const result = target.requestFullscreen();
+            if (result && typeof result.catch === 'function') {
+                result.catch(err => console.warn('Gun editor fullscreen error:', err));
+            }
+        } else if (target.webkitRequestFullscreen) {
+            target.webkitRequestFullscreen();
+        }
+    } catch (e) {
+        console.warn('Error trying to enter gun editor fullscreen:', e);
+    }
+    try {
+        if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+            const lockResult = window.screen.orientation.lock('landscape');
+            if (lockResult && typeof lockResult.catch === 'function') {
+                lockResult.catch(err => console.warn('Gun editor orientation lock failed:', err));
+            }
+        }
+    } catch (e) {
+        console.warn('Error trying to lock gun editor orientation:', e);
+    }
+    setTimeout(resizeGunPreviewRenderer, 80);
+    setTimeout(resizeGunPreviewRenderer, 260);
+    setTimeout(resizeGunPreviewRenderer, 520);
+}
+
+function exitGunEditorFullscreen() {
+    const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+    if (fsEl) {
+        try {
+            if (document.exitFullscreen) {
+                document.exitFullscreen().catch(err => console.warn('Exit fullscreen error:', err));
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            }
+        } catch (e) {
+            console.warn('Error trying to exit fullscreen:', e);
+        }
+    }
+    try {
+        if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
+            window.screen.orientation.unlock();
+        }
+    } catch (e) {
+        console.warn('Error trying to unlock orientation:', e);
+    }
+}
+
+function requestSettingsLandscapeFullscreen() {
+    if (!shouldShowTouchControls()) return;
+    const target = document.documentElement;
+    try {
+        if (target.requestFullscreen) {
+            const result = target.requestFullscreen();
+            if (result && typeof result.catch === 'function') {
+                result.catch(err => console.warn('Settings fullscreen error:', err));
+            }
+        } else if (target.webkitRequestFullscreen) {
+            target.webkitRequestFullscreen();
+        }
+    } catch (e) {
+        console.warn('Error trying to enter settings fullscreen:', e);
+    }
+    try {
+        if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+            const lockResult = window.screen.orientation.lock('landscape');
+            if (lockResult && typeof lockResult.catch === 'function') {
+                lockResult.catch(err => console.warn('Settings orientation lock failed:', err));
+            }
+        }
+    } catch (e) {
+        console.warn('Error trying to lock settings orientation:', e);
+    }
+}
+
+const ARMORY_DATA = {
+    characters: {
+        player: 'PLAYER',
+        enemy1: 'AI 1',
+        enemy2: 'AI 2',
+        enemy3: 'AI 3'
+    },
+    weapons: {
+        pistol: { label: 'PISTOL', names: ['GAME PISTOL', 'SERVICE 45', 'TACTICAL 92'] },
+        machinegun: { label: 'MACHINE GUN', names: ['GAME MACHINE GUN', 'WOODLAND ASSAULT', 'MODULAR CARBINE'] },
+        m1rifle: { label: 'M1 RIFLE', names: ['GAME M1 RIFLE', 'GUNMETAL M1', 'FIELD M1'] },
+        sniperrifle: { label: 'SNIPER RIFLE', names: ['FIELD BOLT-ACTION', 'GAME SNIPER RIFLE', 'HEAVY ANTI-MATERIEL'] },
+        shotgun: { label: 'SHOTGUN', names: ['GAME SHOTGUN', 'CLASSIC PUMP', 'DOUBLE BARREL'] },
+        rocketlauncher: { label: 'ROCKET LAUNCHER', names: ['REUSABLE TUBE', 'RPG LAUNCHER', 'RECOILLESS SYSTEM'] }
+    }
+};
+
+function createDefaultArmoryLoadouts() {
+    const loadouts = {};
+    for (const character of ARMORY_CHARACTERS) {
+        loadouts[character] = {};
+        for (const weapon of ARMORY_WEAPONS) loadouts[character][weapon] = 'A';
+    }
+    return loadouts;
+}
+
+function normalizeArmoryLoadouts(source) {
+    const normalized = createDefaultArmoryLoadouts();
+    for (const character of ARMORY_CHARACTERS) {
+        const sourceCharacter = source && source[character];
+        for (const weapon of ARMORY_WEAPONS) {
+            const variant = sourceCharacter && String(sourceCharacter[weapon] || '').toUpperCase();
+            if (variant === 'A' || variant === 'B' || variant === 'C') normalized[character][weapon] = variant;
+        }
+    }
+    return normalized;
+}
+
+function loadArmoryLoadouts() {
+    try {
+        armoryLoadouts = normalizeArmoryLoadouts(JSON.parse(localStorage.getItem(ARMORY_STORAGE_KEY) || '{}'));
+    } catch (error) {
+        console.warn('Failed to load ARMORY settings:', error);
+        armoryLoadouts = createDefaultArmoryLoadouts();
+    }
+}
+
+function saveArmoryLoadouts() {
+    try {
+        localStorage.setItem(ARMORY_STORAGE_KEY, JSON.stringify(armoryLoadouts));
+    } catch (error) {
+        console.warn('Failed to save ARMORY settings:', error);
+    }
+}
+
+function getArmoryVariant(character, weapon) {
+    const key = ARMORY_CHARACTERS.includes(character) ? character : 'player';
+    return armoryLoadouts[key] && armoryLoadouts[key][weapon] || 'A';
+}
+
+function bindArmoryCharacter(actor, character, weapon) {
+    const gun = actor && actor.userData && actor.userData.parts && actor.userData.parts.gun;
+    if (!gun) return;
+    gun.userData.armoryCharacter = character;
+    applyGunStyle(gun, weapon || WEAPON_PISTOL);
+}
+
+function destroyArmoryPreview() {
+    if (armoryPreviewWeapon && armoryScene) armoryScene.remove(armoryPreviewWeapon);
+    if (armoryPreviewWeapon) {
+        armoryPreviewWeapon.traverse(object => {
+            if (object.geometry) object.geometry.dispose();
+            disposeMaterial(object.material);
+        });
+    }
+    armoryPreviewWeapon = null;
+    if (armoryRenderer) {
+        armoryRenderer.dispose();
+        if (armoryRenderer.domElement && armoryRenderer.domElement.parentNode) armoryRenderer.domElement.parentNode.removeChild(armoryRenderer.domElement);
+    }
+    armoryRenderer = null;
+    armoryScene = null;
+    armoryCamera = null;
+}
+
+function renderArmoryPreview() {
+    const container = document.getElementById('armory-preview');
+    if (!container || !window.GFACharacterModels) return;
+    if (!armoryRenderer) {
+        armoryScene = new THREE.Scene();
+        armoryScene.background = new THREE.Color(0xd4d9d7);
+        armoryCamera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+        armoryRenderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'low-power' });
+        armoryRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+        container.replaceChildren(armoryRenderer.domElement);
+        armoryScene.add(new THREE.HemisphereLight(0xffffff, 0x56605c, 1.7));
+        const light = new THREE.DirectionalLight(0xffffff, 1.35);
+        light.position.set(4, 6, 3);
+        armoryScene.add(light);
+    }
+    if (armoryPreviewWeapon) {
+        armoryScene.remove(armoryPreviewWeapon);
+        armoryPreviewWeapon.traverse(object => {
+            if (object.geometry) object.geometry.dispose();
+            disposeMaterial(object.material);
+        });
+    }
+    const variant = getArmoryVariant(armoryCharacter, armoryWeapon);
+    armoryPreviewWeapon = GFACharacterModels.createWeapon(armoryWeapon, variant);
+    armoryScene.add(armoryPreviewWeapon);
+    armoryPreviewWeapon.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(armoryPreviewWeapon);
+    const center = bounds.getCenter(new THREE.Vector3());
+    const size = bounds.getSize(new THREE.Vector3());
+    const span = Math.max(size.z, size.y * 2.4, size.x * 2.4, 0.8);
+    armoryCamera.position.set(center.x - span * 1.62, center.y + span * 0.16, center.z - span * 0.08);
+    armoryCamera.lookAt(center);
+    const width = Math.max(1, container.clientWidth);
+    const height = Math.max(1, container.clientHeight);
+    armoryRenderer.setSize(width, height, false);
+    armoryCamera.aspect = width / height;
+    armoryCamera.updateProjectionMatrix();
+    armoryRenderer.render(armoryScene, armoryCamera);
+    document.getElementById('armory-preview-name').textContent = ARMORY_DATA.weapons[armoryWeapon].names['ABC'.indexOf(variant)];
+    document.getElementById('armory-preview-type').textContent = `${ARMORY_DATA.weapons[armoryWeapon].label} / TYPE ${variant}`;
+    document.getElementById('armory-preview-owner').textContent = ARMORY_DATA.characters[armoryCharacter];
+}
+
+function renderArmoryControls() {
+    const characterTabs = document.getElementById('armory-character-tabs');
+    const weaponTabs = document.getElementById('armory-weapon-tabs');
+    const variantGrid = document.getElementById('armory-variant-grid');
+    if (!characterTabs || !weaponTabs || !variantGrid) return;
+    characterTabs.replaceChildren(...ARMORY_CHARACTERS.map(character => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `armory-tab${character === armoryCharacter ? ' active' : ''}`;
+        button.textContent = ARMORY_DATA.characters[character];
+        button.addEventListener('click', () => { armoryCharacter = character; renderArmoryControls(); renderArmoryPreview(); });
+        return button;
+    }));
+    weaponTabs.replaceChildren(...ARMORY_WEAPONS.map(weapon => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `armory-tab${weapon === armoryWeapon ? ' active' : ''}`;
+        button.textContent = ARMORY_DATA.weapons[weapon].label;
+        button.addEventListener('click', () => { armoryWeapon = weapon; renderArmoryControls(); renderArmoryPreview(); });
+        return button;
+    }));
+    const selected = getArmoryVariant(armoryCharacter, armoryWeapon);
+    variantGrid.replaceChildren(...['A', 'B', 'C'].map((variant, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `armory-variant${variant === selected ? ' active' : ''}`;
+        const type = document.createElement('strong');
+        type.textContent = `TYPE ${variant}`;
+        const name = document.createElement('span');
+        name.textContent = ARMORY_DATA.weapons[armoryWeapon].names[index];
+        button.append(type, name);
+        button.addEventListener('click', () => {
+            armoryLoadouts[armoryCharacter][armoryWeapon] = variant;
+            saveArmoryLoadouts();
+            applyGunStylesToActiveCharacters();
+            renderArmoryControls();
+            renderArmoryPreview();
+        });
+        return button;
+    }));
+}
+
+function openArmory() {
+    const screen = document.getElementById('gun-editor-screen');
+    if (!screen) return;
+    screen.style.display = 'block';
+    document.body.style.overflow = 'hidden';
+    renderArmoryControls();
+    requestAnimationFrame(renderArmoryPreview);
+}
+
+function closeArmory() {
+    const screen = document.getElementById('gun-editor-screen');
+    if (screen) screen.style.display = 'none';
+    document.body.style.overflow = '';
+    saveArmoryLoadouts();
+    applyGunStylesToActiveCharacters();
+    destroyArmoryPreview();
+}
+
+function initArmory() {
+    loadArmoryLoadouts();
+    applyGunStylesToActiveCharacters();
+    const openButton = document.getElementById('open-gun-editor');
+    const closeButton = document.getElementById('close-gun-editor');
+    const saveCloseButton = document.getElementById('armory-save-close');
+    const resetButton = document.getElementById('armory-reset-character');
+    if (openButton) openButton.addEventListener('click', event => { event.preventDefault(); openArmory(); });
+    if (closeButton) closeButton.addEventListener('click', closeArmory);
+    if (saveCloseButton) saveCloseButton.addEventListener('click', closeArmory);
+    if (resetButton) resetButton.addEventListener('click', () => {
+        if (!window.confirm(`${ARMORY_DATA.characters[armoryCharacter]} weapon designs will be reset. Continue?`)) return;
+        armoryLoadouts[armoryCharacter] = createDefaultArmoryLoadouts()[armoryCharacter];
+        saveArmoryLoadouts();
+        applyGunStylesToActiveCharacters();
+        renderArmoryControls();
+        renderArmoryPreview();
+    });
+    window.addEventListener('resize', () => {
+        const screen = document.getElementById('gun-editor-screen');
+        if (screen && screen.style.display !== 'none' && armoryRenderer) renderArmoryPreview();
+    });
+}
+
+function openGunEditor() {
+    return; // Temporarily disabled while the new model editor is being prepared.
+    const screen = document.getElementById('gun-editor-screen');
+    if (!screen) return;
+    screen.style.display = 'block';
+    setGunEditorScrollLock(true);
+    destroyGunPreview();
+    initGunPreview();
+    gunPreviewZoomLevel = 1.0;
+    updateGunPreviewCameraZoom();
+    requestAnimationFrame(resizeGunPreviewRenderer);
+    setTimeout(resizeGunPreviewRenderer, 200);
+    setTimeout(resizeGunPreviewRenderer, 550);
+    startGunEditorAnimation();
+    gunEditorLiveModel = sanitizeGunModel(getEffectiveGunModel(currentGunEditorWeapon), currentGunEditorWeapon);
+    refreshGunEditorInputValues();
+    updateGunEditorPreview();
+}
+
+function closeGunEditor() {
+    const screen = document.getElementById('gun-editor-screen');
+    if (screen) screen.style.display = 'none';
+    exitGunEditorFullscreen();
+    setTimeout(requestSettingsLandscapeFullscreen, 40);
+    setTimeout(requestSettingsLandscapeFullscreen, 220);
+    setGunEditorScrollLock(false);
+    stopGunEditorAnimation();
+}
+
+function initGunEditor() {
+    return;
+    loadWeaponCustomization();
+    const screen = document.getElementById('gun-editor-screen');
+    if (screen) screen.style.display = 'none';
+    buildGunEditorControls();
+
+    const openBtn = document.getElementById('open-gun-editor');
+    const closeBtn = document.getElementById('close-gun-editor');
+    const fullscreenBtn = document.getElementById('gun-editor-fullscreen');
+    const fullscreenTopBtn = document.getElementById('gun-editor-fullscreen-top');
+    const saveBtn = document.getElementById('gun-editor-save');
+    const resetWeaponBtn = document.getElementById('gun-editor-reset-weapon');
+    const resetAllBtn = document.getElementById('gun-editor-reset-all');
+    const weaponSelect = document.getElementById('gun-editor-weapon-select');
+
+    if (weaponSelect) {
+        currentGunEditorWeapon = weaponSelect.value || WEAPON_PISTOL;
+        gunEditorLiveModel = sanitizeGunModel(getEffectiveGunModel(currentGunEditorWeapon), currentGunEditorWeapon);
+        refreshGunEditorInputValues();
+        weaponSelect.addEventListener('change', () => {
+            currentGunEditorWeapon = weaponSelect.value;
+            gunEditorLiveModel = sanitizeGunModel(getEffectiveGunModel(currentGunEditorWeapon), currentGunEditorWeapon);
+            refreshGunEditorInputValues();
+            updateGunEditorPreview();
+        });
+    }
+
+    if (openBtn) {
+        openBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            openGunEditor();
+        });
+    }
+    if (!gunPreviewResizeBound) {
+        gunPreviewResizeBound = true;
+        window.addEventListener('resize', () => {
+            const screen = document.getElementById('gun-editor-screen');
+            if (screen && screen.style.display !== 'none') {
+                resizeGunPreviewRenderer();
+            }
+        });
+        window.addEventListener('orientationchange', () => {
+            const screen = document.getElementById('gun-editor-screen');
+            if (screen && screen.style.display !== 'none') {
+                setTimeout(resizeGunPreviewRenderer, 120);
+                setTimeout(resizeGunPreviewRenderer, 420);
+            }
+        });
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', () => {
+                const screen = document.getElementById('gun-editor-screen');
+                if (screen && screen.style.display !== 'none') {
+                    setTimeout(resizeGunPreviewRenderer, 50);
+                    setTimeout(resizeGunPreviewRenderer, 200);
+                }
+            });
+        }
+        document.addEventListener('fullscreenchange', () => {
+            const screen = document.getElementById('gun-editor-screen');
+            if (screen && screen.style.display !== 'none') {
+                setTimeout(resizeGunPreviewRenderer, 60);
+                setTimeout(resizeGunPreviewRenderer, 220);
+                setTimeout(resizeGunPreviewRenderer, 480);
+            }
+        });
+        document.addEventListener('webkitfullscreenchange', () => {
+            const screen = document.getElementById('gun-editor-screen');
+            if (screen && screen.style.display !== 'none') {
+                setTimeout(resizeGunPreviewRenderer, 60);
+                setTimeout(resizeGunPreviewRenderer, 220);
+                setTimeout(resizeGunPreviewRenderer, 480);
+            }
+        });
+    }
+    if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            closeGunEditor();
+        });
+    }
+    if (fullscreenBtn) {
+        fullscreenBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            requestGunEditorLandscapeFullscreen();
+        });
+    }
+    if (fullscreenTopBtn) {
+        fullscreenTopBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            requestGunEditorLandscapeFullscreen();
+        });
+    }
+    if (saveBtn) {
+        saveBtn.addEventListener('click', () => {
+            if (!gunEditorLiveModel) return;
+            weaponCustomization[currentGunEditorWeapon] = sanitizeGunModel(gunEditorLiveModel, currentGunEditorWeapon);
+            saveWeaponCustomization();
+            applyGunStylesToActiveCharacters();
+            const original = saveBtn.textContent;
+            saveBtn.textContent = 'Saved!';
+            setTimeout(() => {
+                saveBtn.textContent = original;
+            }, 1200);
+        });
+    }
+    if (resetWeaponBtn) {
+        resetWeaponBtn.addEventListener('click', () => {
+            delete weaponCustomization[currentGunEditorWeapon];
+            weaponCustomizationRevision++;
+            for (const key in runtimeGunModelCache) {
+                delete runtimeGunModelCache[key];
+            }
+            gunEditorLiveModel = sanitizeGunModel(getEffectiveGunModel(currentGunEditorWeapon), currentGunEditorWeapon);
+            refreshGunEditorInputValues();
+            updateGunEditorPreview();
+        });
+    }
+    if (resetAllBtn) {
+        resetAllBtn.addEventListener('click', () => {
+            weaponCustomization = {};
+            weaponCustomizationRevision++;
+            for (const key in runtimeGunModelCache) {
+                delete runtimeGunModelCache[key];
+            }
+            gunEditorLiveModel = sanitizeGunModel(getEffectiveGunModel(currentGunEditorWeapon), currentGunEditorWeapon);
+            refreshGunEditorInputValues();
+            updateGunEditorPreview();
+            saveWeaponCustomization();
+            applyGunStylesToActiveCharacters();
+        });
+    }
+}
+
+function initCharacterEditor() {
+    renderCharacterCustomizationForms();
+    // 初期化時にエディタを閉じた状態にする
+    const editorScreen = document.getElementById('character-editor-screen');
+    if (editorScreen) {
+        editorScreen.style.display = 'none';
+    }
+    
+    const openButton = document.getElementById('open-character-editor');
+    const closeButton = document.getElementById('close-character-editor');
+    const fullscreenButton = document.getElementById('character-editor-fullscreen');
+    const fullscreenTopButton = document.getElementById('character-editor-fullscreen-top');
+    const saveButton = document.getElementById('save-character-settings');
+    
+    if (openButton) {
+        openButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            openCharacterEditor();
+        });
+    }
+    
+    if (closeButton) {
+        closeButton.addEventListener('click', e => { e.preventDefault(); closeCharacterEditor(); });
+    }
+
+    if (fullscreenButton) {
+        fullscreenButton.addEventListener('click', e => {
+            e.preventDefault();
+            requestCharacterEditorLandscapeFullscreen();
+        });
+    }
+
+    if (fullscreenTopButton) {
+        fullscreenTopButton.addEventListener('click', e => {
+            e.preventDefault();
+            requestCharacterEditorLandscapeFullscreen();
+        });
+    }
+    
+    if (saveButton) {
+        saveButton.addEventListener('click', e => { e.preventDefault(); saveCharacterSettings(); });
+    }
+
+    setupCharacterSetButtons();
+    
+    // JSONエクスポートボタン
+    const exportButton = document.getElementById('export-character-json');
+    if (exportButton) {
+        exportButton.addEventListener('click', e => { e.preventDefault(); exportCharacterDataToJSON(); });
+    }
+    
+    // JSONインポートボタン
+    const importButton = document.getElementById('import-character-json');
+    const fileInput = document.getElementById('json-file-input');
+    
+    if (importButton && fileInput) {
+        importButton.addEventListener('click', e => { 
+            e.preventDefault(); 
+            fileInput.click(); 
+        });
+        
+        fileInput.addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (file) {
+                importCharacterDataFromJSON(file);
+            }
+            // ファイル入力をリセット
+            fileInput.value = '';
+        });
+    }
+    
+    // プレビューボタン
+    const previewButtons = [
+        { id: 'preview-player', character: 'player' },
+        { id: 'preview-enemy1', character: 'enemy1' },
+        { id: 'preview-enemy2', character: 'enemy2' },
+        { id: 'preview-enemy3', character: 'enemy3' }
+    ];
+    
+    previewButtons.forEach(btn => {
+        const element = document.getElementById(btn.id);
+        if (element) {
+            let defaultResetTimer = 0;
+            let defaultResetHandled = false;
+            const clearDefaultResetTimer = () => {
+                if (defaultResetTimer) {
+                    clearTimeout(defaultResetTimer);
+                    defaultResetTimer = 0;
+                }
+            };
+            element.addEventListener('pointerdown', () => {
+                defaultResetHandled = false;
+                clearDefaultResetTimer();
+                defaultResetTimer = setTimeout(() => {
+                    defaultResetHandled = true;
+                    if (confirm('設定をデフォルトに戻しますか？')) {
+                        resetCharacterToDefault(btn.character);
+                    }
+                }, CHARACTER_SET_LONG_PRESS_MS);
+            });
+            ['pointerup', 'pointercancel', 'pointerleave'].forEach(type => {
+                element.addEventListener(type, clearDefaultResetTimer);
+            });
+            element.addEventListener('contextmenu', event => event.preventDefault());
+            element.addEventListener('click', () => {
+                if (defaultResetHandled) {
+                    defaultResetHandled = false;
+                    return;
+                }
+                currentPreviewCharacter = btn.character;
+                showCharacterEditorSection(btn.character);
+                updatePreviewCharacter();
+            });
+        }
+    });
+    
+    // デフォルトボタン
+    const defaultButtons = [
+        { id: 'default-player', character: 'player' },
+        { id: 'default-enemy1', character: 'enemy1' },
+        { id: 'default-enemy2', character: 'enemy2' },
+        { id: 'default-enemy3', character: 'enemy3' }
+    ];
+    
+    defaultButtons.forEach(btn => {
+        const element = document.getElementById(btn.id);
+        if (element) {
+            element.addEventListener('click', () => {
+                resetCharacterToDefault(btn.character);
+            });
+        }
+    });
+    
+    // プレビューコンテナにズーム機能を追加
+    const previewContainer = document.getElementById('character-preview-container');
+    if (previewContainer) {
+        setupZoomControls(previewContainer);
+    }
+
+    if (!characterPreviewResizeBound) {
+        characterPreviewResizeBound = true;
+        window.addEventListener('resize', () => {
+            const screen = document.getElementById('character-editor-screen');
+            if (screen && screen.style.display !== 'none') {
+                resizeCharacterPreviewRenderer();
+            }
+        });
+        window.addEventListener('orientationchange', () => {
+            const screen = document.getElementById('character-editor-screen');
+            if (screen && screen.style.display !== 'none') {
+                setTimeout(resizeCharacterPreviewRenderer, 120);
+                setTimeout(resizeCharacterPreviewRenderer, 420);
+            }
+        });
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', () => {
+                const screen = document.getElementById('character-editor-screen');
+                if (screen && screen.style.display !== 'none') {
+                    setTimeout(resizeCharacterPreviewRenderer, 50);
+                    setTimeout(resizeCharacterPreviewRenderer, 200);
+                }
+            });
+        }
+        document.addEventListener('fullscreenchange', () => {
+            const screen = document.getElementById('character-editor-screen');
+            if (screen && screen.style.display !== 'none') {
+                setTimeout(resizeCharacterPreviewRenderer, 60);
+                setTimeout(resizeCharacterPreviewRenderer, 220);
+                setTimeout(resizeCharacterPreviewRenderer, 480);
+            }
+        });
+        document.addEventListener('webkitfullscreenchange', () => {
+            const screen = document.getElementById('character-editor-screen');
+            if (screen && screen.style.display !== 'none') {
+                setTimeout(resizeCharacterPreviewRenderer, 60);
+                setTimeout(resizeCharacterPreviewRenderer, 220);
+                setTimeout(resizeCharacterPreviewRenderer, 480);
+            }
+        });
+    }
+    
+    // すべてのカスタム操作にイベントリスナーを追加
+    setupCustomizationListeners();
+}
+
+function getCharacterSetStorageKey(slot) {
+    return `${CHARACTER_SET_STORAGE_PREFIX}${slot}`;
+}
+
+function cloneCharacterCustomizationSet(source = characterCustomization) {
+    return {
+        player: normalizeCharacterCustomization(source.player || CHARACTER_DEFAULTS.player, CHARACTER_DEFAULTS.player.clothingColor),
+        enemy1: normalizeCharacterCustomization(source.enemy1 || CHARACTER_DEFAULTS.enemy1, CHARACTER_DEFAULTS.enemy1.clothingColor),
+        enemy2: normalizeCharacterCustomization(source.enemy2 || CHARACTER_DEFAULTS.enemy2, CHARACTER_DEFAULTS.enemy2.clothingColor),
+        enemy3: normalizeCharacterCustomization(source.enemy3 || CHARACTER_DEFAULTS.enemy3, CHARACTER_DEFAULTS.enemy3.clothingColor)
+    };
+}
+
+function getStoredCharacterSet(slot) {
+    try {
+        const raw = localStorage.getItem(getCharacterSetStorageKey(slot));
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return cloneCharacterCustomizationSet(parsed);
+    } catch (error) {
+        console.warn(`Failed to load character SET${slot}:`, error);
+        return null;
+    }
+}
+
+function updateCharacterSetButtons() {
+    for (let slot = 1; slot <= 3; slot++) {
+        const button = document.getElementById(`character-set-${slot}`);
+        if (!button) continue;
+        const hasData = !!getStoredCharacterSet(slot);
+        button.classList.toggle('empty', !hasData);
+        button.classList.toggle('active', activeCharacterSetSlot === slot);
+        button.title = hasData
+            ? `SET${slot}: クリックで呼び出し / 長押しで上書き保存`
+            : `SET${slot}: クリックまたは長押しで保存`;
+        button.setAttribute('aria-label', button.title);
+    }
+}
+
+function flashCharacterSetButton(slot, label, className = 'active') {
+    const button = document.getElementById(`character-set-${slot}`);
+    if (!button) return;
+    const originalText = button.textContent;
+    button.textContent = label;
+    button.classList.add(className);
+    setTimeout(() => {
+        button.textContent = originalText;
+        button.classList.remove(className);
+        updateCharacterSetButtons();
+    }, 800);
+}
+
+function saveCharacterSet(slot) {
+    if (!confirm('SETを記録してもよいですか？')) return false;
+    try {
+        const snapshot = cloneCharacterCustomizationSet(characterCustomization);
+        localStorage.setItem(getCharacterSetStorageKey(slot), JSON.stringify(snapshot));
+        activeCharacterSetSlot = slot;
+        updateCharacterSetButtons();
+        flashCharacterSetButton(slot, 'SAVED');
+        return true;
+    } catch (error) {
+        console.warn(`Failed to save character SET${slot}:`, error);
+        flashCharacterSetButton(slot, 'ERROR', 'empty');
+        return false;
+    }
+}
+
+function loadCharacterSet(slot) {
+    const storedSet = getStoredCharacterSet(slot);
+    if (!storedSet) {
+        flashCharacterSetButton(slot, 'EMPTY', 'empty');
+        return;
+    }
+    characterCustomization = storedSet;
+    activeCharacterSetSlot = slot;
+    localStorage.setItem('characterCustomization', JSON.stringify(characterCustomization));
+    loadCharacterSettingsToUI();
+    updatePreviewCharacter();
+    updateCharacterSetButtons();
+}
+
+function setupCharacterSetButtons() {
+    for (let slot = 1; slot <= 3; slot++) {
+        const button = document.getElementById(`character-set-${slot}`);
+        if (!button || button.dataset.characterSetReady === 'true') continue;
+        button.dataset.characterSetReady = 'true';
+        let longPressTimer = 0;
+        let suppressNextClick = false;
+
+        const clearLongPress = () => {
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = 0;
+            }
+        };
+
+        button.addEventListener('pointerdown', event => {
+            if (event.button !== undefined && event.button !== 0) return;
+            suppressNextClick = false;
+            clearLongPress();
+            if (button.setPointerCapture && event.pointerId !== undefined) {
+                try { button.setPointerCapture(event.pointerId); } catch (error) { /* Pointer may already be released. */ }
+            }
+            longPressTimer = setTimeout(() => {
+                suppressNextClick = true;
+                longPressTimer = 0;
+                saveCharacterSet(slot);
+            }, CHARACTER_SET_LONG_PRESS_MS);
+        });
+
+        ['pointerup', 'pointercancel'].forEach(type => {
+            button.addEventListener(type, () => {
+                clearLongPress();
+            });
+        });
+
+        button.addEventListener('click', event => {
+            event.preventDefault();
+            if (suppressNextClick) {
+                suppressNextClick = false;
+                return;
+            }
+            if (getStoredCharacterSet(slot)) loadCharacterSet(slot);
+            else saveCharacterSet(slot);
+        });
+
+        button.addEventListener('contextmenu', event => event.preventDefault());
+    }
+    updateCharacterSetButtons();
+}
+
+function setupCustomizationListeners() {
+    const characters = ['player', 'enemy1', 'enemy2', 'enemy3'];
+    const properties = CHARACTER_CUSTOM_FIELDS.map(field => field.id);
+    
+    characters.forEach(char => {
+        properties.forEach(prop => {
+            const element = document.getElementById(`${char}-${prop}`);
+            if (element) {
+                const eventType = element.type === 'color' ? 'input' : 'change';
+                element.addEventListener(eventType, () => {
+                    updateCharacterCustomization(char, prop, element.value);
+                    currentPreviewCharacter = char;
+                    showCharacterEditorSection(char);
+                    updatePreviewCharacter();
+                });
+            }
+        });
+    });
+}
+
+function applyCharacterPreviewCameraView() {
+    if (!characterEditorCamera) return;
+    characterEditorCamera.position.z = 4.2 / characterPreviewZoomLevel;
+    characterEditorCamera.position.y = 1.55 + characterPreviewPanY;
+    characterEditorCamera.lookAt(0, characterEditorCamera.position.y, 0);
+}
+
+// キャラプレビューのズーム・上下移動
+function setupZoomControls(container) {
+    if (container.dataset.zoomControlsAttached === 'true') return;
+    container.dataset.zoomControlsAttached = 'true';
+    container.style.touchAction = 'none';
+    container.style.cursor = 'grab';
+    const minZoom = 0.5;
+    const maxZoom = 3;
+    const zoomSpeed = 0.1;
+    const maxPanY = 1.15;
+    const pointers = new Map();
+    let pinchDistance = 0;
+
+    const applyVerticalPan = deltaY => {
+        const height = Math.max(160, container.clientHeight || 300);
+        const worldDelta = deltaY * (2.6 / height) / Math.max(0.75, characterPreviewZoomLevel);
+        characterPreviewPanY = THREE.MathUtils.clamp(characterPreviewPanY + worldDelta, -maxPanY, maxPanY);
+        applyCharacterPreviewCameraView();
+    };
+
+    const pointerDistance = () => {
+        const points = Array.from(pointers.values());
+        if (points.length < 2) return 0;
+        return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+    };
+
+    container.addEventListener('wheel', event => {
+        event.preventDefault();
+        const delta = event.deltaY > 0 ? -zoomSpeed : zoomSpeed;
+        characterPreviewZoomLevel = THREE.MathUtils.clamp(characterPreviewZoomLevel + delta, minZoom, maxZoom);
+        applyCharacterPreviewCameraView();
+    }, { passive: false });
+
+    // PCの左ドラッグとスマホの1本指スワイプを同じポインター処理で扱う。
+    container.addEventListener('pointerdown', event => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        event.preventDefault();
+        pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (container.setPointerCapture) {
+            try { container.setPointerCapture(event.pointerId); } catch (error) { /* Pointer may already be released. */ }
+        }
+        container.style.cursor = event.pointerType === 'mouse' ? 'grabbing' : 'grab';
+        pinchDistance = pointers.size >= 2 ? pointerDistance() : 0;
+    });
+
+    container.addEventListener('pointermove', event => {
+        const previous = pointers.get(event.pointerId);
+        if (!previous) return;
+        event.preventDefault();
+        pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+        if (pointers.size >= 2) {
+            const distance = pointerDistance();
+            if (pinchDistance > 0 && distance > 0) {
+                characterPreviewZoomLevel = THREE.MathUtils.clamp(
+                    characterPreviewZoomLevel * (distance / pinchDistance),
+                    minZoom,
+                    maxZoom
+                );
+                applyCharacterPreviewCameraView();
+            }
+            pinchDistance = distance;
+            return;
+        }
+
+        applyVerticalPan(event.clientY - previous.y);
+    });
+
+    const endPointer = event => {
+        pointers.delete(event.pointerId);
+        pinchDistance = pointers.size >= 2 ? pointerDistance() : 0;
+        if (event.pointerType === 'mouse') container.style.cursor = 'grab';
+    };
+    container.addEventListener('pointerup', endPointer);
+    container.addEventListener('pointercancel', endPointer);
+    container.addEventListener('lostpointercapture', endPointer);
+}
+
+// キャラ設定をデフォルトへリセット
+function resetCharacterToDefault(character) {
+    // キャラカスタマイズを更新
+    if (CHARACTER_DEFAULTS[character]) {
+        characterCustomization[character] = { ...CHARACTER_DEFAULTS[character] };
+        
+        // 変更内容をUIへ反映
+        loadCharacterSettingsToUI();
+        
+        currentPreviewCharacter = character;
+        showCharacterEditorSection(character);
+        updatePreviewCharacter();
+        
+        debugLog(`${character} reset to default settings`);
+    }
+}
+
+function updateCharacterCustomization(character, property, value) {
+    if (!characterCustomization[character]) return;
+    
+    // データ構造に合わせてプロパティ名を変換
+    const propertyMap = {
+        'hair-style': 'hairStyle',
+        'hair-color': 'hairColor',
+        'skin-color': 'skinColor',
+        'clothing-color': 'clothingColor',
+        'pants-color': 'pantsColor',
+        'shoes-color': 'shoesColor',
+        'body-type': 'bodyType',
+        'top-type': 'topType',
+        'face-type': 'faceType',
+        'gear-type': 'gearType',
+        'headwear-type': 'headwearType',
+        'armor-type': 'armorType',
+        'neckwear-type': 'neckwearType',
+        'armor-color': 'armorColor',
+        'neckwear-color': 'neckwearColor',
+        'belt-color': 'beltColor'
+    };
+    
+    const propKey = propertyMap[property];
+    if (propKey && characterCustomization[character][propKey] !== undefined) {
+        characterCustomization[character][propKey] = value;
+    }
+}
+
+function openCharacterEditor() {
+    const editorScreen = document.getElementById('character-editor-screen');
+    if (editorScreen) {
+        editorScreen.style.display = 'block';
+        initCharacterPreview();
+        loadCharacterSettingsToUI();
+        showCharacterEditorSection(currentPreviewCharacter);
+        updatePreviewCharacter();
+        setTimeout(resizeCharacterPreviewRenderer, 80);
+        setTimeout(resizeCharacterPreviewRenderer, 260);
+    }
+}
+
+function closeCharacterEditor() {
+    const editorScreen = document.getElementById('character-editor-screen');
+    if (editorScreen) {
+        editorScreen.style.display = 'none';
+        cleanupCharacterPreview();
+    }
+    exitCharacterEditorFullscreen();
+}
+
+function resizeCharacterPreviewRenderer() {
+    const container = document.getElementById('character-preview-container');
+    if (!container || !characterEditorRenderer || !characterEditorCamera) return;
+    const width = Math.max(1, Math.floor(container.clientWidth || container.getBoundingClientRect().width || 1));
+    const height = Math.max(1, Math.floor(container.clientHeight || container.getBoundingClientRect().height || 1));
+    characterEditorRenderer.setSize(width, height, false);
+    characterEditorCamera.aspect = width / height;
+    characterEditorCamera.updateProjectionMatrix();
+}
+
+function requestCharacterEditorLandscapeFullscreen() {
+    const editorScreen = document.getElementById('character-editor-screen');
+    const target = editorScreen || document.documentElement;
+    try {
+        if (target.requestFullscreen) {
+            const result = target.requestFullscreen();
+            if (result && typeof result.catch === 'function') {
+                result.catch(err => console.warn('Character editor fullscreen error:', err));
+            }
+        } else if (target.webkitRequestFullscreen) {
+            target.webkitRequestFullscreen();
+        }
+    } catch (e) {
+        console.warn('Error trying to enter character editor fullscreen:', e);
+    }
+    try {
+        if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+            const lockResult = window.screen.orientation.lock('landscape');
+            if (lockResult && typeof lockResult.catch === 'function') {
+                lockResult.catch(err => console.warn('Character editor orientation lock failed:', err));
+            }
+        }
+    } catch (e) {
+        console.warn('Error trying to lock character editor orientation:', e);
+    }
+    setTimeout(resizeCharacterPreviewRenderer, 80);
+    setTimeout(resizeCharacterPreviewRenderer, 260);
+    setTimeout(resizeCharacterPreviewRenderer, 520);
+}
+
+function exitCharacterEditorFullscreen() {
+    const editorScreen = document.getElementById('character-editor-screen');
+    const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+    if (fsEl && (!editorScreen || fsEl === editorScreen || editorScreen.contains(fsEl))) {
+        try {
+            if (document.exitFullscreen) {
+                document.exitFullscreen().catch(err => console.warn('Exit fullscreen error:', err));
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            }
+        } catch (e) {
+            console.warn('Error trying to exit character fullscreen:', e);
+        }
+    }
+    try {
+        if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
+            window.screen.orientation.unlock();
+        }
+    } catch (e) {
+        console.warn('Error trying to unlock character orientation:', e);
+    }
+}
+
+function initCharacterPreview() {
+    const container = document.getElementById('character-preview-container');
+    if (!container) return;
+    
+    // シーンを作成
+    characterEditorScene = new THREE.Scene();
+    characterEditorScene.background = new THREE.Color(0x111111);
+    
+    // カメラを作成
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    characterEditorCamera = new THREE.PerspectiveCamera(48, width / height, 0.1, 1000);
+    characterEditorCamera.position.set(0, 1.55, 4.2);
+    applyCharacterPreviewCameraView();
+    
+    // レンダラーを作成
+    characterEditorRenderer = new THREE.WebGLRenderer({ antialias: true });
+    characterEditorRenderer.setSize(width, height);
+    characterEditorRenderer.shadowMap.enabled = true;
+    characterEditorRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    
+    // コンテナをクリアしてレンダラーを追加
+    while (container.firstChild) {
+        container.removeChild(container.firstChild);
+    }
+    container.appendChild(characterEditorRenderer.domElement);
+    
+    // ライトを追加
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    characterEditorScene.add(ambientLight);
+    
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(5, 10, 5);
+    directionalLight.castShadow = true;
+    directionalLight.shadow.mapSize.width = 2048;
+    directionalLight.shadow.mapSize.height = 2048;
+    characterEditorScene.add(directionalLight);
+    
+    // 地面を追加
+    const groundGeometry = new THREE.PlaneGeometry(10, 10);
+    const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x444444 });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0;
+    ground.receiveShadow = true;
+    characterEditorScene.add(ground);
+    
+    // アニメーションループを開始
+    animateCharacterPreview();
+}
+
+function animateCharacterPreview() {
+    characterEditorAnimationId = requestAnimationFrame(animateCharacterPreview);
+    
+    if (previewCharacter) {
+        previewCharacter.rotation.y += 0.01;
+    }
+    
+    characterEditorRenderer.render(characterEditorScene, characterEditorCamera);
+}
+
+function cleanupCharacterPreview() {
+    if (characterEditorAnimationId) {
+        cancelAnimationFrame(characterEditorAnimationId);
+        characterEditorAnimationId = null;
+    }
+    
+    if (previewCharacter) {
+        characterEditorScene.remove(previewCharacter);
+        previewCharacter = null;
+    }
+    
+    if (characterEditorRenderer) {
+        characterEditorRenderer.dispose();
+        characterEditorRenderer = null;
+    }
+    
+    characterEditorScene = null;
+    characterEditorCamera = null;
+}
+
+function updatePreviewCharacter() {
+    if (!characterEditorScene) return;
+    
+    // 既存プレビューキャラを削除
+    if (previewCharacter) {
+        characterEditorScene.remove(previewCharacter);
+        previewCharacter.traverse(child => {
+            if (child.geometry) child.geometry.dispose();
+            disposeMaterial(child.material); // 安全なマテリアル破棄を使用
+        });
+    }
+    
+    // 現在のカスタム内容で新しいプレビューキャラを作成
+    const customization = characterCustomization[currentPreviewCharacter];
+    previewCharacter = createCharacterModel(0xffffff, customization);
+    
+    // ポーズをデフォルトの立ち姿へリセット
+    resetCharacterPose(previewCharacter);
+    
+    previewCharacter.position.set(0, 0, 0);
+    previewCharacter.castShadow = true;
+    previewCharacter.receiveShadow = true;
+    
+    characterEditorScene.add(previewCharacter);
+}
+
+function resetCharacterPose(character) {
+    if (character && character.userData.parts && character.userData.parts.modernRig) {
+        const parts = character.userData.parts;
+        GFACharacterModels.reset(parts);
+        // The editor is for inspecting appearance, so use a neutral stance rather than obscuring the torso with the weapon pose.
+        [parts.leftArm, parts.rightArm, parts.leftElbow, parts.rightElbow, parts.leftHand, parts.rightHand].forEach(part => {
+            if (part) part.rotation.set(0, 0, 0);
+        });
+        if (parts.gun) parts.gun.visible = false;
+        character.updateMatrixWorld(true);
+        return;
+    }
+    if (!character || !character.userData.parts) return;
+    
+    const parts = character.userData.parts;
+    
+    // 全身パーツをデフォルト位置へリセット
+    if (parts.body) {
+        parts.body.rotation.set(0, 0, 0);
+    }
+    if (parts.head) {
+        parts.head.rotation.set(0, 0, 0);
+    }
+    if (parts.aimGroup) {
+        parts.aimGroup.rotation.set(0, 0, 0);
+    }
+    if (parts.leftArm) {
+        parts.leftArm.rotation.set(0, 0, 0);
+    }
+    if (parts.rightArm) {
+        parts.rightArm.rotation.set(0, 0, 0);
+    }
+    if (parts.leftElbow) {
+        parts.leftElbow.rotation.set(0, 0, 0);
+    }
+    if (parts.rightElbow) {
+        parts.rightElbow.rotation.set(0, 0, 0);
+    }
+    if (parts.leftHip) {
+        parts.leftHip.rotation.set(0, 0, 0);
+    }
+    if (parts.rightHip) {
+        parts.rightHip.rotation.set(0, 0, 0);
+    }
+    if (parts.leftKnee) {
+        parts.leftKnee.rotation.set(0, 0, 0);
+    }
+    if (parts.rightKnee) {
+        parts.rightKnee.rotation.set(0, 0, 0);
+    }
+    applyIdleLegStance(parts);
+    // プレビューキャラのみ銃を非表示
+    if (parts.gun) {
+        parts.gun.visible = false;
+    }
+}
+
+function resetCharacterVisualPose(character, weaponType) {
+    if (!character || !character.userData || !character.userData.parts) return;
+    const parts = character.userData.parts;
+    resetCharacterPose(character);
+    if (parts.head && typeof parts.baseHeadY === 'number') {
+        parts.head.position.y = parts.baseHeadY;
+    }
+    if (parts.gun) {
+        applyGunStyle(parts.gun, weaponType);
+    }
+    applyWeaponPose(parts, weaponType);
+    if (parts.gun) parts.gun.visible = true;
+}
+
+function resetAIRooftopState(ai, nextDecisionDelay = 1.0) {
+    if (!ai) return;
+    if (!ai.userData) ai.userData = {};
+    const now = clock ? clock.getElapsedTime() : 0;
+    ai.userData.rooftopIntent = false;
+    ai.userData.onRooftop = false;
+    ai.userData.rooftopSensor = null;
+    ai.userData.rooftopObstacle = null;
+    ai.userData.rooftopLadderPos = null;
+    ai.userData.rooftopLadderSnap = null;
+    ai.userData.rooftopTargetY = -FLOOR_HEIGHT;
+    ai.userData.elevatingDirection = 0;
+    ai.userData.rooftopDecisionMade = false;
+    ai.userData.rooftopPhase = 'none';
+    ai.userData.rooftopStateSince = 0;
+    ai.userData.rooftopLeaveAt = 0;
+    ai.userData.rooftopSniperPriority = false;
+    ai.userData.rooftopPursuit = false;
+    ai.userData.rooftopPursuitTarget = null;
+    ai.userData.nextHouseInteriorMoveAt = 0;
+    ai.userData.nextRooftopDecisionAt = now + nextDecisionDelay;
+    ai.userData.stallStartTime = 0;
+    ai.userData.groundIdleSince = 0;
+    ai.userData.searchPulseAt = now + nextDecisionDelay;
+    ai.isElevating = false;
+}
+
+function resetAIActivePose(ai, yaw = null) {
+    if (!ai) return;
+    if (!ai.userData) ai.userData = {};
+    stopKillCamPhysicsForActor(ai);
+    clearDeathFallState(ai);
+    ai.userData.isDying = false;
+    const nextYaw = Number.isFinite(yaw) ? yaw : ai.rotation.y;
+    ai.rotation.set(0, nextYaw, 0);
+    ai.scale.set(1, 1, 1);
+    ai.isCrouching = false;
+    ai.crouchUntilTime = null;
+    ai.userData.visualFootstepsActive = false;
+    ai.userData.visualAimTarget = null;
+    ai.userData.nextStrafeTurnAt = 0;
+    ai.userData.ambushUntil = 0;
+    ai.userData.ambushStartedAt = 0;
+    ai.userData.ambushPosition = null;
+    ai.userData.nextAmbushAt = (clock ? clock.getElapsedTime() : 0) + 3.5 + Math.random() * 4.5;
+    if (ai.userData.visualMoveVelocity) ai.userData.visualMoveVelocity.set(0, 0, 0);
+    resetCharacterVisualPose(ai, ai.currentWeapon);
+    resetAIRooftopState(ai);
+    if (ai.lastPosition) ai.lastPosition.copy(ai.position);
+    if (ai.targetPosition) ai.targetPosition.copy(ai.position);
+}
+
+function showPlayerModelForAIDeathKillCam(targetAI = null) {
+    if (!player || !playerModel) return;
+    if (isPlayerInvincible() && player.userData) {
+        player.userData.hideFromKillCamUntil = 0;
+    }
+    if (!isPlayerInvincible() && isFreshRespawnHiddenFromKillCam(player)) {
+        playerModel.visible = false;
+        return;
+    }
+    player.visible = true;
+    player.traverse((object) => { object.visible = true; });
+    resetCharacterVisualPose(playerModel, currentWeapon);
+    const parts = playerModel.userData ? playerModel.userData.parts : null;
+    const keyboardMoving = keySet && (keySet.has('KeyW') || keySet.has('KeyA') || keySet.has('KeyS') || keySet.has('KeyD'));
+    const joystickMoving = joystickMoveVector && joystickMoveVector.lengthSq() > 0.0001;
+    const isMoving = keyboardMoving || joystickMoving;
+    if (parts) {
+        const now = clock && clock.getElapsedTime ? clock.getElapsedTime() : performance.now() / 1000;
+        applyCrouchPose(parts, isCrouchingToggle, now, isMoving, 0);
+    }
+    playerModel.rotation.set(0, 0, 0);
+    if (targetAI && targetAI.position && player.position) {
+        const toTarget = new THREE.Vector3().subVectors(targetAI.position, player.position);
+        toTarget.y = 0;
+        if (toTarget.lengthSq() > 0.0001) {
+            const targetYaw = Math.atan2(toTarget.x, toTarget.z);
+            playerModel.rotation.y = normalizeAngle(targetYaw - player.rotation.y);
+        }
+    }
+    playerModel.position.set(0, -playerTargetHeight, 0);
+    groundPlayerModelForAIDeathKillCam();
+    playerModel.visible = true;
+}
+
+function groundPlayerModelForAIDeathKillCam() {
+    if (!player || !playerModel || !playerModel.userData || !playerModel.userData.parts) return;
+    const parts = playerModel.userData.parts;
+    const footParts = [parts.leftFoot, parts.rightFoot].filter(Boolean);
+    if (footParts.length === 0) return;
+    player.updateMatrixWorld(true);
+    playerModel.updateMatrixWorld(true);
+    let lowestFootY = Infinity;
+    for (const foot of footParts) {
+        const pos = foot.getWorldPosition(new THREE.Vector3());
+        if (parts.modernRig) pos.y = new THREE.Box3().setFromObject(foot).min.y;
+        if (pos.y < lowestFootY) lowestFootY = pos.y;
+    }
+    if (!Number.isFinite(lowestFootY)) return;
+    const groundY = isPlayerDeathPlaying
+        ? getDeathActorGroundY(player)
+        : getGroundSurfaceY(player.position);
+    const targetFootY = groundY + 0.035;
+    const deltaY = targetFootY - lowestFootY;
+    if (Math.abs(deltaY) > 0.001) {
+        playerModel.position.y += deltaY;
+        playerModel.updateMatrixWorld(true);
+    }
+}
+
+function shouldPlayKillCamImpactSound(projectile) {
+    if (!projectile) return false;
+    if (projectile.isRocket) return false;
+    if (projectile.weaponType === WEAPON_RR) return false;
+    return true;
+}
+
+function getPlayerDeathLookAt() {
+    if (playerModel && playerModel.userData && playerModel.userData.parts) {
+        const parts = playerModel.userData.parts;
+        const ref = parts.body || parts.aimGroup || playerModel;
+        const pos = new THREE.Vector3();
+        ref.getWorldPosition(pos);
+        pos.y += 0.2;
+        return pos;
+    }
+    return player.position.clone().add(new THREE.Vector3(0, 1.0, 0));
+}
+
+function detachPlayerModelForDeathKillCam() {
+    if (!player || !playerModel) return null;
+    player.updateMatrixWorld(true);
+    playerModel.updateMatrixWorld(true);
+    scene.attach(playerModel);
+    playerModel.visible = true;
+    playerModel.updateMatrixWorld(true);
+    playerDeathActor = playerModel;
+    return playerDeathActor;
+}
+
+function restorePlayerModelAfterDeathKillCam() {
+    if (!player || !playerModel) {
+        playerDeathActor = null;
+        return;
+    }
+    if (playerModel.parent !== player) {
+        player.attach(playerModel);
+    }
+    playerModel.position.set(0, -playerTargetHeight, 0);
+    playerModel.rotation.set(0, 0, 0);
+    playerModel.scale.set(1, 1, 1);
+    playerModel.visible = false;
+    playerModel.updateMatrixWorld(true);
+    playerDeathActor = null;
+}
+
+function attachDeathCameraToScene() {
+    if (!camera) return;
+    if (!playerDeathCamSavedParent) {
+        playerDeathCamSavedParent = camera.parent;
+        playerDeathCamSavedLocalPos = camera.position.clone();
+        playerDeathCamSavedLocalRot = camera.rotation.clone();
+    }
+    if (camera.parent !== scene) {
+        scene.add(camera);
+    }
+}
+
+function restoreDeathCameraParent() {
+    if (!camera || !playerDeathCamSavedParent) return;
+    if (camera.parent !== playerDeathCamSavedParent) {
+        playerDeathCamSavedParent.add(camera);
+    }
+    if (playerDeathCamSavedLocalPos) camera.position.copy(playerDeathCamSavedLocalPos);
+    if (playerDeathCamSavedLocalRot) camera.rotation.copy(playerDeathCamSavedLocalRot);
+    playerDeathCamSavedParent = null;
+    playerDeathCamSavedLocalPos = null;
+    playerDeathCamSavedLocalRot = null;
+}
+
+function loadCharacterSettingsToUI() {
+    const characters = ['player', 'enemy1', 'enemy2', 'enemy3'];
+    const properties = CHARACTER_CUSTOM_FIELDS.map(field => field.id);
+    
+    characters.forEach(char => {
+        const custom = characterCustomization[char];
+        if (!custom) return;
+        
+        properties.forEach(prop => {
+            const element = document.getElementById(`${char}-${prop}`);
+            if (element) {
+                const propertyMap = {
+                    'hair-style': 'hairStyle',
+                    'hair-color': 'hairColor',
+                    'skin-color': 'skinColor',
+                    'clothing-color': 'clothingColor',
+                    'pants-color': 'pantsColor',
+                    'shoes-color': 'shoesColor',
+                    'body-type': 'bodyType',
+                    'top-type': 'topType',
+                    'face-type': 'faceType',
+                    'gear-type': 'gearType',
+                    'headwear-type': 'headwearType',
+                    'armor-type': 'armorType',
+                    'neckwear-type': 'neckwearType',
+                    'armor-color': 'armorColor',
+                    'neckwear-color': 'neckwearColor',
+                    'belt-color': 'beltColor'
+                };
+                
+                const propKey = propertyMap[prop];
+                if (propKey && custom[propKey] !== undefined) {
+                    element.value = custom[propKey];
+                }
+            }
+        });
+    });
+}
+
+function saveCharacterSettings() {
+    // localStorageへ保存
+    localStorage.setItem('characterCustomization', JSON.stringify(characterCustomization));
+    
+    // フィードバック表示
+    const saveButton = document.getElementById('save-character-settings');
+    if (saveButton) {
+        const originalHtml = saveButton.innerHTML;
+        saveButton.textContent = 'Saved!';
+        saveButton.style.backgroundColor = '#4CAF50';
+        
+        setTimeout(() => {
+            saveButton.innerHTML = originalHtml;
+            saveButton.style.backgroundColor = '#4CAF50';
+        }, 1500);
+    }
+}
+
+function loadCharacterSettings() {
+    const saved = localStorage.getItem('characterCustomization');
+    if (saved) {
+        try {
+            characterCustomization = JSON.parse(saved);
+        } catch (e) {
+            console.error('Failed to load character customization:', e);
+        }
+    }
+    characterCustomization = {
+        player: normalizeCharacterCustomization(characterCustomization.player || CHARACTER_DEFAULTS.player, CHARACTER_DEFAULTS.player.clothingColor),
+        enemy1: normalizeCharacterCustomization(characterCustomization.enemy1 || CHARACTER_DEFAULTS.enemy1, CHARACTER_DEFAULTS.enemy1.clothingColor),
+        enemy2: normalizeCharacterCustomization(characterCustomization.enemy2 || CHARACTER_DEFAULTS.enemy2, CHARACTER_DEFAULTS.enemy2.clothingColor),
+        enemy3: normalizeCharacterCustomization(characterCustomization.enemy3 || CHARACTER_DEFAULTS.enemy3, CHARACTER_DEFAULTS.enemy3.clothingColor)
+    };
+}
+
+// キャラデータをJSONへエクスポート
+function exportCharacterDataToJSON() {
+    const characterData = {
+        timestamp: new Date().toISOString(),
+        version: "1.0",
+        characters: {
+            player: characterCustomization.player,
+            enemy1: characterCustomization.enemy1,
+            enemy2: characterCustomization.enemy2,
+            enemy3: characterCustomization.enemy3
+        }
+    };
+    
+    const jsonString = JSON.stringify(characterData, null, 2);
+    
+    // JSONファイルを生成してダウンロード
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `character_data_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    debugLog('Character data exported to JSON:', characterData);
+}
+
+// JSONからキャラデータをインポート
+function importCharacterDataFromJSON(file) {
+    const reader = new FileReader();
+    
+    reader.onload = function(e) {
+        try {
+            const characterData = JSON.parse(e.target.result);
+            
+            // JSON構造を検証
+            if (!characterData.characters || !characterData.characters.player) {
+                throw new Error('Invalid character data format');
+            }
+            
+            // キャラカスタマイズを更新
+            characterCustomization.player = normalizeCharacterCustomization(characterData.characters.player || characterCustomization.player, CHARACTER_DEFAULTS.player.clothingColor);
+            characterCustomization.enemy1 = normalizeCharacterCustomization(characterData.characters.enemy1 || characterCustomization.enemy1, CHARACTER_DEFAULTS.enemy1.clothingColor);
+            characterCustomization.enemy2 = normalizeCharacterCustomization(characterData.characters.enemy2 || characterCustomization.enemy2, CHARACTER_DEFAULTS.enemy2.clothingColor);
+            characterCustomization.enemy3 = normalizeCharacterCustomization(characterData.characters.enemy3 || characterCustomization.enemy3, CHARACTER_DEFAULTS.enemy3.clothingColor);
+            
+            // 読み込みデータでUIを更新
+            loadCharacterSettingsToUI();
+            
+            // localStorageへ保存
+            saveCharacterSettings();
+            
+            // 表示中ならプレビューを更新
+            if (previewCharacter) {
+                updatePreviewCharacter();
+            }
+            
+            debugLog('Character data imported successfully:', characterData);
+            alert('Character data imported successfully!');
+            
+        } catch (error) {
+            console.error('Error importing character data:', error);
+            alert('Error importing character data: ' + error.message);
+        }
+    };
+    
+    reader.readAsText(file);
+}
+
+// DOM読み込み時にキャラクターエディタを初期化
+document.addEventListener('DOMContentLoaded', function() {
+    // 先に設定を読み込む
+    loadCharacterSettings();
+    
+    // タイムラプスモードのイベントリスナー
+    const timeLapseCheckbox = document.getElementById('time-lapse-mode');
+    if (timeLapseCheckbox) {
+        timeLapseCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                startTimeLapseMode();
+            } else {
+                stopTimeLapseMode();
+            }
+        });
+    }
+    
+    // Night Modeのイベントリスナー
+    const nightModeCheckbox = document.getElementById('night-mode');
+    if (nightModeCheckbox) {
+        nightModeCheckbox.addEventListener('change', function() {
+            gameSettings.nightModeEnabled = this.checked;
+            applyNightMode(this.checked);
+            saveSettings();
+            debugLog('Manual night mode toggle:', this.checked);
+        });
+    }
+    
+    // 全要素の準備完了を待つため、短い遅延後にエディタを初期化
+    setTimeout(() => {
+        initCharacterEditor();
+        initArmory();
+    }, 100);
+}); // 2つ目のDOMContentLoadedイベントリスナー終了
+
+animate();
