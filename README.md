@@ -28,10 +28,10 @@ Vercel Functionsでは、新しいWebSocket接続が同じ関数インスタン�
 ### 公開CO-OPに必要なRedis設定
 
 1. VercelプロジェクトのStorage / MarketplaceからUpstash Redisを追加します。
-2. GFA-Coopプロジェクトへ接続し、接続文字列を`REDIS_URL`としてProduction、Preview、Developmentへ公開します。
+2. GFA-Coopプロジェクトへ接続し、接続文字列を`REDIS_URL`としてProduction、Preview、Developmentへ公開します。接続時のプレフィックスを`STORAGE`にした場合の`STORAGE_URL`にも対応しています。
 3. 最新コミットをRedeployします。
 
-`REDIS_URL`がない公開環境では、両プレイヤーを待機させ続けず、CO-OP画面へ設定不足を表示します。ローカルの`npm start`は従来どおり単一プロセス内のルーム管理で動作します。
+`REDIS_URL`と`STORAGE_URL`のどちらもない公開環境では、両プレイヤーを待機させ続けず、CO-OP画面へ設定不足を表示します。ローカルの`npm start`は従来どおり単一プロセス内のルーム管理で動作します。
 
 ## テスト
 

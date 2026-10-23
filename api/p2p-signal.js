@@ -11,7 +11,10 @@ const localRooms = new Map();
 const server = http.createServer();
 const signaling = new WebSocketServer({ server });
 
-const redisUrl = process.env.REDIS_URL;
+// Vercel Marketplace uses the custom prefix selected while connecting storage.
+// Accept both the recommended REDIS_URL and Vercel's commonly selected
+// STORAGE_URL so an already-connected database works without reconnecting it.
+const redisUrl = process.env.REDIS_URL || process.env.STORAGE_URL;
 const redis = redisUrl ? new Redis(redisUrl, {
   maxRetriesPerRequest: 2,
   retryStrategy: times => Math.min(times * 200, 2_000)
