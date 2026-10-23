@@ -23,7 +23,15 @@ npm start
 
 `vercel.json`が静的配信物を`dist`へ生成し、`/p2p-signal`をVercel WebSocket Functionへ接続します。GitHubの`main`へpushするとVercel側で再デプロイされます。
 
-Vercel Functionsでは、新しいWebSocket接続が同じ関数インスタンスへ到達する保証がありません。現在のルーム管理はメモリ内のため、負荷分散時にも確実な接続を求める段階ではRedisなどの共有ストア、またはDUALTANKと同様の常駐シグナリングサービスへ移行します。
+Vercel Functionsでは、新しいWebSocket接続が同じ関数インスタンスへ到達する保証がありません。そのため、公開版はRedisで部屋の在室情報とoffer/answer/ICEを中継します。
+
+### 公開CO-OPに必要なRedis設定
+
+1. VercelプロジェクトのStorage / MarketplaceからUpstash Redisを追加します。
+2. GFA-Coopプロジェクトへ接続し、接続文字列を`REDIS_URL`としてProduction、Preview、Developmentへ公開します。
+3. 最新コミットをRedeployします。
+
+`REDIS_URL`がない公開環境では、両プレイヤーを待機させ続けず、CO-OP画面へ設定不足を表示します。ローカルの`npm start`は従来どおり単一プロセス内のルーム管理で動作します。
 
 ## テスト
 

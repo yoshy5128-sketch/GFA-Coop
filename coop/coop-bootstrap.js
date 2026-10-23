@@ -8,6 +8,7 @@ let selectedRole = 'host';
 let transport = null;
 const statusElement = overlay.querySelector('#coop-status');
 const connectButton = overlay.querySelector('#coop-connect');
+const roomInput = overlay.querySelector('#coop-room-code');
 
 function updateStatus({ code, message }) {
   statusElement.dataset.state = code;
@@ -47,12 +48,16 @@ for (const button of overlay.querySelectorAll('[data-coop-role]')) {
 }
 
 connectButton.addEventListener('click', async () => {
-  const input = overlay.querySelector('#coop-room-code');
-  input.value = normalizeRoomCode(input.value);
+  roomInput.blur();
+  roomInput.value = normalizeRoomCode(roomInput.value);
   connectButton.disabled = true;
   try {
-    await createTransport().connect({ role: selectedRole, roomCode: input.value });
+    await createTransport().connect({ role: selectedRole, roomCode: roomInput.value });
   } catch (error) {
     updateStatus({ code: 'error', message: error.message });
   }
+});
+
+roomInput.addEventListener('keydown', event => {
+  if (event.key === 'Enter') roomInput.blur();
 });

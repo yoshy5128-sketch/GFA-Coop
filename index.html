@@ -560,7 +560,7 @@
                 <button type="button" data-coop-role="guest">GUEST / PLAYER 2</button>
             </div>
             <label class="coop-room-field">ROOM CODE
-                <input id="coop-room-code" maxlength="6" value="GFA001" autocomplete="off" inputmode="text">
+                <input id="coop-room-code" maxlength="6" value="GFA001" autocomplete="off" autocapitalize="characters" inputmode="text" enterkeyhint="done">
             </label>
             <button id="coop-connect" type="button">P2P接続を開始</button>
             <div id="coop-status" role="status">未接続</div>
@@ -1383,7 +1383,7 @@
 
             const openLobby = () => {
                 overlay.hidden = false;
-                roomInput.focus();
+                if (window.matchMedia('(pointer: fine)').matches) roomInput.focus({ preventScroll: true });
             };
             const closeLobby = () => { overlay.hidden = true; };
 
@@ -1398,7 +1398,7 @@
     <script src="./vendor/tween-18.6.4.umd.js"></script>
     <script src="character-models.js?v=20260924c"></script>
     <script src="script.js?v=20261024a"></script>
-    <script type="module" src="coop/coop-bootstrap.js?v=20261024b"></script>
+    <script type="module" src="coop/coop-bootstrap.js?v=20261024c"></script>
     <script>
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', () => {
