@@ -19,6 +19,12 @@ npm start
 
 ブラウザで `http://localhost:3000` を開き、タイトル画面の `LAN CO-OP` から接続します。2台の端末で試す場合はHTTPS公開環境を使用してください。
 
+## Vercel
+
+`vercel.json`が静的配信物を`dist`へ生成し、`/p2p-signal`をVercel WebSocket Functionへ接続します。GitHubの`main`へpushするとVercel側で再デプロイされます。
+
+Vercel Functionsでは、新しいWebSocket接続が同じ関数インスタンスへ到達する保証がありません。現在のルーム管理はメモリ内のため、負荷分散時にも確実な接続を求める段階ではRedisなどの共有ストア、またはDUALTANKと同様の常駐シグナリングサービスへ移行します。
+
 ## テスト
 
 ```sh

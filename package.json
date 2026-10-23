@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check coop/net/protocol.js && node --check coop/net/peer-transport.js && node --check coop/coop-bootstrap.js",
+    "build": "node scripts/build-static.mjs",
+    "check": "node --check server.js && node --check api/p2p-signal.js && node --check scripts/build-static.mjs && node --check coop/net/protocol.js && node --check coop/net/peer-transport.js && node --check coop/coop-bootstrap.js",
     "test": "node --test"
   },
   "dependencies": {
