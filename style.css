@@ -240,6 +240,75 @@ body.settings-screen-active #follow-button {
 #title-logo-screen.title-logo-hidden {
     display: none !important;
 }
+#title-fullscreen-button {
+    position: fixed;
+    z-index: 3;
+    top: max(12px, env(safe-area-inset-top));
+    right: max(12px, env(safe-area-inset-right));
+    display: grid;
+    place-items: center;
+    width: 46px;
+    height: 46px;
+    padding: 10px;
+    border: 1px solid rgba(188, 235, 255, 0.72);
+    border-radius: 9px;
+    color: #eefbff;
+    background: rgba(5, 18, 28, 0.82);
+    box-shadow: 0 3px 14px rgba(0, 0, 0, 0.55);
+    cursor: pointer;
+    touch-action: manipulation;
+}
+#title-fullscreen-button:hover,
+#title-fullscreen-button:focus-visible {
+    background: rgba(18, 83, 105, 0.95);
+}
+#title-fullscreen-button svg {
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+#title-fullscreen-button.is-fullscreen svg {
+    transform: scale(0.78);
+}
+#landscape-start-hint {
+    display: none;
+}
+@media (pointer: coarse) and (orientation: portrait) {
+    #landscape-start-hint {
+        position: fixed;
+        z-index: 2;
+        left: 50%;
+        bottom: max(18px, env(safe-area-inset-bottom));
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transform: translateX(-50%);
+        width: max-content;
+        max-width: calc(100vw - 32px);
+        padding: 10px 14px;
+        border: 1px solid rgba(188, 235, 255, 0.55);
+        border-radius: 10px;
+        color: #eefbff;
+        background: rgba(5, 18, 28, 0.86);
+        text-align: center;
+        font: 700 13px/1.25 system-ui, sans-serif;
+        pointer-events: none;
+    }
+    #landscape-start-hint small {
+        color: #acd6e4;
+        font-size: 10px;
+    }
+    .landscape-phone-icon {
+        display: inline-block;
+        font-size: 30px;
+        line-height: 1;
+        transform: rotate(90deg);
+    }
+}
 #title-logo-stage {
     position: relative;
     width: min(100vw, 179.2vh);
@@ -670,11 +739,16 @@ body.settings-screen-active #follow-button {
 #coop-lobby-overlay {
     position: fixed;
     inset: 0;
-    z-index: 2200;
-    display: grid;
-    place-items: center;
+    z-index: 30000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     padding: 16px;
     background: rgba(0, 5, 12, 0.86);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    box-sizing: border-box;
 }
 
 #coop-lobby-overlay[hidden] { display: none; }
@@ -682,6 +756,8 @@ body.settings-screen-active #follow-button {
 #coop-lobby {
     position: relative;
     width: min(460px, 94vw);
+    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
     padding: 24px;
     border: 1px solid rgba(77, 227, 255, 0.62);
     border-radius: 14px;
@@ -689,6 +765,10 @@ body.settings-screen-active #follow-button {
     background: linear-gradient(145deg, rgba(5, 28, 42, 0.98), rgba(3, 10, 20, 0.98));
     box-shadow: 0 20px 80px rgba(0, 0, 0, 0.7), 0 0 35px rgba(0, 190, 255, 0.14);
     font-family: system-ui, sans-serif;
+    overflow-x: hidden;
+    overflow-y: auto;
+    box-sizing: border-box;
+    -webkit-overflow-scrolling: touch;
 }
 
 #coop-lobby h2 { margin: 0 36px 8px 0; letter-spacing: 0.08em; }
@@ -699,8 +779,65 @@ body.settings-screen-active #follow-button {
 .coop-role-buttons button { flex: 1; padding: 12px 8px; }
 .coop-role-buttons button.active { color: #03151c; background: #6de6ff; }
 .coop-room-field { display: grid; gap: 7px; color: #9ccbd8; font-size: 12px; font-weight: 700; }
-#coop-room-code { width: 100%; padding: 12px; border: 1px solid #4b9bb1; border-radius: 7px; text-align: center; letter-spacing: 0.25em; font-size: 20px; text-transform: uppercase; }
+#coop-room-code { width: 100%; padding: 12px; border: 1px solid #4b9bb1; border-radius: 7px; text-align: center; letter-spacing: 0.25em; font-size: 20px; text-transform: uppercase; box-sizing: border-box; }
 #coop-connect { width: 100%; margin-top: 12px; padding: 12px; font-weight: 800; }
 #coop-status { min-height: 22px; margin-top: 12px; color: #ffd27a; text-align: center; }
 #coop-status[data-state="connected"] { color: #73ffa4; }
 #coop-status[data-state="error"], #coop-status[data-state="disconnected"] { color: #ff8e83; }
+
+@media (pointer: coarse), (max-height: 600px), (max-width: 700px) {
+    #coop-lobby-overlay {
+        align-items: flex-start;
+        padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    }
+    #coop-lobby {
+        width: min(430px, 96vw);
+        max-height: calc(100vh - 12px);
+        max-height: calc(100dvh - 12px);
+        margin: auto;
+        padding: 13px 14px;
+        border-radius: 10px;
+    }
+    #coop-lobby h2 {
+        margin: 0 34px 4px 0;
+        font-size: 18px;
+    }
+    #coop-lobby-close {
+        top: 7px;
+        right: 7px;
+        width: 30px;
+        height: 30px;
+    }
+    .coop-lobby-help {
+        margin: 4px 0;
+        font-size: 11px;
+        line-height: 1.35;
+    }
+    .coop-role-buttons {
+        gap: 6px;
+        margin: 8px 0;
+    }
+    .coop-role-buttons button {
+        min-height: 34px;
+        padding: 7px 5px;
+        font-size: 11px;
+    }
+    #coop-room-code {
+        padding: 7px 10px;
+        font-size: 17px;
+    }
+    #coop-connect {
+        margin-top: 8px;
+        padding: 9px;
+    }
+    #coop-status {
+        min-height: 18px;
+        margin-top: 6px;
+        font-size: 12px;
+    }
+    .coop-lobby-note {
+        margin-top: 4px;
+        font-size: 10px;
+        line-height: 1.3;
+    }
+}

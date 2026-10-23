@@ -13625,6 +13625,7 @@ function setupTitleLogoScreen() {
     const roomSelect = document.getElementById('title-indoor-size');
     const settingsButton = document.getElementById('title-settings-button');
     const deployButton = document.getElementById('title-deploy-button');
+    const fullscreenButton = document.getElementById('title-fullscreen-button');
     if (!titleScreen) return;
     titleScreen.classList.remove('title-logo-hidden');
     populateTitleMapSelector();
@@ -13634,6 +13635,39 @@ function setupTitleLogoScreen() {
     updateMenuBGM();
     titleScreen.addEventListener('pointerdown', initializeAudio, { once: true });
     if (modeSelect) modeSelect.addEventListener('change', updateTitleIndoorControls);
+    if (fullscreenButton) {
+        const updateFullscreenButton = () => {
+            const active = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+            fullscreenButton.classList.toggle('is-fullscreen', active);
+            fullscreenButton.setAttribute('aria-pressed', String(active));
+            fullscreenButton.setAttribute('aria-label', active ? '全画面表示を終了する' : '全画面表示にする');
+            fullscreenButton.title = active ? '全画面表示を終了' : '全画面表示';
+        };
+        fullscreenButton.addEventListener('click', async event => {
+            event.stopPropagation();
+            const active = document.fullscreenElement || document.webkitFullscreenElement;
+            try {
+                if (active) {
+                    if (document.exitFullscreen) await document.exitFullscreen();
+                    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+                } else {
+                    const target = document.documentElement;
+                    if (target.requestFullscreen) await target.requestFullscreen();
+                    else if (target.webkitRequestFullscreen) target.webkitRequestFullscreen();
+                    if (window.screen?.orientation?.lock) {
+                        try { await window.screen.orientation.lock('landscape'); }
+                        catch (error) { console.warn('Title orientation lock failed:', error); }
+                    }
+                }
+            } catch (error) {
+                console.warn('Title fullscreen request failed:', error);
+            }
+            updateFullscreenButton();
+        });
+        document.addEventListener('fullscreenchange', updateFullscreenButton);
+        document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+        updateFullscreenButton();
+    }
     if (settingsButton) {
         settingsButton.addEventListener('click', () => {
             initializeAudio();
