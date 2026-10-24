@@ -1,7 +1,7 @@
 import { GfaPeerTransport } from './net/peer-transport.js';
 import { normalizeRoomCode } from './net/protocol.js';
 
-const COOP_BUILD_ID = '20261024-v27';
+const COOP_BUILD_ID = '20261024-v28';
 const GAME_START_CHUNK_SIZE = 12000;
 const GAME_START_MAX_CHUNKS = 256;
 const GAME_START_MAX_LENGTH = 2.5 * 1024 * 1024;

@@ -10039,12 +10039,67 @@ function getHouseRayHit(origin, direction, maxDist) {
 }
 
 const characterWallClipRaycaster = new THREE.Raycaster();
+const characterWeaponRetractionRaycaster = new THREE.Raycaster();
+const characterWeaponBounds = new THREE.Box3();
+const characterWeaponBoundsCenter = new THREE.Vector3();
+const characterWeaponBoundsSize = new THREE.Vector3();
+const characterWeaponWorldScale = new THREE.Vector3();
 const characterWallClipDirections = [
     new THREE.Vector3(0, 0, 1),
     new THREE.Vector3(0, 0, -1),
     new THREE.Vector3(1, 0, 0),
     new THREE.Vector3(-1, 0, 0)
 ];
+
+function updateCharacterWeaponRetraction(actor, parts, delta = 1 / 60) {
+    if (!actor || !parts || !parts.modernRig || !parts.gun || !window.GFACharacterModels
+        || typeof GFACharacterModels.setWeaponRetraction !== 'function') return;
+
+    const previous = Number.isFinite(actor.userData.weaponWallRetraction)
+        ? actor.userData.weaponWallRetraction : 0;
+    let targetRetraction = 0;
+    const active = actor.visible && actor.hp > 0 && isGameRunning && !isPlayerDeathPlaying;
+    if (active) {
+        actor.updateWorldMatrix(true, true);
+        const muzzle = getGunMuzzleInfo(parts);
+        const origin = (parts.aimGroup || parts.torso).getWorldPosition(new THREE.Vector3());
+        if (muzzle && muzzle.position && muzzle.direction) {
+            // Use the front of the rendered weapon, not only the projectile muzzle.
+            // This also covers long barrels such as the rocket launcher.
+            characterWeaponBounds.setFromObject(parts.gun);
+            characterWeaponBounds.getCenter(characterWeaponBoundsCenter);
+            characterWeaponBounds.getSize(characterWeaponBoundsSize).multiplyScalar(0.5);
+            const direction = muzzle.direction.clone().normalize();
+            const forwardExtent = Math.abs(direction.x) * characterWeaponBoundsSize.x
+                + Math.abs(direction.y) * characterWeaponBoundsSize.y
+                + Math.abs(direction.z) * characterWeaponBoundsSize.z;
+            actor.getWorldScale(characterWeaponWorldScale);
+            const forwardScale = Math.max(0.05, Math.abs(characterWeaponWorldScale.z));
+            // Measure against the unretracted barrel position. Measuring only the
+            // already-pulled-back gun would make the pose alternate every frame.
+            const visibleTip = characterWeaponBoundsCenter.clone().addScaledVector(direction, forwardExtent);
+            const unretractedTip = visibleTip.addScaledVector(direction, previous * forwardScale);
+            const toTip = unretractedTip.sub(origin);
+            const tipDistance = toTip.length();
+            if (tipDistance > 0.08) {
+                characterWeaponRetractionRaycaster.set(origin, toTip.multiplyScalar(1 / tipDistance));
+                characterWeaponRetractionRaycaster.near = 0.025;
+                characterWeaponRetractionRaycaster.far = tipDistance;
+                const hit = getFirstProjectileHit(characterWeaponRetractionRaycaster, obstacles);
+                if (hit && hit.distance <= tipDistance) {
+                    const worldRetraction = Math.max(0, tipDistance - Math.max(0.04, hit.distance - 0.12));
+                    targetRetraction = THREE.MathUtils.clamp(worldRetraction / forwardScale, 0, 1.35);
+                }
+            }
+        }
+    }
+
+    const response = targetRetraction > previous ? 28 : 13;
+    const blend = 1 - Math.exp(-response * Math.max(0, delta));
+    const next = THREE.MathUtils.lerp(previous, targetRetraction, blend);
+    actor.userData.weaponWallRetraction = next < 0.002 ? 0 : next;
+    GFACharacterModels.setWeaponRetraction(parts, actor.userData.weaponWallRetraction);
+}
 
 function setCharacterWallClipPlanes(actor, planeSpecs) {
     if (!actor) return;
@@ -10125,7 +10180,9 @@ function getCharacterWallClipSpecs(actor) {
 
 function updateCharacterWallClipping() {
     const now = performance.now();
-    for (const ai of ais) {
+    const visibleCharacters = coopRemotePlayer && !ais.includes(coopRemotePlayer)
+        ? [...ais, coopRemotePlayer] : ais;
+    for (const ai of visibleCharacters) {
         const active = ai && ai.visible && ai.hp > 0 && isGameRunning && !isPlayerDeathPlaying;
         if (!active) {
             if (ai && ai.userData && ai.userData.wallClipPlaneCount !== 0) setCharacterWallClipPlanes(ai, []);
@@ -12497,7 +12554,7 @@ function handleFireRelease() {
               } else {
                   createProjectile(safeFire.startPosition, direction, 0xffff00, 0.1, false, getLocalPlayerProjectileSource(), projectileSpeed * 2, true, WEAPON_SR, player);
               }
-            broadcastCoopPlayerFire(direction, WEAPON_SR, safeFire.startPosition);
+            broadcastCoopPlayerFire(direction, WEAPON_SR, safeFire.startPosition, safeFire.blocked);
             lastFireTime = clock.getElapsedTime();
             if (!isInfiniteDefaultWeaponActive(WEAPON_SR) && --ammoSR === 0) {
                 setTimeout(() => {
@@ -12515,7 +12572,7 @@ function handleFireRelease() {
     isMouseButtonDown = false;
 }
 
-function broadcastCoopPlayerFire(direction, weapon = currentWeapon, origin = null) {
+function broadcastCoopPlayerFire(direction, weapon = currentWeapon, origin = null, blocked = false) {
     if (!direction || !Number.isFinite(direction.x) || !Number.isFinite(direction.y) || !Number.isFinite(direction.z)) return;
     const validOrigin = origin && Number.isFinite(origin.x) && Number.isFinite(origin.y) && Number.isFinite(origin.z);
     let observedTargetBounds = null;
@@ -12540,6 +12597,7 @@ function broadcastCoopPlayerFire(direction, weapon = currentWeapon, origin = nul
             weapon,
             direction: [direction.x, direction.y, direction.z],
             origin: validOrigin ? [origin.x, origin.y, origin.z] : null,
+            blocked: Boolean(blocked),
             observedTargetBounds
         }
     }));
@@ -12631,7 +12689,7 @@ function shoot() {
               createMuzzleFlash(safeFire.muzzlePosition, 60, 1.7, 65, projectileColor, baseDirection, muzzleScale);
           }
           tryHitBillBattleLight(safeFire.startPosition, baseDirection);
-          broadcastCoopPlayerFire(baseDirection, currentWeapon, safeFire.startPosition);
+          broadcastCoopPlayerFire(baseDirection, currentWeapon, safeFire.startPosition, safeFire.blocked);
           // 旧グローバルオートエイムは削除済み。
         // オートエイムは現在、animate()でスコープを動かす狙撃スコープ時のみ有効。
         if (safeFire.blocked) {
@@ -17486,6 +17544,7 @@ function updateCoopRemotePlayer(delta) {
     }
     if (parts && window.GFACharacterModels && typeof GFACharacterModels.pose === 'function') {
         syncCoopRemoteVisualScale(coopRemotePose);
+        updateCharacterWeaponRetraction(coopRemotePlayer, parts, delta);
         const remoteMoving = Boolean(coopRemotePose.moving)
             || Number(coopRemotePose.moveSpeed) > 0.08
             || target.distanceToSquared(coopRemotePlayer.position) > 0.0001
@@ -17640,6 +17699,7 @@ function updateCoopGuestAI(ai, delta) {
         ai.rotation.y += normalizeCoopAngle(targetYaw - ai.rotation.y) * blend;
         const parts = ai.userData.parts;
         if (parts && window.GFACharacterModels && typeof GFACharacterModels.pose === 'function') {
+            updateCharacterWeaponRetraction(ai, parts, delta);
             const remoteMoving = Boolean(ai.userData.coopMoving)
                 || Number(ai.userData.coopNetworkMoveSpeed) > 0.08
                 || target.distanceToSquared(ai.position) > 0.0001
@@ -17680,7 +17740,7 @@ function showCoopRemoteFire(payload) {
         createMuzzleFlash(muzzle.position, 35, 1.3, 55, 0xffff00, direction, 0.45);
         const sound = getCoopWeaponSound(weapon, false);
         if (sound) playSpatialSound(sound, muzzle.position, { gainBoost: 0.9 });
-        if (coopLocalRole === 'guest') {
+        if (!payload.blocked && coopLocalRole === 'guest') {
             const spec = getCoopFireSpec(weapon) || getCoopFireSpec(WEAPON_PISTOL);
             const weaponType = weapon === WEAPON_SG || weapon === WEAPON_MR ? weapon : null;
             createProjectile(muzzle.position, direction, spec.color, spec.size, Boolean(spec.rocket),
@@ -17780,6 +17840,7 @@ function handleCoopGuestFire(payload) {
     coopRemoteLastFireAt.set(weapon, now);
     const parts = remote.userData && remote.userData.parts;
     showCoopRemoteFire(payload);
+    if (payload.blocked === true) return true;
     const muzzle = parts ? getGunMuzzleInfo(parts) : null;
     if (!muzzle || !muzzle.position || !muzzle.direction) return false;
     let projectileOrigin = muzzle.position.clone();
@@ -20277,6 +20338,7 @@ function animate() {
                 ai.userData.lowerBodyMoveSince = 0;
                 ai.userData.lowerBodyYaw = 0;
             }
+            updateCharacterWeaponRetraction(ai, parts, delta);
             applyCrouchPose(parts, ai.isCrouching, timeElapsed, actuallyMoving, lowerBodyYaw);
         }
         // 最終的な衝突チェック（薄い壁のすり抜け対策）

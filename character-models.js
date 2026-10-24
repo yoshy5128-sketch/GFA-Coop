@@ -1392,13 +1392,14 @@ const accessory=(parent)=>{const group=pivot(parent);group.userData.isCharacterA
     const legs=[limb(pelvis,[-.195*p.hip,0,0],.75,.70,.235*p.limb,mats.pants,mats.pants),limb(pelvis,[.195*p.hip,0,0],.75,.70,.235*p.limb,mats.pants,mats.pants)];
     legs.forEach(l=>{box(l.end,.195,.17,.34,mats.boot,0,-.035,.062);box(l.end,.20,.032,.35,mats.sole,0,-.104,.062);});
     const gun=pivot(chest);
-    let weaponId='m1rifle',weaponVariant='A';
+    let weaponId='m1rifle',weaponVariant='A',weaponRetraction=0;
     function setWeapon(id,variant=weaponVariant){
         variant=['A','B','C'].includes(String(variant).toUpperCase())?String(variant).toUpperCase():'A';
         if(!weaponProfiles[id] || (id===weaponId&&variant===weaponVariant&&gun.children.length))return;
         const materials=new Set();gun.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)materials.add(o.material);});materials.forEach(m=>m.dispose());
         gun.clear();weaponId=id;weaponVariant=variant;weaponGeometry(gun,id,variant);
     }
+    function setWeaponRetraction(amount){weaponRetraction=THREE.MathUtils.clamp(Number(amount)||0,0,1.35);}
     setWeapon(weaponId);
     const markers=[];
     function pose(mode,t) {
@@ -1419,7 +1420,7 @@ const accessory=(parent)=>{const group=pivot(parent);group.userData.isCharacterA
         pelvis.position.set(0,hipY,hipZ);pelvis.rotation.x=mode==='run'?.055:0;waist.rotation.x=lean;chest.rotation.set(0,0,0);
         const breathing=mode==='run'?Math.sin(t*8)*.009:Math.sin(t*2)*.006;
         const profile=weaponProfiles[weaponId];
-        gun.position.fromArray(profile.position);gun.position.y+=breathing;
+        gun.position.fromArray(profile.position);gun.position.y+=breathing;gun.position.z-=weaponRetraction;
         gun.rotation.x=-lean;
         head.position.x=profile.head[0];head.rotation.set(-lean+.07,profile.head[1],profile.head[2]);
         const right=V(...profile.right).applyEuler(gun.rotation).add(gun.position);
@@ -1436,7 +1437,7 @@ const accessory=(parent)=>{const group=pivot(parent);group.userData.isCharacterA
         }
 
     }
-    return {root,pelvis,waist,chest,head,arms,legs,gun,markers,pose,setWeapon,shirt:mats.shirt,hairParts,gearParts,get weapon(){return weaponId}};
+    return {root,pelvis,waist,chest,head,arms,legs,gun,markers,pose,setWeapon,setWeaponRetraction,shirt:mats.shirt,hairParts,gearParts,get weapon(){return weaponId}};
 }
 
 const rigs=new WeakMap(),gunRigs=new WeakMap(),activeRagdolls=new Set();
@@ -1460,6 +1461,7 @@ function create(color,customization){
     return r.root;
 }
 function setWeapon(gun,id,variant='A'){const r=gunRigs.get(gun);if(!r)return;r.setWeapon(id||'pistol',variant);}
+function setWeaponRetraction(parts,amount){const r=rigs.get(parts);if(!r)return;r.setWeaponRetraction(amount);}
 function createWeapon(id='pistol',variant='A'){const gun=new THREE.Group();gun.userData.modernWeapon=true;weaponGeometry(gun,weaponProfiles[id]?id:'pistol',variant);return gun;}
 function adopt(actor){const r=rigs.get(actor.userData.parts);if(r)r.root=actor;}
 function pose(parts,crouch,time,moving,lowerYaw=0){
@@ -1505,7 +1507,7 @@ function pose(parts,crouch,time,moving,lowerYaw=0){
     parts.baseTorsoPosePitch=r.chest.rotation.x;
     r.root.scale.y=Number.isFinite(r.root.userData.gfaPoseScaleY)?r.root.userData.gfaPoseScaleY:1;r.root.updateMatrixWorld(true);
 }
-function reset(parts,id){const r=rigs.get(parts);if(!r)return;activeRagdolls.delete(r);activeRecoils.delete(r);activeHitReactions.delete(r);r.death=null;r.recoilAmount=0;r.hitReaction=null;if(r.gun.parent!==r.aim)r.aim.add(r.gun);r.gun.position.set(0,0,0);r.gun.rotation.set(0,0,0);r.gun.scale.set(1,1,1);r.aim.rotation.set(0,0,0);r.pelvis.rotation.set(0,0,0);r.waist.rotation.set(0,0,0);r.chest.rotation.set(0,0,0);r.arms.forEach(l=>l.end.rotation.set(0,0,0));r.legs.forEach(l=>l.end.rotation.set(0,0,0));if(id)r.setWeapon(id);pose(parts,false,0,false);r.gun.visible=true;}
+function reset(parts,id){const r=rigs.get(parts);if(!r)return;activeRagdolls.delete(r);activeRecoils.delete(r);activeHitReactions.delete(r);r.death=null;r.recoilAmount=0;r.hitReaction=null;r.setWeaponRetraction(0);if(r.gun.parent!==r.aim)r.aim.add(r.gun);r.gun.position.set(0,0,0);r.gun.rotation.set(0,0,0);r.gun.scale.set(1,1,1);r.aim.rotation.set(0,0,0);r.pelvis.rotation.set(0,0,0);r.waist.rotation.set(0,0,0);r.chest.rotation.set(0,0,0);r.arms.forEach(l=>l.end.rotation.set(0,0,0));r.legs.forEach(l=>l.end.rotation.set(0,0,0));if(id)r.setWeapon(id);pose(parts,false,0,false);r.gun.visible=true;}
 // Reuse bounds, but update their coordinates on every call (including death/respawn).
 function boxes(parts){const r=rigs.get(parts);if(!r)return [];r.root.updateWorldMatrix(true,true);for(const c of r.colliders){c.box.makeEmpty();for(const m of c.meshes)c.box.union(r.scratchBox.copy(m.geometry.boundingBox).applyMatrix4(m.matrixWorld));}return r.colliderBoxes;}
 function bodyBox(parts){const b=new THREE.Box3();boxes(parts).forEach(x=>b.union(x));return b;}
@@ -1651,6 +1653,6 @@ function hitReaction(parts,impactVelocity=null,strength=1){
     activeHitReactions.add(r);
 }
 function loose(parts,seed){beginRagdoll(parts,null,null,seed);}
-return {create,createWeapon,setWeapon,pose,reset,bodyBox,boxes,muzzle,aim,loose,beginRagdoll,update,nudge,recoil,hitReaction,adopt};
+return {create,createWeapon,setWeapon,setWeaponRetraction,pose,reset,bodyBox,boxes,muzzle,aim,loose,beginRagdoll,update,nudge,recoil,hitReaction,adopt};
 
 })();

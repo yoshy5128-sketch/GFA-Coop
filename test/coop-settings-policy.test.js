@@ -39,9 +39,11 @@ test('co-op FFA assigns both player projectiles and resolves PvP before the floo
   assert.match(script, /damageCoopHostPlayer\(/);
 });
 
-test('guest fire preserves a validated muzzle origin and reports host hit feedback', () => {
-  assert.match(script, /broadcastCoopPlayerFire\(baseDirection, currentWeapon, safeFire\.startPosition\)/);
+test('guest fire preserves a validated muzzle origin, wall blocking, and host hit feedback', () => {
+  assert.match(script, /broadcastCoopPlayerFire\(baseDirection, currentWeapon, safeFire\.startPosition, safeFire\.blocked\)/);
   assert.match(script, /origin: validOrigin \? \[origin\.x, origin\.y, origin\.z\] : null/);
+  assert.match(script, /blocked: Boolean\(blocked\)/);
+  assert.match(script, /if \(payload\.blocked === true\) return true/);
   assert.match(script, /requestedOrigin\.distanceTo\(reportedPlayerTop\) <= 4/);
   assert.match(script, /createProjectile\(projectileOrigin, direction/);
   assert.match(script, /new CustomEvent\('gfa:host-player-hit'/);
@@ -67,6 +69,14 @@ test('co-op character eyes align with the local camera height', () => {
   assert.match(script, /const COOP_MODEL_STANDING_EYE_HEIGHT = 2\.8065/);
   assert.match(script, /pose\.height \/ COOP_MODEL_STANDING_EYE_HEIGHT/);
   assert.match(script, /coopRemotePlayer\.scale\.set\(coopRemoteVisualScale, coopRemoteVisualScale, coopRemoteVisualScale\)/);
+});
+
+test('co-op characters retract and clip weapons at blocking walls', () => {
+  assert.match(script, /function updateCharacterWeaponRetraction\(/);
+  assert.match(script, /GFACharacterModels\.setWeaponRetraction\(parts, actor\.userData\.weaponWallRetraction\)/);
+  assert.match(script, /\[\.\.\.ais, coopRemotePlayer\]/);
+  assert.match(script, /updateCharacterWeaponRetraction\(coopRemotePlayer, parts, delta\)/);
+  assert.match(script, /if \(!payload\.blocked && coopLocalRole === 'guest'\)/);
 });
 
 test('guest death sequence starts once until authoritative respawn HP arrives', () => {

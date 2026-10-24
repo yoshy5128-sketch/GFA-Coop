@@ -89,3 +89,26 @@ test('remote visual scale survives pose updates', async () => {
   const headCenter = parts.head.getWorldPosition(new THREE.Vector3());
   assert.ok(Math.abs(headCenter.y - 2.2) < 0.03);
 });
+
+test('wall retraction pulls the weapon and both hands toward the body', async () => {
+  const { models, THREE } = await loadCharacterModels();
+  const actor = models.create('#2586c9', {});
+  const parts = actor.userData.parts;
+
+  models.pose(parts, false, 0.2, false, 0);
+  actor.updateMatrixWorld(true);
+  const muzzleBefore = models.muzzle(parts).position.clone();
+  const rightHandBefore = parts.rightHand.getWorldPosition(new THREE.Vector3());
+  const leftHandBefore = parts.leftHand.getWorldPosition(new THREE.Vector3());
+
+  models.setWeaponRetraction(parts, 0.65);
+  models.pose(parts, false, 0.2, false, 0);
+  actor.updateMatrixWorld(true);
+  const muzzleAfter = models.muzzle(parts).position.clone();
+  const rightHandAfter = parts.rightHand.getWorldPosition(new THREE.Vector3());
+  const leftHandAfter = parts.leftHand.getWorldPosition(new THREE.Vector3());
+
+  assert.ok(muzzleAfter.z < muzzleBefore.z - 0.6);
+  assert.ok(rightHandAfter.z < rightHandBefore.z - 0.5);
+  assert.ok(leftHandAfter.z < leftHandBefore.z - 0.5);
+});
