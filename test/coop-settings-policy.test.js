@@ -7,6 +7,7 @@ const [html, script] = await Promise.all([
   readFile(new URL('index.html', root), 'utf8'),
   readFile(new URL('script.js', root), 'utf8')
 ]);
+const serviceWorker = await readFile(new URL('sw.js', root), 'utf8');
 
 test('Free For All exposes a zero-AI option for player 1 versus player 2', () => {
   assert.match(html, /name="ai-count" value="0"/);
@@ -45,4 +46,23 @@ test('guest fire preserves a validated muzzle origin and reports host hit feedba
   assert.match(script, /createProjectile\(projectileOrigin, direction/);
   assert.match(script, /new CustomEvent\('gfa:host-player-hit'/);
   assert.match(script, /showRemotePlayerHit: showCoopRemotePlayerHit/);
+});
+
+test('FFA PvP compensates remote rendering delay and resolves players before walls', () => {
+  assert.match(script, /observedTargetBounds/);
+  assert.match(script, /projectile\.coopLagCompensatedTargetBox = observedHostBox\.clone\(\)/);
+  assert.match(script, /targetBoxes\.push\(projectile\.coopLagCompensatedTargetBox\)/);
+  assert.match(script, /if \(!hitSomething \|\| hitType === 'obstacle'\)/);
+  assert.match(script, /bounds\.topY \+ 0\.25/);
+  assert.match(script, /impactPoint: \[impactPoint\.x, impactPoint\.y, impactPoint\.z\]/);
+});
+
+test('wake lock remains requested on title and co-op title exit requires confirmation', () => {
+  assert.doesNotMatch(script, /setGameplayWakeLock\(false\)/);
+  assert.match(script, /CO-OPプレイを終了してTOPへ戻りますか/);
+});
+
+test('service worker updates never reload an active co-op match', () => {
+  assert.doesNotMatch(serviceWorker, /client\.navigate\(/);
+  assert.match(serviceWorker, /Versioned assets load on the next normal navigation/);
 });

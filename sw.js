@@ -1,12 +1,12 @@
-const CACHE_NAME = 'gfa-coop-pwa-v24';
+const CACHE_NAME = 'gfa-coop-pwa-v25';
 const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './style.css?v=20261024f',
   './character-models.js?v=20261024k',
-  './script.js?v=20261024u',
-  './coop/coop-bootstrap.js?v=20261024t',
+  './script.js?v=20261024v',
+  './coop/coop-bootstrap.js?v=20261024u',
   './coop/net/peer-transport.js',
   './coop/net/protocol.js',
   './vendor/three-r128.min.js',
@@ -44,11 +44,9 @@ self.addEventListener('activate', event => {
     const keys = await caches.keys();
     await Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)));
     await self.clients.claim();
-    // Existing tabs can otherwise keep executing the previous JavaScript until
-    // the user happens to reload them. Reload each same-origin app tab once when
-    // this worker version activates.
-    const openClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    await Promise.all(openClients.map(client => client.navigate(client.url).catch(() => null)));
+    // Never navigate existing tabs here. A worker update can occur during a live
+    // CO-OP match; forcing navigation would destroy the WebRTC session and send
+    // the host back to TOP. Versioned assets load on the next normal navigation.
   })());
 });
 

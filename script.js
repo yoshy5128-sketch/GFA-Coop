@@ -9400,6 +9400,16 @@ function doesSegmentHitBox(start, end, box) {
     return !!(hitPoint && start.distanceTo(hitPoint) <= length);
 }
 
+function getSegmentBoxHitPoint(start, end, box) {
+    if (!start || !end || !box) return null;
+    const segment = new THREE.Vector3().subVectors(end, start);
+    const length = segment.length();
+    if (length <= 0.0001) return box.containsPoint(start) ? start.clone() : null;
+    const direction = segment.multiplyScalar(1 / length);
+    const hitPoint = new THREE.Ray(start, direction).intersectBox(box, new THREE.Vector3());
+    return hitPoint && start.distanceTo(hitPoint) <= length ? hitPoint : null;
+}
+
 // 軽量テクスチャキャッシュとローダー
 const textureCache = new Map();
 const textureLoader = new THREE.TextureLoader();
@@ -11343,7 +11353,7 @@ function disposeProjectileMeshResources(mesh) {
 
 function createProjectile(startPos, direction, color, size = 0.1, isRocket = false, source = 'unknown', speed = projectileSpeed, isSniper = false, weaponType = null, shooter = null) {
     if (projectiles.length >= MAX_PROJECTILES) {
-        return;
+        return null;
     }
     const finalSpeed = speed * getEffectiveProjectileSpeedMultiplier();
     const now = clock ? clock.getElapsedTime() : 0;
@@ -11364,7 +11374,7 @@ function createProjectile(startPos, direction, color, size = 0.1, isRocket = fal
     scene.add(bullet);
     const velocity = direction.clone().normalize().multiplyScalar(finalSpeed);
     const projectileLife = (weaponType === WEAPON_SG) ? SHOTGUN_RANGE / finalSpeed : Infinity;
-    projectiles.push({
+    const projectile = {
         mesh: bullet,
         velocity: velocity,
         isRocket: isRocket,
@@ -11379,7 +11389,9 @@ function createProjectile(startPos, direction, color, size = 0.1, isRocket = fal
         nearMissPlayed: false,
         prevPlayerDist: Infinity,
         lastTrailTime: -Infinity
-    });
+    };
+    projectiles.push(projectile);
+    return projectile;
 }
 
 function createExplosionEffect(position) {
@@ -12506,11 +12518,21 @@ function handleFireRelease() {
 function broadcastCoopPlayerFire(direction, weapon = currentWeapon, origin = null) {
     if (!direction || !Number.isFinite(direction.x) || !Number.isFinite(direction.y) || !Number.isFinite(direction.z)) return;
     const validOrigin = origin && Number.isFinite(origin.x) && Number.isFinite(origin.y) && Number.isFinite(origin.z);
+    let observedTargetBounds = null;
+    if (coopSessionConnected && coopLocalRole === 'guest' && gameSettings.gameMode === 'ffa'
+        && coopRemotePlayer && coopRemotePlayer.visible) {
+        const observedHeight = coopRemotePose && coopRemotePose.crouching ? 1.35 : 2.45;
+        observedTargetBounds = {
+            min: [coopRemotePlayer.position.x - 0.84, coopRemotePlayer.position.y - 0.08, coopRemotePlayer.position.z - 0.84],
+            max: [coopRemotePlayer.position.x + 0.84, coopRemotePlayer.position.y + observedHeight, coopRemotePlayer.position.z + 0.84]
+        };
+    }
     window.dispatchEvent(new CustomEvent('gfa:player-fire', {
         detail: {
             weapon,
             direction: [direction.x, direction.y, direction.z],
-            origin: validOrigin ? [origin.x, origin.y, origin.z] : null
+            origin: validOrigin ? [origin.x, origin.y, origin.z] : null,
+            observedTargetBounds
         }
     }));
 }
@@ -13981,6 +14003,10 @@ function setupTitleLogoScreen() {
     const deployButton = document.getElementById('title-deploy-button');
     const fullscreenButton = document.getElementById('title-fullscreen-button');
     if (!titleScreen) return;
+    // Keep the display awake throughout the app, including TOP/settings/lobby.
+    // If the browser requires interaction, the existing pointerdown retry will
+    // acquire the lock on the first touch/click.
+    setGameplayWakeLock(true);
     titleScreen.classList.remove('title-logo-hidden');
     populateTitleMapSelector();
     if (modeSelect) modeSelect.value = normalizeGameMode(gameSettings.gameMode);
@@ -14044,10 +14070,14 @@ function setupTitleLogoScreen() {
         });
     }
     const returnToTitle = () => {
+        if (coopSessionConnected && (isGameRunning || isPaused || isPlayerDeathPlaying)) {
+            const confirmed = window.confirm('CO-OPプレイを終了してTOPへ戻りますか？');
+            if (!confirmed) return;
+        }
         saveSettings();
         isPaused = false;
         isGameRunning = false;
-        setGameplayWakeLock(false);
+        setGameplayWakeLock(true);
         stopGameBGM(false);
         if (deployButton) deployButton.disabled = false;
         document.body.classList.add('settings-screen-active');
@@ -16153,7 +16183,7 @@ function showGameOver() {
     const enemyKilledEl = document.getElementById('enemy-killed-message');
     if (enemyKilledEl) enemyKilledEl.style.display = 'none';
     isGameRunning = false;
-    setGameplayWakeLock(false);
+    setGameplayWakeLock(true);
     setFollowingPlayerMode(false);
     clearProjectileArtifacts();
     gameOverScreen.style.display = 'flex';
@@ -16167,7 +16197,7 @@ function showWinScreen() {
     const enemyKilledEl = document.getElementById('enemy-killed-message');
     if (enemyKilledEl) enemyKilledEl.style.display = 'none';
     isGameRunning = false;
-    setGameplayWakeLock(false);
+    setGameplayWakeLock(true);
     clearProjectileArtifacts();
     winScreen.style.display = 'flex';
     playMatchEndVoice(true);
@@ -17685,6 +17715,23 @@ function getCoopFireSpec(weapon) {
     return specs[weapon] || null;
 }
 
+function getValidatedGuestObservedHostBox(payload) {
+    const bounds = payload && payload.observedTargetBounds;
+    if (!bounds || !Array.isArray(bounds.min) || !Array.isArray(bounds.max)
+        || bounds.min.length !== 3 || bounds.max.length !== 3
+        || !bounds.min.every(Number.isFinite) || !bounds.max.every(Number.isFinite)) return null;
+    const claimed = new THREE.Box3(new THREE.Vector3(...bounds.min), new THREE.Vector3(...bounds.max));
+    const size = claimed.getSize(new THREE.Vector3());
+    if (size.x < 0.5 || size.x > 2.4 || size.y < 0.8 || size.y > 3.2 || size.z < 0.5 || size.z > 2.4) return null;
+    const current = getCoopPvpTargetBox('host');
+    if (!current) return null;
+    const claimedCenter = claimed.getCenter(new THREE.Vector3());
+    const currentCenter = current.getCenter(new THREE.Vector3());
+    // Compensate only for plausible display/interpolation delay.
+    if (claimedCenter.distanceTo(currentCenter) > 6) return null;
+    return claimed;
+}
+
 function handleCoopGuestFire(payload) {
     const remote = getActiveCoopRemoteCombatant();
     const weapon = payload && typeof payload.weapon === 'string' ? payload.weapon : '';
@@ -17716,6 +17763,7 @@ function handleCoopGuestFire(payload) {
     // The replicated rig is interpolated and can lag by a frame, so deriving game
     // physics from its barrel could make a visibly correct shot miss Player 1.
     const direction = requestedDirection.clone();
+    const observedHostBox = getValidatedGuestObservedHostBox(payload);
     const weaponType = weapon === WEAPON_SG || weapon === WEAPON_MR ? weapon : null;
     if (spec.shotgun) {
         const up = new THREE.Vector3(0, 1, 0);
@@ -17728,10 +17776,18 @@ function handleCoopGuestFire(payload) {
             const offset = (i - (SHOTGUN_PELLET_COUNT - 1) / 2) * spreadStep;
             shotDirection.applyAxisAngle(up, offset + (Math.random() - 0.5) * SHOTGUN_SPREAD_ANGLE);
             shotDirection.applyAxisAngle(right, (Math.random() - 0.5) * SHOTGUN_SPREAD_ANGLE);
-            createProjectile(projectileOrigin, shotDirection, spec.color, spec.size, false, 'player', spec.speed, false, WEAPON_SG, remote);
+            const projectile = createProjectile(projectileOrigin, shotDirection, spec.color, spec.size, false, 'player', spec.speed, false, WEAPON_SG, remote);
+            if (projectile && observedHostBox) {
+                projectile.coopLagCompensatedTargetBox = observedHostBox.clone();
+                projectile.coopLagCompensationUntil = performance.now() + 1000;
+            }
         }
     } else {
-        createProjectile(projectileOrigin, direction, spec.color, spec.size, Boolean(spec.rocket), 'player', spec.speed, Boolean(spec.sniper), weaponType, remote);
+        const projectile = createProjectile(projectileOrigin, direction, spec.color, spec.size, Boolean(spec.rocket), 'player', spec.speed, Boolean(spec.sniper), weaponType, remote);
+        if (projectile && observedHostBox) {
+            projectile.coopLagCompensatedTargetBox = observedHostBox.clone();
+            projectile.coopLagCompensationUntil = performance.now() + 1000;
+        }
     }
     return true;
 }
@@ -17749,16 +17805,16 @@ function getCoopPvpTargetBox(targetRole) {
     if (targetRole === 'host') {
         const bounds = getPlayerCombatBounds();
         return new THREE.Box3(
-            new THREE.Vector3(player.position.x - 0.78, bounds.bottomY, player.position.z - 0.78),
-            new THREE.Vector3(player.position.x + 0.78, bounds.topY, player.position.z + 0.78)
+            new THREE.Vector3(player.position.x - 0.84, bounds.bottomY - 0.08, player.position.z - 0.84),
+            new THREE.Vector3(player.position.x + 0.84, bounds.topY + 0.25, player.position.z + 0.84)
         );
     }
     const remote = getActiveCoopRemoteCombatant();
     if (!remote) return null;
-    const remoteHeight = coopRemotePose && coopRemotePose.crouching ? 1.2 : 2.2;
+    const remoteHeight = coopRemotePose && coopRemotePose.crouching ? 1.35 : 2.45;
     return new THREE.Box3(
-        new THREE.Vector3(remote.position.x - 0.78, remote.position.y, remote.position.z - 0.78),
-        new THREE.Vector3(remote.position.x + 0.78, remote.position.y + remoteHeight, remote.position.z + 0.78)
+        new THREE.Vector3(remote.position.x - 0.84, remote.position.y - 0.08, remote.position.z - 0.84),
+        new THREE.Vector3(remote.position.x + 0.84, remote.position.y + remoteHeight, remote.position.z + 0.84)
     );
 }
 
@@ -17767,20 +17823,35 @@ function resolveCoopPvpProjectileHit(projectile, previousPosition, bulletSphere)
     const shooterRole = getCoopPvpShooterRole(projectile);
     if (!shooterRole) return null;
     const targetRole = shooterRole === 'host' ? 'guest' : 'host';
-    const targetBox = getCoopPvpTargetBox(targetRole);
-    if (!targetBox) return null;
-    const sweptBox = targetBox.clone().expandByScalar(bulletSphere.radius);
-    if (!targetBox.intersectsSphere(bulletSphere)
-        && !doesSegmentHitBox(previousPosition, projectile.mesh.position, sweptBox)) return null;
+    const currentTargetBox = getCoopPvpTargetBox(targetRole);
+    if (!currentTargetBox) return null;
+    const targetBoxes = [currentTargetBox];
+    if (targetRole === 'host' && projectile.coopLagCompensatedTargetBox
+        && performance.now() <= Number(projectile.coopLagCompensationUntil || 0)) {
+        targetBoxes.push(projectile.coopLagCompensatedTargetBox);
+    }
+    let impactPoint = null;
+    for (const targetBox of targetBoxes) {
+        const sweptBox = targetBox.clone().expandByScalar(bulletSphere.radius);
+        const segmentImpact = getSegmentBoxHitPoint(previousPosition, projectile.mesh.position, sweptBox);
+        if (segmentImpact && (!impactPoint
+            || previousPosition.distanceToSquared(segmentImpact) < previousPosition.distanceToSquared(impactPoint))) {
+            impactPoint = segmentImpact;
+        } else if (!impactPoint && targetBox.intersectsSphere(bulletSphere)) {
+            impactPoint = projectile.mesh.position.clone();
+        }
+    }
+    if (!impactPoint) return null;
+    projectile.mesh.position.copy(impactPoint);
 
     const damageAmount = projectile.weaponType === WEAPON_SG ? SHOTGUN_PELLET_DAMAGE
         : (projectile.weaponType === WEAPON_MR ? 9 : ((projectile.isSniper || projectile.isRocket) ? Infinity : 1));
     if (targetRole === 'guest') {
         damageCoopRemotePlayer(damageAmount === Infinity ? coopRemoteHP : damageAmount, projectile);
-        return { object: getActiveCoopRemoteCombatant() || coopRemotePlayer, type: 'coop-player' };
+        return { object: getActiveCoopRemoteCombatant() || coopRemotePlayer, type: 'coop-player', impactPoint };
     }
     damageCoopHostPlayer(damageAmount === Infinity ? playerHP : damageAmount, projectile);
-    return { object: player, type: 'player' };
+    return { object: player, type: 'player', impactPoint };
 }
 
 function damageCoopRemotePlayer(damageAmount, projectile) {
@@ -17789,7 +17860,10 @@ function damageCoopRemotePlayer(damageAmount, projectile) {
     const wasAlive = coopRemoteHP > 0;
     coopRemoteHP = Math.max(0, coopRemoteHP - damageAmount);
     remote.hp = coopRemoteHP;
-    createRedSmokeEffect(remote.position.clone().add(new THREE.Vector3(0, 1.2, 0)));
+    const impactPoint = projectile && projectile.mesh
+        ? projectile.mesh.getWorldPosition(new THREE.Vector3())
+        : remote.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+    createRedSmokeEffect(impactPoint);
     if (coopRemoteHP > 0) triggerCharacterHitReaction(remote, projectile && projectile.velocity);
     const velocity = projectile && projectile.velocity ? projectile.velocity.clone().normalize() : new THREE.Vector3(0, 0, 1);
     window.dispatchEvent(new CustomEvent('gfa:remote-player-damage', {
@@ -17809,7 +17883,9 @@ function damageCoopRemotePlayer(damageAmount, projectile) {
 function damageCoopHostPlayer(damageAmount, projectile) {
     if (coopLocalRole !== 'host' || playerHP === Infinity || playerHP <= 0 || !(damageAmount > 0)) return false;
     playerHP = Math.max(0, playerHP - damageAmount);
-    createRedSmokeEffect(getPlayerUpperTorsoPos());
+    const impactPoint = projectile && projectile.mesh
+        ? projectile.mesh.getWorldPosition(new THREE.Vector3()) : getPlayerUpperTorsoPos();
+    createRedSmokeEffect(impactPoint);
     screenShakeDuration = SHAKE_DURATION_MAX;
     if (playerHP > 0) triggerCharacterHitReaction(player, projectile && projectile.velocity);
     if (playerHPDisplay) playerHPDisplay.textContent = `HP: ${playerHP}`;
@@ -17823,8 +17899,20 @@ function damageCoopHostPlayer(damageAmount, projectile) {
     }
     const velocity = projectile && projectile.velocity
         ? projectile.velocity.clone().normalize() : new THREE.Vector3(0, 0, 1);
+    const hostHitBox = getCoopPvpTargetBox('host');
+    const hostHitSize = hostHitBox ? hostHitBox.getSize(new THREE.Vector3()) : null;
+    const hitRatio = hostHitBox && hostHitSize ? [
+        THREE.MathUtils.clamp((impactPoint.x - hostHitBox.min.x) / Math.max(0.001, hostHitSize.x), 0, 1),
+        THREE.MathUtils.clamp((impactPoint.y - hostHitBox.min.y) / Math.max(0.001, hostHitSize.y), 0, 1),
+        THREE.MathUtils.clamp((impactPoint.z - hostHitBox.min.z) / Math.max(0.001, hostHitSize.z), 0, 1)
+    ] : null;
     window.dispatchEvent(new CustomEvent('gfa:host-player-hit', {
-        detail: { hp: playerHP, direction: [velocity.x, velocity.y, velocity.z] }
+        detail: {
+            hp: playerHP,
+            direction: [velocity.x, velocity.y, velocity.z],
+            impactPoint: [impactPoint.x, impactPoint.y, impactPoint.z],
+            hitRatio
+        }
     }));
     if (playerHP <= 0 && !isPlayerDeathPlaying) {
         coopRemotePlayerKills++;
@@ -17835,7 +17923,25 @@ function damageCoopHostPlayer(damageAmount, projectile) {
 
 function showCoopRemotePlayerHit(payload) {
     if (coopLocalRole !== 'guest' || !coopRemotePlayer || !coopRemotePlayer.visible) return false;
-    createRedSmokeEffect(coopRemotePlayer.position.clone().add(new THREE.Vector3(0, 1.2, 0)));
+    let impactPoint = payload && Array.isArray(payload.impactPoint) && payload.impactPoint.length === 3
+        && payload.impactPoint.every(Number.isFinite)
+        ? new THREE.Vector3(...payload.impactPoint)
+        : coopRemotePlayer.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+    if (payload && Array.isArray(payload.hitRatio) && payload.hitRatio.length === 3
+        && payload.hitRatio.every(Number.isFinite)) {
+        const remoteHeight = coopRemotePose && coopRemotePose.crouching ? 1.35 : 2.45;
+        const remoteBox = new THREE.Box3(
+            new THREE.Vector3(coopRemotePlayer.position.x - 0.84, coopRemotePlayer.position.y - 0.08, coopRemotePlayer.position.z - 0.84),
+            new THREE.Vector3(coopRemotePlayer.position.x + 0.84, coopRemotePlayer.position.y + remoteHeight, coopRemotePlayer.position.z + 0.84)
+        );
+        const size = remoteBox.getSize(new THREE.Vector3());
+        impactPoint = new THREE.Vector3(
+            remoteBox.min.x + size.x * THREE.MathUtils.clamp(payload.hitRatio[0], 0, 1),
+            remoteBox.min.y + size.y * THREE.MathUtils.clamp(payload.hitRatio[1], 0, 1),
+            remoteBox.min.z + size.z * THREE.MathUtils.clamp(payload.hitRatio[2], 0, 1)
+        );
+    }
+    createRedSmokeEffect(impactPoint);
     const direction = payload && Array.isArray(payload.direction) && payload.direction.length === 3
         && payload.direction.every(Number.isFinite)
         ? new THREE.Vector3(...payload.direction) : new THREE.Vector3(0, 0, 1);
@@ -20234,7 +20340,10 @@ function animate() {
           }
         // FFAの対人判定は床・AIより先に、ホストだけが確定する。
         // 高速弾もすり抜けないよう、現在位置だけでなく前フレームからの線分でも判定する。
-        if (!hitSomething) {
+        // If an obstacle was found at the end of this frame's segment, still test
+        // the player along the segment. A player standing in front of that wall
+        // must win as the nearer hit.
+        if (!hitSomething || hitType === 'obstacle') {
             const coopPvpHit = resolveCoopPvpProjectileHit(p, prevProjectilePos, bulletSphere);
             if (coopPvpHit) {
                 hitSomething = true;
@@ -20936,7 +21045,7 @@ if (startBtn) {
                 startStageBGM(true);
                 playMatchStartVoice();
             } else {
-                setGameplayWakeLock(false);
+                setGameplayWakeLock(true);
             }
             startBtn.disabled = false;
             startBtn.dataset.loading = 'false';
