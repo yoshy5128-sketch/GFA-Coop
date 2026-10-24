@@ -33,6 +33,8 @@
   let activeRandomMapName = '';
   let gameSettings = {
       playerHP: 20,
+      player2HP: 20,
+      coopSettingsEnabled: false,
       aiHP: 20,
     projectileSpeedMultiplier: 1.0,
     moveSpeedMultiplier: 1.0,
@@ -43,6 +45,7 @@
     mrCount: 1,
       defaultWeapon: 'machinegun',
       defaultWeaponPlayer: 'machinegun',
+      defaultWeaponPlayer2: 'machinegun',
       defaultWeaponAI: 'machinegun',
       defaultWeaponAI1: 'machinegun',
       defaultWeaponAI2: 'machinegun',
@@ -535,6 +538,8 @@ const WEAPON_CUSTOMIZATION_RECOVERY_PRESET = {
         
         
         const playerHpSelect = document.getElementById('player-hp');
+        const player2HpSelect = document.getElementById('player2-hp');
+        const coopSettingsCheckbox = document.getElementById('coop-settings-enabled');
         const aiHpSelect = document.getElementById('ai-hp');
         const mgCountSelect = document.getElementById('mg-count');
         const rrCountSelect = document.getElementById('rr-count');
@@ -588,6 +593,15 @@ const WEAPON_CUSTOMIZATION_RECOVERY_PRESET = {
             }
         }
         if (playerHpSelect) playerHpSelect.addEventListener('change', () => { gameSettings.playerHP = playerHpSelect.value; saveSettings(); });
+        if (player2HpSelect) player2HpSelect.addEventListener('change', () => { gameSettings.player2HP = player2HpSelect.value; saveSettings(); });
+        if (coopSettingsCheckbox) {
+            coopSettingsCheckbox.addEventListener('change', () => {
+                gameSettings.coopSettingsEnabled = coopSettingsCheckbox.checked;
+                updateCoopSettingsUI();
+                saveSettings();
+            });
+            updateCoopSettingsUI();
+        }
         if (aiHpSelect) aiHpSelect.addEventListener('change', () => { gameSettings.aiHP = aiHpSelect.value; saveSettings(); });
         syncMoveSpeedSettingUI();
         const moveSpeedSlider = document.getElementById('move-speed');
@@ -1500,12 +1514,14 @@ function getDefaultWeaponForTarget(target) {
     if (target === 'all') {
         const weapons = [
             gameSettings.defaultWeaponPlayer || WEAPON_MG,
+            gameSettings.defaultWeaponPlayer2 || gameSettings.defaultWeaponPlayer || WEAPON_MG,
             gameSettings.defaultWeaponAI1 || gameSettings.defaultWeaponAI || WEAPON_MG,
             gameSettings.defaultWeaponAI2 || gameSettings.defaultWeaponAI || WEAPON_MG,
             gameSettings.defaultWeaponAI3 || gameSettings.defaultWeaponAI || WEAPON_MG
         ];
         return weapons.every(weapon => weapon === weapons[0]) ? weapons[0] : null;
     }
+    if (target === 'player2') return gameSettings.defaultWeaponPlayer2 || gameSettings.defaultWeaponPlayer || WEAPON_MG;
     if (target === 'ai1') return gameSettings.defaultWeaponAI1 || gameSettings.defaultWeaponAI || WEAPON_MG;
     if (target === 'ai2') return gameSettings.defaultWeaponAI2 || gameSettings.defaultWeaponAI || WEAPON_MG;
     if (target === 'ai3') return gameSettings.defaultWeaponAI3 || gameSettings.defaultWeaponAI || WEAPON_MG;
@@ -1515,11 +1531,14 @@ function getDefaultWeaponForTarget(target) {
 function setDefaultWeaponForTarget(target, weapon) {
     if (target === 'all') {
         gameSettings.defaultWeaponPlayer = weapon;
+        gameSettings.defaultWeaponPlayer2 = weapon;
         gameSettings.defaultWeaponAI = weapon;
         gameSettings.defaultWeaponAI1 = weapon;
         gameSettings.defaultWeaponAI2 = weapon;
         gameSettings.defaultWeaponAI3 = weapon;
         gameSettings.defaultWeapon = weapon;
+    } else if (target === 'player2') {
+        gameSettings.defaultWeaponPlayer2 = weapon;
     } else if (target === 'ai1') {
         gameSettings.defaultWeaponAI1 = weapon;
     } else if (target === 'ai2') {
@@ -1528,6 +1547,23 @@ function setDefaultWeaponForTarget(target, weapon) {
         gameSettings.defaultWeaponAI3 = weapon;
     } else {
         gameSettings.defaultWeaponPlayer = weapon;
+    }
+}
+
+function updateCoopSettingsUI() {
+    const enabled = gameSettings.coopSettingsEnabled === true;
+    const checkbox = document.getElementById('coop-settings-enabled');
+    const player2Hp = document.getElementById('player2-hp');
+    const player2HpSetting = document.getElementById('player2-hp-setting');
+    const player2WeaponOption = document.getElementById('default-weapon-player2-option');
+    const targetSelect = document.getElementById('default-weapon-target');
+    if (checkbox) checkbox.checked = enabled;
+    if (player2Hp) player2Hp.disabled = !enabled;
+    if (player2HpSetting) player2HpSetting.style.opacity = enabled ? '1' : '0.45';
+    if (player2WeaponOption) player2WeaponOption.disabled = !enabled;
+    if (!enabled && targetSelect && targetSelect.value === 'player2') {
+        targetSelect.value = 'player';
+        targetSelect.dispatchEvent(new Event('change'));
     }
 }
 
@@ -1557,6 +1593,7 @@ function isIndoorTeamDeathmatchMode() {
 
 const MODE_PROFILE_FIELDS = [
     'defaultWeaponPlayer',
+    'defaultWeaponPlayer2',
     'defaultWeaponAI',
     'defaultWeaponAI1',
     'defaultWeaponAI2',
@@ -3147,6 +3184,10 @@ const fontLoadPromise = new Promise(resolve => {
 });
 
 function saveSettings() {
+    const coopSettingsCheckbox = document.getElementById('coop-settings-enabled');
+    const player2HpSelect = document.getElementById('player2-hp');
+    if (coopSettingsCheckbox) gameSettings.coopSettingsEnabled = coopSettingsCheckbox.checked;
+    if (player2HpSelect) gameSettings.player2HP = player2HpSelect.value;
     const autoAimRadio = document.querySelector('input[name="auto-aim"]:checked');
     gameSettings.autoAim = autoAimRadio ? (autoAimRadio.value === 'true') : normalizeAutoAimSetting(gameSettings.autoAim);
     gameSettings.killCamMode = document.querySelector('input[name="killcam-mode"]:checked').value;
@@ -3315,6 +3356,13 @@ function loadSettings() {
         if (parsedSavedSettings.defaultWeaponPlayer === undefined) {
             parsedSavedSettings.defaultWeaponPlayer = parsedSavedSettings.defaultWeapon || WEAPON_MG;
         }
+        if (parsedSavedSettings.defaultWeaponPlayer2 === undefined) {
+            parsedSavedSettings.defaultWeaponPlayer2 = parsedSavedSettings.defaultWeaponPlayer || WEAPON_MG;
+        }
+        if (parsedSavedSettings.player2HP === undefined) {
+            parsedSavedSettings.player2HP = parsedSavedSettings.playerHP ?? 20;
+        }
+        parsedSavedSettings.coopSettingsEnabled = parsedSavedSettings.coopSettingsEnabled === true;
         if (parsedSavedSettings.defaultWeaponAI === undefined) {
             parsedSavedSettings.defaultWeaponAI = parsedSavedSettings.defaultWeapon || WEAPON_MG;
         }
@@ -3333,6 +3381,7 @@ function loadSettings() {
         if (!parsedSavedSettings.modeSpecificSettings || typeof parsedSavedSettings.modeSpecificSettings !== 'object') {
             const currentProfile = {
                 defaultWeaponPlayer: parsedSavedSettings.defaultWeaponPlayer,
+                defaultWeaponPlayer2: parsedSavedSettings.defaultWeaponPlayer2,
                 defaultWeaponAI: parsedSavedSettings.defaultWeaponAI,
                 defaultWeaponAI1: parsedSavedSettings.defaultWeaponAI1,
                 defaultWeaponAI2: parsedSavedSettings.defaultWeaponAI2,
@@ -3391,6 +3440,11 @@ function loadSettings() {
         document.querySelectorAll('input[name="barrel-respawn"]').forEach(radio => {
             radio.checked = (radio.value === String(gameSettings.barrelRespawn));
         });
+        setCoopControlValue('player-hp', gameSettings.playerHP);
+        setCoopControlValue('player2-hp', gameSettings.player2HP);
+        const coopSettingsCheckbox = document.getElementById('coop-settings-enabled');
+        if (coopSettingsCheckbox) coopSettingsCheckbox.checked = gameSettings.coopSettingsEnabled === true;
+        updateCoopSettingsUI();
         const defaultWeaponTargetSelect = document.getElementById('default-weapon-target');
         if (defaultWeaponTargetSelect) {
             defaultWeaponTargetSelect.value = 'player';
@@ -16826,6 +16880,7 @@ function resumeGame() {
 let coopSessionConnected = false;
 let coopLocalRole = null;
 let coopRemotePlayer = null;
+let coopRemoteCharacterCustomization = null;
 let coopRemotePose = null;
 let coopRemotePoseReceivedAt = 0;
 let coopRemoteWeapon = null;
@@ -16846,10 +16901,9 @@ let coopLastSnapshotAt = 0;
 function ensureCoopRemotePlayer() {
     if (coopRemotePlayer) return coopRemotePlayer;
     const customization = normalizeCharacterCustomization(
-        characterCustomization.enemy1 || CHARACTER_DEFAULTS.enemy1,
+        coopRemoteCharacterCustomization || characterCustomization.player || CHARACTER_DEFAULTS.player,
         '#2586c9'
     );
-    customization.clothingColor = '#2586c9';
     coopRemotePlayer = createCharacterModel(0x2586c9, customization);
     coopRemotePlayer.name = 'GFA_COOP_REMOTE_PLAYER';
     coopRemotePlayer.visible = false;
@@ -16861,6 +16915,25 @@ function ensureCoopRemotePlayer() {
     });
     scene.add(coopRemotePlayer);
     return coopRemotePlayer;
+}
+
+function getCoopLocalCharacterCustomization() {
+    return JSON.parse(JSON.stringify(normalizeCharacterCustomization(
+        characterCustomization.player || CHARACTER_DEFAULTS.player,
+        CHARACTER_DEFAULTS.player.clothingColor
+    )));
+}
+
+function applyCoopRemoteCharacterCustomization(customization) {
+    if (!customization || typeof customization !== 'object') return false;
+    coopRemoteCharacterCustomization = normalizeCharacterCustomization(customization, '#2586c9');
+    if (coopRemotePlayer) {
+        scene.remove(coopRemotePlayer);
+        coopRemotePlayer = null;
+        coopRemoteWeapon = null;
+    }
+    ensureCoopRemotePlayer();
+    return true;
 }
 
 function enableCoopRemoteShadows() {
@@ -17458,8 +17531,19 @@ function startCoopGameFromHost(payload) {
     const settings = payload && payload.settings;
     if (!settings || typeof settings !== 'object') return false;
     const localKillCamMode = gameSettings.killCamMode;
+    const localButtonPositions = gameSettings.buttonPositions
+        ? JSON.parse(JSON.stringify(gameSettings.buttonPositions))
+        : null;
     Object.assign(gameSettings, settings, { mapType: 'default', customMapName: '' });
     if (typeof localKillCamMode === 'string') gameSettings.killCamMode = localKillCamMode;
+    if (localButtonPositions) gameSettings.buttonPositions = localButtonPositions;
+    const usePlayer2Settings = settings.coopSettingsEnabled === true;
+    gameSettings.playerHP = usePlayer2Settings
+        ? (settings.player2HP ?? settings.playerHP)
+        : settings.playerHP;
+    gameSettings.defaultWeaponPlayer = usePlayer2Settings
+        ? (settings.defaultWeaponPlayer2 || settings.defaultWeaponPlayer || WEAPON_MG)
+        : (settings.defaultWeaponPlayer || WEAPON_MG);
     activeRandomMapData = null;
     setCoopControlValue('player-hp', gameSettings.playerHP);
     setCoopControlValue('ai-hp', gameSettings.aiHP);
@@ -17468,6 +17552,23 @@ function startCoopGameFromHost(payload) {
     setCoopControlValue('sr-count', gameSettings.srCount);
     setCoopControlValue('sg-count', gameSettings.sgCount);
     setCoopControlValue('mr-count', gameSettings.mrCount);
+    setCoopControlValue('move-speed', gameSettings.moveSpeedMultiplier);
+    setCoopControlValue('ai-shot-slider', gameSettings.aiAimPrecision);
+    const aiShotValue = document.getElementById('ai-shot-value');
+    if (aiShotValue) aiShotValue.textContent = String(gameSettings.aiAimPrecision);
+    const autoAimRadio = document.querySelector(`input[name="auto-aim"][value="${String(gameSettings.autoAim)}"]`);
+    if (autoAimRadio) autoAimRadio.checked = true;
+    const barrelRadio = document.querySelector(`input[name="barrel-respawn"][value="${String(gameSettings.barrelRespawn)}"]`);
+    if (barrelRadio) barrelRadio.checked = true;
+    const nightMode = document.getElementById('night-mode');
+    if (nightMode) nightMode.checked = gameSettings.nightModeEnabled === true;
+    const nightIntensity = document.getElementById('night-mode-intensity');
+    if (nightIntensity && gameSettings.nightModeIntensity !== undefined) nightIntensity.value = gameSettings.nightModeIntensity;
+    const timeLapse = document.getElementById('time-lapse-mode');
+    if (timeLapse) timeLapse.checked = gameSettings.timeLapseMode === true;
+    setCoopControlValue('billbattle-size', gameSettings.billBattleSize);
+    setCoopControlValue('billbattle-obstacles', gameSettings.billBattleObstacles);
+    setCoopControlValue('billbattle-lighting', gameSettings.billBattleLighting);
     setCoopControlValue('unified-map-selector', 'default');
     document.querySelectorAll('input[name="ai-count"]').forEach(radio => {
         radio.checked = Number(radio.value) === Number(gameSettings.aiCount);
@@ -17507,6 +17608,8 @@ window.GFACoopGameBridge = Object.freeze({
         }
     },
     getLocalPose: getCoopLocalPose,
+    getLocalCharacterCustomization: getCoopLocalCharacterCustomization,
+    applyRemoteCharacterCustomization: applyCoopRemoteCharacterCustomization,
     applyRemotePose: applyCoopRemotePose,
     getHostWorldState: getCoopHostWorldState,
     applyHostWorldState: applyCoopHostWorldState,
@@ -17520,11 +17623,18 @@ window.GFACoopGameBridge = Object.freeze({
         if (mapSelector && mapSelector.value !== 'default') {
             return { ok: false, message: '初期CO-OP版はMAPをDefault Mapに設定してください。' };
         }
-        const deployButton = document.getElementById('title-deploy-button');
-        if (!deployButton || deployButton.disabled) {
+        const startButton = document.getElementById('start-game-btn');
+        if (!startButton || startButton.dataset.loading === 'true') {
             return { ok: false, message: '現在ゲームを開始できません。TOP画面へ戻ってください。' };
         }
-        deployButton.click();
+        initializeAudio();
+        gameSettings.mapType = 'default';
+        gameSettings.customMapName = '';
+        setCoopControlValue('unified-map-selector', 'default');
+        saveSettings();
+        const titleScreen = document.getElementById('title-logo-screen');
+        if (titleScreen) titleScreen.classList.add('title-logo-hidden');
+        startButton.click();
         return { ok: true };
     },
     startFromHost: startCoopGameFromHost

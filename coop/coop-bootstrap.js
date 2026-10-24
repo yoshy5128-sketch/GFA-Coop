@@ -1,7 +1,7 @@
 import { GfaPeerTransport } from './net/peer-transport.js';
 import { normalizeRoomCode } from './net/protocol.js';
 
-const COOP_BUILD_ID = '20261024-v17';
+const COOP_BUILD_ID = '20261024-v18';
 
 const launchButton = document.getElementById('title-coop-button');
 const overlay = document.getElementById('coop-lobby-overlay');
@@ -90,18 +90,31 @@ function createTransport() {
     onConnect(info) {
       gameBridge()?.setSession?.({ connected: true, role: info.role });
       startPoseExchange();
-      transport.sendEvent('hello', { role: info.role, build: COOP_BUILD_ID });
+      transport.sendEvent('hello', {
+        role: info.role,
+        build: COOP_BUILD_ID,
+        character: gameBridge()?.getLocalCharacterCustomization?.()
+      });
     },
     onState(message) {
       if (message.type === 'player-pose') gameBridge()?.applyRemotePose?.(message.payload);
       if (message.type === 'world-state') gameBridge()?.applyHostWorldState?.(message.payload);
     },
     onEvent(message) {
-      if (message.type === 'hello') transport.sendEvent('hello-ack', { receivedAt: Date.now() });
+      if (message.type === 'hello') {
+        gameBridge()?.applyRemoteCharacterCustomization?.(message.payload?.character);
+        transport.sendEvent('hello-ack', {
+          receivedAt: Date.now(),
+          character: gameBridge()?.getLocalCharacterCustomization?.()
+        });
+      }
       if (message.type === 'hello-ack') updateStatus({
         code: 'connected',
         message: `P2P接続成功・双方向通信確認済み / Build ${COOP_BUILD_ID}`
       });
+      if (message.type === 'hello-ack') {
+        gameBridge()?.applyRemoteCharacterCustomization?.(message.payload?.character);
+      }
       if (message.type === 'game-start' && transport.role === 'guest') {
         updateStatus({ code: 'connected', message: 'HOSTの設定でゲームを開始します…' });
         overlay.hidden = true;

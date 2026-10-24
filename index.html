@@ -500,7 +500,7 @@
         }
     </style>
     
-    <link rel="stylesheet" href="style.css?v=20261024d">
+    <link rel="stylesheet" href="style.css?v=20261024e">
     <link rel="manifest" href="./manifest.json">
 
     <script src="./vendor/nipplejs-0.8.4.js"></script>
@@ -508,7 +508,7 @@
 </head>
 <body class="settings-screen-active">
     <div id="title-logo-screen" aria-label="Gun Fight Arena title">
-        <div id="gfa-title-build" class="gfa-build-badge">Build 20261024-v17</div>
+        <div id="gfa-title-build" class="gfa-build-badge">Build 20261024-v18</div>
         <button id="title-fullscreen-button" type="button" aria-label="全画面表示にする" aria-pressed="false" title="全画面表示">
             <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
                 <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" />
@@ -555,7 +555,7 @@
         <section id="coop-lobby" role="dialog" aria-modal="true" aria-labelledby="coop-lobby-title">
             <button id="coop-lobby-close" type="button" aria-label="閉じる">×</button>
             <h2 id="coop-lobby-title">GFA LAN CO-OP</h2>
-            <div id="gfa-coop-build" class="gfa-build-badge">Build 20261024-v17</div>
+            <div id="gfa-coop-build" class="gfa-build-badge">Build 20261024-v18</div>
             <p class="coop-lobby-help">同じWi-Fiまたはテザリングに接続し、2台で同じルームコードを入力してください。</p>
             <div class="coop-role-buttons">
                 <button type="button" data-coop-role="host" class="active">HOST / PLAYER 1</button>
@@ -576,13 +576,26 @@
             <h1 style="text-align: center;">Gun Fight Settings</h1>
 
             <h2 style="margin-top: 20px;">HP Settings(体力)</h2>
-            <label for="player-hp">Player HP:</label>
-            <select id="player-hp" style="font-size: 1em; padding: 5px;">
-                <option value="3">3</option>
-                <option value="10">10</option>
-                <option value="20" selected>20</option>
-                <option value="Infinity">Infinite</option>
-            </select>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;">
+                <span>
+                    <label for="player-hp">Player HP:</label>
+                    <select id="player-hp" style="font-size: 1em; padding: 5px;">
+                        <option value="3">3</option>
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="Infinity">Infinite</option>
+                    </select>
+                </span>
+                <span id="player2-hp-setting">
+                    <label for="player2-hp">Player 2 HP:</label>
+                    <select id="player2-hp" disabled style="font-size: 1em; padding: 5px;">
+                        <option value="3">3</option>
+                        <option value="10">10</option>
+                        <option value="20" selected>20</option>
+                        <option value="Infinity">Infinite</option>
+                    </select>
+                </span>
+            </div>
             <br>
             <label for="ai-hp" style="margin-top: 10px; display: inline-block;">AI HP:</label>
             <select id="ai-hp" style="font-size: 1em; padding: 5px;">
@@ -591,6 +604,10 @@
                 <option value="20" selected>20</option>
                 <option value="Infinity">Infinite</option>
             </select>
+            <label style="display: block; margin-top: 10px; color: #9fe6ff;">
+                <input type="checkbox" id="coop-settings-enabled"> CO-OP
+                <span style="font-size: 0.85em; color: #ccc;">（Player 2の個別設定を有効化）</span>
+            </label>
 
             <h2 style="margin-top: 20px;">Move Speed（移動速度）</h2>
             <div id="move-speed-setting" style="margin-top: 10px;">
@@ -666,6 +683,7 @@
                 <select id="default-weapon-target" style="font-size: 1em; padding: 4px 6px;">
                     <option value="all">ALL</option>
                     <option value="player" selected>Player</option>
+                    <option value="player2" id="default-weapon-player2-option" disabled>Player 2 (CO-OP)</option>
                     <option value="ai1">AI 1</option>
                     <option value="ai2">AI 2</option>
                     <option value="ai3">AI 3</option>
@@ -1401,8 +1419,8 @@
     </script>
     <script src="./vendor/tween-18.6.4.umd.js"></script>
     <script src="character-models.js?v=20261024k"></script>
-    <script src="script.js?v=20261024n"></script>
-    <script type="module" src="coop/coop-bootstrap.js?v=20261024m"></script>
+    <script src="script.js?v=20261024o"></script>
+    <script type="module" src="coop/coop-bootstrap.js?v=20261024n"></script>
     <script>
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', () => {
