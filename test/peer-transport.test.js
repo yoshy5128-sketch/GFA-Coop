@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GfaPeerTransport } from '../coop/net/peer-transport.js';
+import { createEnvelope } from '../coop/net/protocol.js';
 
 test('both host and guest can send transient player state', () => {
   for (const role of ['host', 'guest']) {
@@ -31,4 +32,15 @@ test('guest cannot send state when the unreliable channel is congested', () => {
   };
 
   assert.equal(transport.sendState('player-pose', {}), false);
+});
+
+test('unordered state sequences are tracked independently by message type', () => {
+  const received = [];
+  const transport = new GfaPeerTransport({ onState: message => received.push(message.type) });
+
+  transport._handleData('state', JSON.stringify(createEnvelope('state', 'world-state', 10, {})));
+  transport._handleData('state', JSON.stringify(createEnvelope('state', 'player-pose', 9, {})));
+  transport._handleData('state', JSON.stringify(createEnvelope('state', 'world-state', 8, {})));
+
+  assert.deepEqual(received, ['world-state', 'player-pose']);
 });

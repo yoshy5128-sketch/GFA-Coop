@@ -11,15 +11,22 @@ const connectButton = overlay.querySelector('#coop-connect');
 const startButton = overlay.querySelector('#coop-start');
 const roomInput = overlay.querySelector('#coop-room-code');
 let poseTimer = null;
+let poseTick = 0;
 
 function gameBridge() {
   return window.GFACoopGameBridge || null;
 }
 
 function updateStartButton() {
-  const canStart = selectedRole === 'host' && Boolean(transport?.connected);
-  startButton.hidden = selectedRole !== 'host' || !transport?.connected;
+  const activeRole = transport?.connected ? transport.role : selectedRole;
+  const canStart = activeRole === 'host' && Boolean(transport?.connected);
+  startButton.hidden = activeRole !== 'host' || !transport?.connected;
   startButton.disabled = !canStart;
+}
+
+function lockConnectionForm(locked) {
+  roomInput.disabled = locked;
+  for (const button of overlay.querySelectorAll('[data-coop-role]')) button.disabled = locked;
 }
 
 function startPoseExchange() {
@@ -28,14 +35,23 @@ function startPoseExchange() {
     if (!transport?.connected) return;
     const pose = gameBridge()?.getLocalPose?.();
     if (pose) transport.sendState('player-pose', pose);
+    poseTick += 1;
+    if (transport.role === 'host' && poseTick % 2 === 0) {
+      const world = gameBridge()?.getHostWorldState?.();
+      if (world) transport.sendState('world-state', world);
+    }
   }, 50);
 }
 
 function updateStatus({ code, message }) {
   statusElement.dataset.state = code;
   statusElement.textContent = message;
-  if (code === 'error' || code === 'disconnected') connectButton.disabled = false;
+  if (code === 'error' || code === 'disconnected') {
+    connectButton.disabled = false;
+    lockConnectionForm(false);
+  }
   if (code === 'connected') {
+    lockConnectionForm(true);
     launchButton?.classList.add('connected');
     launchButton.textContent = 'LAN CO-OP CONNECTED';
     updateStartButton();
@@ -53,11 +69,12 @@ function createTransport() {
     },
     onState(message) {
       if (message.type === 'player-pose') gameBridge()?.applyRemotePose?.(message.payload);
+      if (message.type === 'world-state') gameBridge()?.applyHostWorldState?.(message.payload);
     },
     onEvent(message) {
       if (message.type === 'hello') transport.sendEvent('hello-ack', { receivedAt: Date.now() });
       if (message.type === 'hello-ack') updateStatus({ code: 'connected', message: 'P2P接続成功・双方向通信確認済み' });
-      if (message.type === 'game-start' && selectedRole === 'guest') {
+      if (message.type === 'game-start' && transport.role === 'guest') {
         updateStatus({ code: 'connected', message: 'HOSTの設定でゲームを開始します…' });
         overlay.hidden = true;
         gameBridge()?.startFromHost?.(message.payload);
@@ -66,12 +83,13 @@ function createTransport() {
     },
     onDisconnect() {
       gameBridge()?.setSession?.({ connected: false, role: selectedRole });
+      lockConnectionForm(false);
       updateStartButton();
     }
   });
   window.GFACoop = Object.freeze({
     get transport() { return transport; },
-    get role() { return selectedRole; },
+    get role() { return transport?.role || selectedRole; },
     get connected() { return Boolean(transport?.connected); }
   });
   return transport;
@@ -97,7 +115,7 @@ connectButton.addEventListener('click', async () => {
 });
 
 startButton.addEventListener('click', () => {
-  if (selectedRole !== 'host' || !transport?.connected) return;
+  if (transport?.role !== 'host' || !transport.connected) return;
   const result = gameBridge()?.startAsHost?.();
   if (!result?.ok) {
     updateStatus({ code: 'error', message: result?.message || 'ゲームを開始できません。' });
@@ -109,7 +127,7 @@ startButton.addEventListener('click', () => {
 });
 
 window.addEventListener('gfa:game-starting', event => {
-  if (selectedRole !== 'host' || !transport?.connected) return;
+  if (transport?.role !== 'host' || !transport.connected) return;
   transport.sendEvent('game-start', event.detail);
 });
 

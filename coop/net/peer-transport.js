@@ -22,7 +22,7 @@ export class GfaPeerTransport {
     this.role = null;
     this.roomCode = '';
     this.sequence = { state: 0, event: 0 };
-    this.lastReceivedStateSequence = -1;
+    this.lastReceivedStateSequence = new Map();
     this.disconnectTimer = null;
     this.closedByUser = false;
     this.connected = false;
@@ -155,8 +155,9 @@ export class GfaPeerTransport {
     const message = parseEnvelope(raw, kind);
     if (!message) return;
     if (kind === 'state') {
-      if (message.seq <= this.lastReceivedStateSequence) return;
-      this.lastReceivedStateSequence = message.seq;
+      const lastSequence = this.lastReceivedStateSequence.get(message.type) ?? -1;
+      if (message.seq <= lastSequence) return;
+      this.lastReceivedStateSequence.set(message.type, message.seq);
       this.handlers.onState?.(message);
     } else {
       this.handlers.onEvent?.(message);

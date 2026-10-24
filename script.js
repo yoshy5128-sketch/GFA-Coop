@@ -16560,6 +16560,8 @@ let coopRemoteWeapon = null;
 let coopLastSnapshotPosition = null;
 let coopWasGameRunning = false;
 let coopSpawnApplied = false;
+let coopRemotePoseInitialized = false;
+let coopHostWorldReceivedAt = 0;
 
 function ensureCoopRemotePlayer() {
     if (coopRemotePlayer) return coopRemotePlayer;
@@ -16601,13 +16603,21 @@ function getCoopLocalPose() {
 function applyCoopRemotePose(pose) {
     if (!pose || pose.active !== true || !Array.isArray(pose.position) || pose.position.length !== 3) {
         coopRemotePose = null;
+        coopRemotePoseInitialized = false;
         if (coopRemotePlayer) coopRemotePlayer.visible = false;
         return;
     }
     if (!pose.position.every(Number.isFinite) || !Number.isFinite(pose.yaw)) return;
+    const previousReceivedAt = coopRemotePoseReceivedAt;
     coopRemotePose = pose;
     coopRemotePoseReceivedAt = performance.now();
-    ensureCoopRemotePlayer();
+    const remote = ensureCoopRemotePlayer();
+    if (!coopRemotePoseInitialized || coopRemotePoseReceivedAt - previousReceivedAt > 1500) {
+        const height = Number.isFinite(pose.height) ? pose.height : 2.2;
+        remote.position.set(pose.position[0], pose.position[1] - height, pose.position[2]);
+        remote.rotation.y = normalizeCoopAngle(pose.yaw + Math.PI);
+        coopRemotePoseInitialized = true;
+    }
 }
 
 function normalizeCoopAngle(angle) {
@@ -16632,7 +16642,9 @@ function updateCoopRemotePlayer(delta) {
     const target = new THREE.Vector3(x, y - height, z);
     const blend = 1 - Math.exp(-Math.max(0, delta) * 14);
     coopRemotePlayer.position.lerp(target, blend);
-    const yawDelta = normalizeCoopAngle(coopRemotePose.yaw - coopRemotePlayer.rotation.y);
+    // The first-person player holder faces opposite to the visible character model.
+    const remoteVisualYaw = normalizeCoopAngle(coopRemotePose.yaw + Math.PI);
+    const yawDelta = normalizeCoopAngle(remoteVisualYaw - coopRemotePlayer.rotation.y);
     coopRemotePlayer.rotation.y += yawDelta * blend;
     coopRemotePlayer.visible = true;
 
@@ -16650,6 +16662,59 @@ function updateCoopRemotePlayer(delta) {
             0
         );
     }
+}
+
+function getCoopHostWorldState() {
+    if (!coopSessionConnected || coopLocalRole !== 'host' || !isGameRunning) return { active: false };
+    return {
+        active: true,
+        ais: ais.map(ai => ({
+            position: [ai.position.x, ai.position.y, ai.position.z],
+            yaw: ai.rotation.y,
+            crouching: Boolean(ai.isCrouching),
+            moving: ['MOVING', 'FOLLOWING', 'MOVING_TO_LADDER', 'CLIMBING', 'DESCENDING'].includes(ai.state),
+            weapon: ai.currentWeapon || WEAPON_PISTOL,
+            hp: Number.isFinite(ai.hp) ? ai.hp : null,
+            visible: Boolean(ai.visible && ai.hp > 0)
+        }))
+    };
+}
+
+function applyCoopHostWorldState(state) {
+    if (coopLocalRole !== 'guest' || !state || state.active !== true || !Array.isArray(state.ais)) return;
+    coopHostWorldReceivedAt = performance.now();
+    state.ais.forEach((snapshot, index) => {
+        const ai = ais[index];
+        if (!ai || !snapshot || !Array.isArray(snapshot.position) || !snapshot.position.every(Number.isFinite)) return;
+        if (!ai.userData) ai.userData = {};
+        ai.userData.coopTargetPosition = new THREE.Vector3(...snapshot.position);
+        ai.userData.coopTargetYaw = Number.isFinite(snapshot.yaw) ? snapshot.yaw : ai.rotation.y;
+        ai.userData.coopMoving = Boolean(snapshot.moving);
+        ai.isCrouching = Boolean(snapshot.crouching);
+        ai.visible = Boolean(snapshot.visible);
+        if (Number.isFinite(snapshot.hp)) ai.hp = snapshot.hp;
+        if (typeof snapshot.weapon === 'string' && snapshot.weapon !== ai.currentWeapon) {
+            ai.currentWeapon = snapshot.weapon;
+            const parts = ai.userData.parts;
+            if (parts && parts.gun) applyGunStyle(parts.gun, ai.currentWeapon);
+        }
+    });
+}
+
+function updateCoopGuestAI(ai, delta) {
+    if (!coopSessionConnected || coopLocalRole !== 'guest' || performance.now() - coopHostWorldReceivedAt > 1500) return false;
+    const target = ai.userData && ai.userData.coopTargetPosition;
+    if (target) {
+        const blend = 1 - Math.exp(-Math.max(0, delta) * 12);
+        ai.position.lerp(target, blend);
+        const targetYaw = Number.isFinite(ai.userData.coopTargetYaw) ? ai.userData.coopTargetYaw : ai.rotation.y;
+        ai.rotation.y += normalizeCoopAngle(targetYaw - ai.rotation.y) * blend;
+        const parts = ai.userData.parts;
+        if (parts && window.GFACharacterModels && typeof GFACharacterModels.pose === 'function') {
+            GFACharacterModels.pose(parts, Boolean(ai.isCrouching), clock.getElapsedTime(), Boolean(ai.userData.coopMoving), 0);
+        }
+    }
+    return true;
 }
 
 function showCoopRemoteFire(payload) {
@@ -16711,10 +16776,16 @@ window.GFACoopGameBridge = Object.freeze({
         coopSessionConnected = Boolean(connected);
         coopLocalRole = role === 'guest' ? 'guest' : 'host';
         coopSpawnApplied = false;
-        if (!coopSessionConnected && coopRemotePlayer) coopRemotePlayer.visible = false;
+        if (!coopSessionConnected) {
+            coopRemotePoseInitialized = false;
+            coopHostWorldReceivedAt = 0;
+            if (coopRemotePlayer) coopRemotePlayer.visible = false;
+        }
     },
     getLocalPose: getCoopLocalPose,
     applyRemotePose: applyCoopRemotePose,
+    getHostWorldState: getCoopHostWorldState,
+    applyHostWorldState: applyCoopHostWorldState,
     showRemoteFire: showCoopRemoteFire,
     startAsHost() {
         const mapSelector = document.getElementById('title-map-selector');
@@ -17389,6 +17460,7 @@ function animate() {
         const AI_SEPARATION_FORCE = 2.0;
         ais.forEach((ai, index) => {
             if (!ai) return;
+            if (updateCoopGuestAI(ai, delta)) return;
             if (ai.userData && (ai.userData.isDying || ai.userData.deathFallingToGround)) {
                 if (ai.targetPosition) ai.targetPosition.copy(ai.position);
                 ai.avoiding = false;

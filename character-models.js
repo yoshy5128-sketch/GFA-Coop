@@ -1142,7 +1142,7 @@ const weaponProfiles={
     machinegun:{label:'MACHINE GUN',position:[-.18,.86,.62],right:[0,-.15,-.363],left:[0,-.075,.20],head:[-.065,-.06,.12]},
     sniperrifle:{label:'SNIPER RIFLE',position:[-.18,.91,1.00],right:[0,-.063,-.53],left:[0,-.065,-.19],head:[-.075,-.04,.16]},
     shotgun:{label:'SHOTGUN',position:[-.18,.86,.66],right:[0,-.16,-.396],left:[0,-.08,.13],head:[-.065,-.06,.12]},
-    rocketlauncher:{label:'ROCKET LAUNCHER',position:[-.38,.82,1.05],right:[0,-.20,-.858],left:[.025,-.15,-.43],head:[.015,-.08,.04],frame:1.33}
+    rocketlauncher:{label:'ROCKET LAUNCHER',position:[-.25,.82,.78],right:[0,-.13,-.55],left:[.016,-.10,-.28],head:[.015,-.08,.04],frame:.88}
 };
 function weaponGeometry(parent,id,variant='A') {
     variant=['A','B','C'].includes(String(variant).toUpperCase())?String(variant).toUpperCase():'A';
@@ -1223,11 +1223,11 @@ function weaponGeometry(parent,id,variant='A') {
             }
         }else if(id==='rocketlauncher'){
             if(variant==='A'){
-                vc(0,.05,0,.16,2.75,olive);vc(1.34,.05,0,.21,.15,metal);vc(-1.34,.05,0,.22,.16,metal);for(let z=-.9;z<1;z+=.45)vc(z,.05,0,.18,.045,dark);vgrip(-.62,-.24);vtrigger(-.40,-.13);vb(-.10,.30,0,.34,.18,.16,metal);vscope(-.10,.47,.34,.055);place(-.40,1.34,-.723,1.32,-.13,-.185);
+                vc(0,.05,0,.16,2.75,olive);vc(1.34,.05,0,.21,.15,metal);vc(-1.34,.05,0,.22,.16,metal);for(let z=-.9;z<1;z+=.45)vc(z,.05,0,.18,.045,dark);vgrip(-.62,-.24);vtrigger(-.40,-.13);vb(-.10,.30,0,.34,.18,.16,metal);vscope(-.10,.47,.34,.055);place(-.40,1.34,-.45,.85,-.13,-.185);
             }else if(variant==='B'){
-                vc(-.20,.02,0,.105,2.20,olive);vcone(1.12,.02,0,.30,.72,red);vc(.77,.02,0,.18,.28,red);vcone(-1.38,.02,0,.18,.42,woodDark);vc(-1.07,.02,0,.14,.35,woodDark);vgrip(-.45,-.23,woodDark);vtrigger(-.24,-.12);vb(-.42,.145,0,.24,.08,.12,metal);vsight(-.16,.145);place(-.24,1.48,-.723,1.32,-.12,-.185);
+                vc(-.20,.02,0,.105,2.20,olive);vcone(1.12,.02,0,.30,.72,red);vc(.77,.02,0,.18,.28,red);vcone(-1.38,.02,0,.18,.42,woodDark);vc(-1.07,.02,0,.14,.35,woodDark);vgrip(-.45,-.23,woodDark);vtrigger(-.24,-.12);vb(-.42,.145,0,.24,.08,.12,metal);vsight(-.16,.145);place(-.24,1.48,-.45,.85,-.12,-.185);
             }else{
-                vc(.12,.05,0,.20,2.80,sand);vc(1.47,.05,0,.27,.20,metal);vcone(-1.50,.05,0,.31,.40,metal);for(let z=-.8;z<1.15;z+=.38)vc(z,.05,0,.215,.04,olive);vgrip(-.62,-.25);vgrip(.20,-.23);vtrigger(-.42,-.14);vb(-.02,.36,0,.44,.22,.17,metal);vscope(-.02,.52,.40,.06);place(-.42,1.47,-.723,1.32,-.14,-.185);
+                vc(.12,.05,0,.20,2.80,sand);vc(1.47,.05,0,.27,.20,metal);vcone(-1.50,.05,0,.31,.40,metal);for(let z=-.8;z<1.15;z+=.38)vc(z,.05,0,.215,.04,olive);vgrip(-.62,-.25);vgrip(.20,-.23);vtrigger(-.42,-.14);vb(-.02,.36,0,.44,.22,.17,metal);vscope(-.02,.52,.40,.06);place(-.42,1.47,-.45,.85,-.14,-.185);
             }
         }
     }
@@ -1508,7 +1508,7 @@ function reset(parts,id){const r=rigs.get(parts);if(!r)return;activeRagdolls.del
 // Reuse bounds, but update their coordinates on every call (including death/respawn).
 function boxes(parts){const r=rigs.get(parts);if(!r)return [];r.root.updateWorldMatrix(true,true);for(const c of r.colliders){c.box.makeEmpty();for(const m of c.meshes)c.box.union(r.scratchBox.copy(m.geometry.boundingBox).applyMatrix4(m.matrixWorld));}return r.colliderBoxes;}
 function bodyBox(parts){const b=new THREE.Box3();boxes(parts).forEach(x=>b.union(x));return b;}
-const muzzleEnds={pistol:[0,.01,.308],m1rifle:[0,.026,1.015],machinegun:[0,.024,.817],sniperrifle:[0,.03,1.215],shotgun:[0,.025,.711],rocketlauncher:[0,0,1.32]};
+const muzzleEnds={pistol:[0,.01,.308],m1rifle:[0,.026,1.015],machinegun:[0,.024,.817],sniperrifle:[0,.03,1.215],shotgun:[0,.025,.711],rocketlauncher:[0,0,.85]};
 function muzzle(parts){const r=rigs.get(parts);r.gun.updateWorldMatrix(true,false);return {position:V(...muzzleEnds[r.weapon]).applyMatrix4(r.gun.matrixWorld),direction:V(0,0,1).transformDirection(r.gun.matrixWorld)};}
 function beginRagdoll(parts,impactVelocity=null,hitPoint=null,seed=Math.random()){
     const r=rigs.get(parts);if(!r)return;
