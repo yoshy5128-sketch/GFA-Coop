@@ -1,7 +1,7 @@
 import { GfaPeerTransport } from './net/peer-transport.js';
 import { normalizeRoomCode } from './net/protocol.js';
 
-const COOP_BUILD_ID = '20261024-v16';
+const COOP_BUILD_ID = '20261024-v17';
 
 const launchButton = document.getElementById('title-coop-button');
 const overlay = document.getElementById('coop-lobby-overlay');
@@ -11,6 +11,7 @@ let transport = null;
 const statusElement = overlay.querySelector('#coop-status');
 const connectButton = overlay.querySelector('#coop-connect');
 const startButton = overlay.querySelector('#coop-start');
+const resetButton = overlay.querySelector('#coop-reset');
 const roomInput = overlay.querySelector('#coop-room-code');
 let poseTimer = null;
 let poseTick = 0;
@@ -45,6 +46,27 @@ function startPoseExchange() {
   }, 50);
 }
 
+function stopPoseExchange() {
+  if (poseTimer) window.clearInterval(poseTimer);
+  poseTimer = null;
+  poseTick = 0;
+}
+
+function resetConnection() {
+  stopPoseExchange();
+  transport?.close();
+  transport = null;
+  gameBridge()?.setSession?.({ connected: false, role: selectedRole });
+  connectButton.disabled = false;
+  lockConnectionForm(false);
+  updateStartButton();
+  launchButton?.classList.remove('connected');
+  if (launchButton) launchButton.textContent = 'LAN CO-OP';
+  statusElement.dataset.state = 'idle';
+  statusElement.textContent = '接続状態をリセットしました。役割とルームコードを確認して再接続してください。';
+  if (window.matchMedia('(pointer: fine)').matches) roomInput.focus({ preventScroll: true });
+}
+
 function updateStatus({ code, message }) {
   statusElement.dataset.state = code;
   statusElement.textContent = message;
@@ -61,6 +83,7 @@ function updateStatus({ code, message }) {
 }
 
 function createTransport() {
+  stopPoseExchange();
   transport?.close();
   transport = new GfaPeerTransport({
     onStatus: updateStatus,
@@ -99,6 +122,7 @@ function createTransport() {
       }
     },
     onDisconnect() {
+      stopPoseExchange();
       gameBridge()?.setSession?.({ connected: false, role: selectedRole });
       lockConnectionForm(false);
       updateStartButton();
@@ -130,6 +154,8 @@ connectButton.addEventListener('click', async () => {
     updateStatus({ code: 'error', message: error.message });
   }
 });
+
+resetButton.addEventListener('click', resetConnection);
 
 startButton.addEventListener('click', () => {
   if (transport?.role !== 'host' || !transport.connected) return;

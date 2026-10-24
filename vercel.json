@@ -24,6 +24,10 @@
         {
           "key": "Expires",
           "value": "0"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "screen-wake-lock=(self)"
         }
       ]
     }

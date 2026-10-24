@@ -780,9 +780,11 @@ body.settings-screen-active #follow-button {
 .coop-role-buttons button.active { color: #03151c; background: #6de6ff; }
 .coop-room-field { display: grid; gap: 7px; color: #9ccbd8; font-size: 12px; font-weight: 700; }
 #coop-room-code { width: 100%; padding: 12px; border: 1px solid #4b9bb1; border-radius: 7px; text-align: center; letter-spacing: 0.25em; font-size: 20px; text-transform: uppercase; box-sizing: border-box; }
-#coop-connect, #coop-start { width: 100%; margin-top: 12px; padding: 12px; font-weight: 800; }
+#coop-connect, #coop-start, #coop-reset { width: 100%; margin-top: 12px; padding: 12px; font-weight: 800; }
 #coop-start { background: #147a55; border: 1px solid #58d7a7; color: #fff; }
 #coop-start:disabled { opacity: 0.5; }
+#coop-reset { background: #4a2830; border: 1px solid #b96d7c; color: #ffe7ec; }
+#coop-reset:hover, #coop-reset:focus-visible { background: #633440; }
 #coop-status { min-height: 22px; margin-top: 12px; color: #ffd27a; text-align: center; }
 #coop-status[data-state="connected"] { color: #73ffa4; }
 #coop-status[data-state="error"], #coop-status[data-state="disconnected"] { color: #ff8e83; }
@@ -845,7 +847,7 @@ body.settings-screen-active #follow-button {
         padding: 7px 10px;
         font-size: 17px;
     }
-    #coop-connect, #coop-start {
+    #coop-connect, #coop-start, #coop-reset {
         margin-top: 8px;
         padding: 9px;
     }

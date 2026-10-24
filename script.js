@@ -1254,6 +1254,58 @@ player.rotation.y = Math.PI;
 camera.position.set(0, 0, 0);
 camera.position.z = 5; // カメラを少し後ろに配置
 let isGameRunning = false;
+let gameplayWakeLock = null;
+let gameplayWakeLockRequest = null;
+let gameplayWakeLockWanted = false;
+
+async function requestGameplayWakeLock() {
+    if (!gameplayWakeLockWanted || document.visibilityState !== 'visible'
+        || !shouldShowTouchControls() || !('wakeLock' in navigator)) return false;
+    if (gameplayWakeLock && !gameplayWakeLock.released) return true;
+    if (gameplayWakeLockRequest) return gameplayWakeLockRequest;
+    gameplayWakeLockRequest = (async () => {
+        try {
+            const sentinel = await navigator.wakeLock.request('screen');
+            if (!gameplayWakeLockWanted) {
+                await sentinel.release();
+                return false;
+            }
+            gameplayWakeLock = sentinel;
+            sentinel.addEventListener('release', () => {
+                if (gameplayWakeLock === sentinel) gameplayWakeLock = null;
+            });
+            return true;
+        } catch (error) {
+            console.warn('Screen wake lock is unavailable:', error);
+            return false;
+        } finally {
+            gameplayWakeLockRequest = null;
+        }
+    })();
+    return gameplayWakeLockRequest;
+}
+
+function setGameplayWakeLock(active) {
+    gameplayWakeLockWanted = Boolean(active);
+    if (gameplayWakeLockWanted) {
+        void requestGameplayWakeLock();
+        return;
+    }
+    const sentinel = gameplayWakeLock;
+    gameplayWakeLock = null;
+    if (sentinel && !sentinel.released) void sentinel.release().catch(() => {});
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && gameplayWakeLockWanted) {
+        void requestGameplayWakeLock();
+    }
+});
+document.addEventListener('pointerdown', () => {
+    if (gameplayWakeLockWanted && (!gameplayWakeLock || gameplayWakeLock.released)) {
+        void requestGameplayWakeLock();
+    }
+}, { passive: true });
 let playerTargetHeight = 2.0;
 let isCrouchingToggle = false;
 const GRAVITY = 9.8;
@@ -13810,6 +13862,7 @@ function setupTitleLogoScreen() {
         saveSettings();
         isPaused = false;
         isGameRunning = false;
+        setGameplayWakeLock(false);
         stopGameBGM(false);
         if (deployButton) deployButton.disabled = false;
         document.body.classList.add('settings-screen-active');
@@ -14219,6 +14272,7 @@ function updateMenuBGM() {
 
 function startGame() {
     debugLog('startGame() called');
+    setGameplayWakeLock(true);
     document.body.classList.remove('settings-screen-active');
     applySettingsScreenLighting(false);
     ensureBuildStamp();
@@ -14369,6 +14423,7 @@ function shuffle(array) {
 
 function restartGame(options = {}) {
     debugLog('restartGame() called');
+    if (!options.deferGameplay) setGameplayWakeLock(true);
     if (options.rerollRandomMap && gameSettings.mapType === 'random') {
         activeRandomMapData = null;
     }
@@ -15865,6 +15920,7 @@ function showGameOver() {
     const enemyKilledEl = document.getElementById('enemy-killed-message');
     if (enemyKilledEl) enemyKilledEl.style.display = 'none';
     isGameRunning = false;
+    setGameplayWakeLock(false);
     setFollowingPlayerMode(false);
     clearProjectileArtifacts();
     gameOverScreen.style.display = 'flex';
@@ -15878,6 +15934,7 @@ function showWinScreen() {
     const enemyKilledEl = document.getElementById('enemy-killed-message');
     if (enemyKilledEl) enemyKilledEl.style.display = 'none';
     isGameRunning = false;
+    setGameplayWakeLock(false);
     clearProjectileArtifacts();
     winScreen.style.display = 'flex';
     playMatchEndVoice(true);
@@ -16685,6 +16742,7 @@ function showSettingsAndPause() {
 
 function resumeGame() {
     debugLog('resumeGame() called');
+    setGameplayWakeLock(true);
     const settingsChanged = JSON.stringify(originalSettings) !== JSON.stringify(gameSettings);
     // ゲスト端末のボタン配置などはローカル設定。ゲストだけゲームを再生成すると
     // ホストのAI/マップ状態から分岐するため、CO-OP中は再開時に再生成しない。
@@ -20203,6 +20261,7 @@ const startBtn = document.getElementById('start-game-btn');
 if (startBtn) {
     startBtn.addEventListener('click', async () => {
         if (startBtn.dataset.loading === 'true') return;
+        setGameplayWakeLock(true);
         isPreparingGameStart = true;
         stopMenuBGM(false);
         stopGameBGM(false);
@@ -20284,6 +20343,8 @@ if (startBtn) {
                 updateMobileWeaponButtonVisibility();
                 startStageBGM(true);
                 playMatchStartVoice();
+            } else {
+                setGameplayWakeLock(false);
             }
             startBtn.disabled = false;
             startBtn.dataset.loading = 'false';
