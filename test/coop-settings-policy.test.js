@@ -21,3 +21,19 @@ test('co-op guest settings are limited to local presentation and controls', () =
   assert.match(script, /gameSettings\.bgmMute = localBgmMute/);
   assert.match(script, /gameSettings\.buttonPositions = localButtonPositions/);
 });
+
+test('co-op FFA assigns both player projectiles and resolves PvP before the floor', () => {
+  assert.match(script, /getLocalPlayerProjectileSource\(\), projectileSpeed \* 2, true, WEAPON_SR, player/);
+  assert.match(script, /getLocalPlayerProjectileSource\(\), projectileSpeed, false, WEAPON_SG, player/);
+  assert.match(script, /function getCoopPvpShooterRole\(projectile\)/);
+  assert.match(script, /if \(isCoopRemoteCombatant\(projectile\.shooter\)\) return 'guest'/);
+  assert.match(script, /if \(projectile\.shooter === player \|\| !projectile\.shooter\) return 'host'/);
+  assert.match(script, /const direction = requestedDirection\.clone\(\)/);
+
+  const pvpIndex = script.indexOf('const coopPvpHit = resolveCoopPvpProjectileHit');
+  const floorIndex = script.indexOf("p.source !== 'ai' && new THREE.Box3().setFromObject(floor)");
+  assert.ok(pvpIndex >= 0 && floorIndex >= 0 && pvpIndex < floorIndex);
+  assert.match(script, /gameSettings\.gameMode !== 'ffa'/);
+  assert.match(script, /damageCoopRemotePlayer\(/);
+  assert.match(script, /damageCoopHostPlayer\(/);
+});
