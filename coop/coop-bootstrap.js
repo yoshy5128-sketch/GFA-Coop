@@ -1,7 +1,7 @@
 import { GfaPeerTransport } from './net/peer-transport.js';
 import { normalizeRoomCode } from './net/protocol.js';
 
-const COOP_BUILD_ID = '20261024-v20';
+const COOP_BUILD_ID = '20261024-v21';
 const GAME_START_CHUNK_SIZE = 12000;
 const GAME_START_MAX_CHUNKS = 256;
 const GAME_START_MAX_LENGTH = 2.5 * 1024 * 1024;
@@ -205,6 +205,12 @@ function createTransport() {
       if (message.type === 'remote-player-kill' && transport.role === 'guest') {
         gameBridge()?.playRemotePlayerKill?.(message.payload);
       }
+      if (message.type === 'match-result' && transport.role === 'guest') {
+        gameBridge()?.applyMatchResult?.(message.payload);
+      }
+      if (message.type === 'floor-advance' && transport.role === 'guest') {
+        gameBridge()?.applyFloorAdvance?.(message.payload);
+      }
     },
     onDisconnect() {
       stopPoseExchange();
@@ -277,6 +283,16 @@ window.addEventListener('gfa:ai-fire', event => {
 window.addEventListener('gfa:remote-player-kill', event => {
   if (transport?.role !== 'host' || !transport.connected) return;
   transport.sendEvent('remote-player-kill', event.detail);
+});
+
+window.addEventListener('gfa:coop-match-result', event => {
+  if (transport?.role !== 'host' || !transport.connected) return;
+  transport.sendEvent('match-result', event.detail);
+});
+
+window.addEventListener('gfa:coop-floor-advance', event => {
+  if (transport?.role !== 'host' || !transport.connected) return;
+  transport.sendEvent('floor-advance', event.detail);
 });
 
 roomInput.addEventListener('keydown', event => {

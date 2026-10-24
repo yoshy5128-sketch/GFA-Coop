@@ -1754,10 +1754,15 @@ function normalizeGameMode(mode) {
 }
 
 function isTimedRespawnMode() {
+    if (coopSessionConnected && gameSettings.gameMode === 'arcade') return false;
     return gameSettings.gameMode === 'arcade'
         || gameSettings.gameMode === 'ffa'
         || gameSettings.gameMode === 'teamArcade'
         || isIndoorTeamDeathmatchMode();
+}
+
+function isCoopEliminationMode() {
+    return coopSessionConnected && (gameSettings.gameMode === 'arcade' || isClassicBillBattleMode());
 }
 
 function getBillBattleAICount() {
@@ -4250,6 +4255,10 @@ function startTimer() {
         if (gameTimer <= 0) {
             clearInterval(gameTimerInterval);
             gameTimerInterval = null;
+            if (coopSessionConnected) {
+                if (coopLocalRole === 'host') finishCoopTimedMatch();
+                return;
+            }
             // ゲーム終了処理と勝敗判定
             isGameRunning = false;
             document.exitPointerLock();
@@ -8780,7 +8789,7 @@ function restoreRightButtonsDefault() {
     const crouch = document.getElementById('crouch-button');
     const zoom = document.getElementById('zoom-button');
     const followBtn = document.getElementById('follow-button');
-    const canShowGameplayControls = isGameRunning && !isPaused && !isSettingsScreenVisible();
+    const canShowGameplayControls = isGameRunning && !isPaused && !isSettingsScreenVisible() && !coopLocalEliminated;
     if (!canShowGameplayControls) {
         if (fire) fire.style.display = 'none';
         if (crouch) crouch.style.display = 'none';
@@ -8802,6 +8811,7 @@ function updateMobileWeaponButtonVisibility() {
     const shouldShowZoom = shouldShowTouchControls()
         && isGameRunning
         && !isPaused
+        && !coopLocalEliminated
         && currentWeapon !== WEAPON_SR;
     if (zoom) {
         zoom.style.display = shouldShowZoom ? 'flex' : 'none';
@@ -8819,6 +8829,7 @@ function syncFollowButtonVisibility() {
         && !isPaused
         && !isPlayerDeathPlaying
         && !isAIDeathPlaying
+        && !coopLocalEliminated
         && isTeamBasedAIMode()
         && !document.body.classList.contains('settings-screen-active');
     const display = shouldShowFollow ? 'flex' : 'none';
@@ -12817,18 +12828,20 @@ function aiShoot(ai, timeElapsed) {
         }
     } else {
         // 通常モードまたは敵AIはプレイヤーを狙う
-        const playerHeadPos = getPlayerHeadPos();
-        const playerUpperPos = getPlayerUpperTorsoPos();
-        const playerBodyPos = getPlayerBodyPos();
-        if (canSeeFrom(aimOrigin, playerHeadPos)) {
-            targetPosition = playerHeadPos;
-        } else if (canSeeFrom(aimOrigin, playerUpperPos)) {
-            targetPosition = playerUpperPos;
-        } else if (canSeeFrom(aimOrigin, playerBodyPos)) {
-            targetPosition = playerBodyPos;
+        if (playerHP > 0) {
+            const playerHeadPos = getPlayerHeadPos();
+            const playerUpperPos = getPlayerUpperTorsoPos();
+            const playerBodyPos = getPlayerBodyPos();
+            if (canSeeFrom(aimOrigin, playerHeadPos)) {
+                targetPosition = playerHeadPos;
+            } else if (canSeeFrom(aimOrigin, playerUpperPos)) {
+                targetPosition = playerUpperPos;
+            } else if (canSeeFrom(aimOrigin, playerBodyPos)) {
+                targetPosition = playerBodyPos;
+            }
+            distanceToTarget = ai.position.distanceTo(player.position);
+            targetIsPlayer = true;
         }
-        distanceToTarget = ai.position.distanceTo(player.position);
-        targetIsPlayer = true;
     }
 
     // CO-OPゲストもホスト側では正式な戦闘対象として扱う。
@@ -14577,6 +14590,9 @@ function shuffle(array) {
 function restartGame(options = {}) {
     debugLog('restartGame() called');
     if (!options.deferGameplay) setGameplayWakeLock(true);
+    coopLocalEliminated = false;
+    coopMatchEnded = false;
+    hideCoopEliminatedOverlay();
     if (options.rerollRandomMap && gameSettings.mapType === 'random' && !coopSessionConnected) {
         activeRandomMapData = null;
     }
@@ -14657,6 +14673,7 @@ function restartGame(options = {}) {
         playerHPDisplay.textContent = `HP: ${playerHP === Infinity ? '∞' : playerHP}`;
     }
     playerKills = 0;
+    if (!options.preserveBillBattleFloor) coopRemotePlayerKills = 0;
     if (killCountDisplay) killCountDisplay.textContent = `KILLS: ${playerKills}`;
 
     // --- 新しいゲームモードの追加 ---
@@ -14669,7 +14686,7 @@ function restartGame(options = {}) {
         gameTimer = gameSettings.gameDuration;
         updateTimerDisplay();
         startTimer();
-    } else if (gameSettings.gameMode === 'arcade') {
+    } else if (gameSettings.gameMode === 'arcade' && !coopSessionConnected) {
         playerTeamKills = 0;
         enemyTeamKills = 0;
         gameTimer = gameSettings.gameDuration;
@@ -14757,7 +14774,7 @@ function restartGame(options = {}) {
     let finalAICount = isBillBattleMode() ? getBillBattleAICount() : gameSettings.aiCount;
     const isTeamMode = isTeamBasedAIMode();
     if (isTeamMode) {
-        finalAICount = 3; // チームモードおよびチームアーケードモードでは常に3体（1体味方 + 2体敵）
+        finalAICount = coopSessionConnected ? Math.max(1, Math.min(3, Number(gameSettings.aiCount) || 3)) : 3;
     }
     for (const ai of ais) {
         cleanupAI(ai); // AIと関連リソースを正しく削除するためcleanupAIを使用
@@ -14775,7 +14792,10 @@ function restartGame(options = {}) {
             aiTeam = 'enemy';
         }
 
-        if (isTeamMode) {
+        if (isTeamMode && coopSessionConnected) {
+            aiTeam = 'enemy';
+            aiColor = aiColors[i] || 0xff00ff;
+        } else if (isTeamMode) {
             if (i === 0) {
                 aiTeam = 'player'; // 最初の1体は味方
                 aiColor = teamColors.player;
@@ -15533,6 +15553,8 @@ function startPlayerDeathSequence(projectile) {
                         && isGameRunning && !isPaused && !isSettingsScreenVisible();
                     followBtn.style.display = shouldShowFollow ? 'flex' : 'none';
                 }
+            } else if (isCoopEliminationMode()) {
+                enterCoopEliminatedState();
             } else if (gameSettings.gameMode === 'team') {
                 // チームモード：残りHPを確認
                 const playerTeamAlive = checkTeamAlive('player');
@@ -16095,11 +16117,14 @@ function showWinScreen() {
     const winBtn = winScreen ? winScreen.querySelector('.restart-button') : null;
     if (winBtn) {
         if (isClassicBillBattleMode()) {
-            winBtn.textContent = 'NEXT ROOM';
+            const waitForHost = coopSessionConnected && coopLocalRole === 'guest';
+            winBtn.textContent = waitForHost ? 'WAIT FOR HOST' : 'NEXT ROOM';
             winBtn.dataset.nextRoom = 'true';
+            winBtn.disabled = waitForHost;
         } else {
             winBtn.textContent = 'RESTART';
             winBtn.dataset.nextRoom = 'false';
+            winBtn.disabled = false;
         }
     }
     const pauseBtn = document.getElementById('pause-button');
@@ -16107,6 +16132,7 @@ function showWinScreen() {
 }
 
 function setCrosshairVisible(visible) {
+    if (visible && coopLocalEliminated) visible = false;
     if (!crosshairElement) crosshairElement = document.getElementById('crosshair');
     if (!crosshairElement) return;
     const currentVisible = crosshairElement.style.display !== 'none';
@@ -16486,7 +16512,24 @@ function openBillBattleElevator() {
 function advanceBillBattleFloor() {
     billBattleFloor += 1;
     billBattleTransitioning = false;
+    if (coopSessionConnected && coopLocalRole === 'host') {
+        const remoteHPSetting = gameSettings.coopSettingsEnabled === true
+            ? gameSettings.player2HP : gameSettings.playerHP;
+        const parsedRemoteHP = Number(remoteHPSetting);
+        coopRemoteHP = remoteHPSetting === 'Infinity' ? Infinity
+            : (Number.isFinite(parsedRemoteHP) && parsedRemoteHP > 0 ? parsedRemoteHP : 3);
+        coopRemoteDead = false;
+    }
     restartGame({ preserveBillBattleFloor: true });
+}
+
+function applyCoopFloorAdvance(payload) {
+    if (coopLocalRole !== 'guest' || !isClassicBillBattleMode()) return false;
+    const requestedFloor = Number(payload && payload.floor);
+    if (Number.isInteger(requestedFloor) && requestedFloor > 0) billBattleFloor = requestedFloor - 1;
+    if (winScreen) winScreen.style.display = 'none';
+    advanceBillBattleFloor();
+    return true;
 }
 
 function updateBillBattleElevator(timeElapsed) {
@@ -16990,12 +17033,81 @@ let coopRemotePoseInitialized = false;
 let coopHostWorldReceivedAt = 0;
 let coopRemoteHP = null;
 let coopRemoteDead = false;
+var coopLocalEliminated = false;
+var coopMatchEnded = false;
+var coopRemotePlayerKills = 0;
 const coopRemoteLastFireAt = new Map();
 let coopForceSnapshotSnap = false;
 let coopRemoteMovingUntil = 0;
 let coopRemoteLowerBodyYaw = 0;
 let coopRemoteLastNetworkPosition = null;
 let coopLastSnapshotAt = 0;
+
+function hideCoopEliminatedOverlay() {
+    const overlay = document.getElementById('coop-eliminated-display');
+    if (overlay) overlay.style.display = 'none';
+}
+
+function enterCoopEliminatedState() {
+    coopLocalEliminated = true;
+    isGameRunning = true;
+    forceResetTouchState();
+    keySet.clear();
+    keyboardMoveVector.set(0, 0);
+    joystickMoveVector.set(0, 0);
+    destroyJoystick();
+    if (player) player.traverse(object => { object.visible = false; });
+    const overlay = document.getElementById('coop-eliminated-display');
+    const title = document.getElementById('coop-eliminated-title');
+    const message = document.getElementById('coop-eliminated-message');
+    if (title) title.textContent = isClassicBillBattleMode() ? 'ROOM OUT' : 'ELIMINATED';
+    if (message) message.textContent = isClassicBillBattleMode()
+        ? 'TEAMMATEがROOMをクリアすると次のROOMで復活します'
+        : 'TEAMMATE PLAYING';
+    if (overlay) overlay.style.display = 'flex';
+    ['joystick-move', 'fire-button', 'crosshair', 'crouch-button', 'zoom-button', 'player-weapon-display'].forEach(id => {
+        const element = document.getElementById(id);
+        if (element) element.style.display = 'none';
+    });
+    setGameplayWakeLock(true);
+}
+
+function applyCoopMatchResult(payload) {
+    if (!payload || coopMatchEnded) return false;
+    coopMatchEnded = true;
+    hideCoopEliminatedOverlay();
+    const localResult = coopLocalRole === 'guest' ? payload.guestResult : payload.hostResult;
+    if (localResult === 'win') showWinScreen();
+    else showGameOver();
+    return true;
+}
+
+function finishCoopMatch(hostResult, guestResult, reason) {
+    if (!coopSessionConnected || coopLocalRole !== 'host' || coopMatchEnded) return false;
+    const payload = { hostResult, guestResult, reason: String(reason || '') };
+    window.dispatchEvent(new CustomEvent('gfa:coop-match-result', { detail: payload }));
+    return applyCoopMatchResult(payload);
+}
+
+function finishCoopTimedMatch() {
+    if (gameSettings.gameMode === 'ffa') {
+        const entries = [
+            { id: 'host', kills: playerKills },
+            { id: 'guest', kills: coopRemotePlayerKills },
+            ...ais.map((ai, index) => ({ id: `ai-${index}`, kills: Number(ai.kills) || 0 }))
+        ];
+        const maxKills = Math.max(...entries.map(entry => entry.kills));
+        const leaders = entries.filter(entry => entry.kills === maxKills);
+        finishCoopMatch(
+            leaders.length === 1 && leaders[0].id === 'host' ? 'win' : 'lose',
+            leaders.length === 1 && leaders[0].id === 'guest' ? 'win' : 'lose',
+            'time-up-ffa'
+        );
+        return;
+    }
+    const playersWon = playerTeamKills > enemyTeamKills;
+    finishCoopMatch(playersWon ? 'win' : 'lose', playersWon ? 'win' : 'lose', 'time-up-team');
+}
 
 function ensureCoopRemotePlayer() {
     if (coopRemotePlayer) return coopRemotePlayer;
@@ -17242,7 +17354,10 @@ function updateCoopRemotePlayer(delta) {
     const remoteVisualYaw = getCoopRemoteVisualYaw(coopRemotePose);
     const yawDelta = normalizeCoopAngle(remoteVisualYaw - coopRemotePlayer.rotation.y);
     coopRemotePlayer.rotation.y += yawDelta * blend;
-    coopRemotePlayer.visible = coopLocalRole !== 'host' || coopRemoteHP === null || coopRemoteHP > 0;
+    const remotePoseAlive = coopRemotePose.invulnerable === true
+        || !Number.isFinite(coopRemotePose.hp) || coopRemotePose.hp > 0;
+    coopRemotePlayer.visible = remotePoseAlive
+        && (coopLocalRole !== 'host' || coopRemoteHP === null || coopRemoteHP > 0);
 
     const parts = coopRemotePlayer.userData && coopRemotePlayer.userData.parts;
     if (parts && coopRemotePose.weapon !== coopRemoteWeapon) {
@@ -17282,6 +17397,7 @@ function getCoopHostWorldState() {
         gameTimer: Number.isFinite(gameTimer) ? gameTimer : null,
         scores: {
             playerKills: Number.isFinite(playerKills) ? playerKills : 0,
+            player2Kills: Number.isFinite(coopRemotePlayerKills) ? coopRemotePlayerKills : 0,
             playerTeamKills: Number.isFinite(playerTeamKills) ? playerTeamKills : 0,
             enemyTeamKills: Number.isFinite(enemyTeamKills) ? enemyTeamKills : 0
         },
@@ -17330,9 +17446,11 @@ function applyCoopHostWorldState(state) {
     }
     if (state.scores && typeof state.scores === 'object') {
         if (Number.isFinite(state.scores.playerKills)) playerKills = state.scores.playerKills;
+        if (Number.isFinite(state.scores.player2Kills)) coopRemotePlayerKills = state.scores.player2Kills;
         if (Number.isFinite(state.scores.playerTeamKills)) playerTeamKills = state.scores.playerTeamKills;
         if (Number.isFinite(state.scores.enemyTeamKills)) enemyTeamKills = state.scores.enemyTeamKills;
-        if (killCountDisplay) killCountDisplay.textContent = `KILLS: ${playerKills}`;
+        if (killCountDisplay) killCountDisplay.textContent = gameSettings.gameMode === 'ffa'
+            ? `P1: ${playerKills} | P2: ${coopRemotePlayerKills}` : `KILLS: ${playerKills}`;
         if (playerTeamKillsDisplay) playerTeamKillsDisplay.textContent = `PLAYER TEAM KILLS: ${playerTeamKills}`;
         if (enemyTeamKillsDisplay) enemyTeamKillsDisplay.textContent = `ENEMY TEAM KILLS: ${enemyTeamKills}`;
     }
@@ -17562,8 +17680,21 @@ function damageCoopRemotePlayer(damageAmount, projectile) {
         coopRemoteDead = true;
         remote.visible = false;
         if (projectile && projectile.shooter && projectile.shooter.kills !== undefined) projectile.shooter.kills++;
-        if (isTeamBasedAIMode()) addEnemyTeamKillScore();
+        if (gameSettings.gameMode === 'ffa' && projectile && projectile.shooter === player) playerKills++;
+        else if (isTeamBasedAIMode()) addEnemyTeamKillScore();
         else if (gameSettings.gameMode === 'arcade') enemyTeamKills++;
+    }
+    return true;
+}
+
+function damageCoopHostPlayer(damageAmount, projectile) {
+    if (coopLocalRole !== 'host' || playerHP === Infinity || playerHP <= 0 || !(damageAmount > 0)) return false;
+    playerHP = Math.max(0, playerHP - damageAmount);
+    screenShakeDuration = SHAKE_DURATION_MAX;
+    if (playerHP > 0) triggerCharacterHitReaction(player, projectile && projectile.velocity);
+    if (playerHP <= 0 && !isPlayerDeathPlaying) {
+        coopRemotePlayerKills++;
+        startPlayerDeathSequence(projectile || { velocity: new THREE.Vector3(0, 0, 1), source: 'player' });
     }
     return true;
 }
@@ -17704,6 +17835,10 @@ window.GFACoopGameBridge = Object.freeze({
         coopSpawnApplied = false;
         coopRemoteHP = null;
         coopRemoteDead = false;
+        coopLocalEliminated = false;
+        coopMatchEnded = false;
+        coopRemotePlayerKills = 0;
+        hideCoopEliminatedOverlay();
         coopRemoteLastFireAt.clear();
         coopForceSnapshotSnap = false;
         coopRemoteMovingUntil = 0;
@@ -17736,6 +17871,8 @@ window.GFACoopGameBridge = Object.freeze({
     handleGuestFire: handleCoopGuestFire,
     applyLocalDamage: applyCoopLocalDamage,
     playRemotePlayerKill: playCoopRemotePlayerKill,
+    applyMatchResult: applyCoopMatchResult,
+    applyFloorAdvance: applyCoopFloorAdvance,
     startAsHost() {
         const mapSelector = document.getElementById('title-map-selector');
         const startButton = document.getElementById('start-game-btn');
@@ -17793,6 +17930,18 @@ function animate() {
         updateCharacterBlobShadows();
         renderer.render(scene, camera);
         return;
+    }
+
+    if (coopLocalEliminated) {
+        keySet.clear();
+        keyboardMoveVector.set(0, 0);
+        joystickMoveVector.set(0, 0);
+        if (player) player.traverse(object => { object.visible = false; });
+        setCrosshairVisible(false);
+        ['joystick-move', 'fire-button', 'crouch-button', 'zoom-button', 'player-weapon-display'].forEach(id => {
+            const element = document.getElementById(id);
+            if (element) element.style.display = 'none';
+        });
     }
 
     // Update before AI firing so positional sounds use the current view direction.
@@ -18037,7 +18186,7 @@ function animate() {
 
     if (finalMoveVector.length() > 0) finalMoveVector.normalize();
     // リスポーン直後の移動を強制的に停止させる
-    if (window.justRestarted || isPlayerDeathPlaying || isElevating) {
+    if (window.justRestarted || isPlayerDeathPlaying || isElevating || coopLocalEliminated) {
         debugLog('Movement blocked - justRestarted:', window.justRestarted, 'isPlayerDeathPlaying:', isPlayerDeathPlaying, 'isElevating:', isElevating);
         finalMoveVector.set(0, 0); // 移動を強制的にキャンセル
         keyboardMoveVector.set(0, 0); // 念のためキーボード移動もリセット
@@ -19986,7 +20135,11 @@ function animate() {
                             }
                             // FFA/Arcade用
                             if (gameSettings.gameMode === 'ffa' || gameSettings.gameMode === 'arcade') {
-                                playerKills++;
+                                if (coopSessionConnected && gameSettings.gameMode === 'ffa' && isCoopRemoteCombatant(p.shooter)) {
+                                    coopRemotePlayerKills++;
+                                } else {
+                                    playerKills++;
+                                }
                             }
                             registerPlayerEnemyKillForCombo(ai);
                             aiFallDownCinematicSequence(p.velocity, ai, 'player', p, p.shooter || player);
@@ -20004,6 +20157,39 @@ function animate() {
                 }
             }
             if (hitSomething) break;
+        }
+        if (!hitSomething && coopSessionConnected && coopLocalRole === 'host'
+            && gameSettings.gameMode === 'ffa' && p.source === 'player') {
+            const damageAmount = p.weaponType === WEAPON_SG ? SHOTGUN_PELLET_DAMAGE
+                : (p.weaponType === WEAPON_MR ? 9 : ((p.isSniper || p.isRocket) ? Infinity : 1));
+            if (isCoopRemoteCombatant(p.shooter)) {
+                const bounds = getPlayerCombatBounds();
+                const hostBox = new THREE.Box3(
+                    new THREE.Vector3(player.position.x - 0.7, bounds.bottomY, player.position.z - 0.7),
+                    new THREE.Vector3(player.position.x + 0.7, bounds.topY, player.position.z + 0.7)
+                );
+                if (hostBox.intersectsSphere(bulletSphere) || doesSegmentHitBox(prevProjectilePos, p.mesh.position, hostBox)) {
+                    hitSomething = true;
+                    hitObject = player;
+                    hitType = 'player';
+                    damageCoopHostPlayer(damageAmount === Infinity ? playerHP : damageAmount, p);
+                }
+            } else if (p.shooter === player) {
+                const remote = getActiveCoopRemoteCombatant();
+                if (remote) {
+                    const remoteHeight = coopRemotePose && coopRemotePose.crouching ? 1.2 : 2.2;
+                    const remoteBox = new THREE.Box3(
+                        new THREE.Vector3(remote.position.x - 0.7, remote.position.y, remote.position.z - 0.7),
+                        new THREE.Vector3(remote.position.x + 0.7, remote.position.y + remoteHeight, remote.position.z + 0.7)
+                    );
+                    if (remoteBox.intersectsSphere(bulletSphere) || doesSegmentHitBox(prevProjectilePos, p.mesh.position, remoteBox)) {
+                        hitSomething = true;
+                        hitObject = remote;
+                        hitType = 'coop-player';
+                        damageCoopRemotePlayer(damageAmount === Infinity ? coopRemoteHP : damageAmount, p);
+                    }
+                }
+            }
         }
         if (!hitSomething && p.source === 'ai') {
             const shooterAI = p.shooter;
@@ -20247,13 +20433,23 @@ function animate() {
                                 createRedSmokeEffect(ai.position.clone().add(new THREE.Vector3(0, 1.5, 0)));
                             }
                                 if (ai.hp <= 0) {
+                                    if (isTeamBasedAIMode()) addPlayerTeamKillScore();
+                                    if (gameSettings.gameMode === 'ffa' || gameSettings.gameMode === 'arcade') {
+                                        if (coopSessionConnected && gameSettings.gameMode === 'ffa' && isCoopRemoteCombatant(p.shooter)) {
+                                            coopRemotePlayerKills++;
+                                        } else {
+                                            playerKills++;
+                                        }
+                                    }
                                     registerPlayerEnemyKillForCombo(ai);
                                     aiFallDownCinematicSequence(new THREE.Vector3().subVectors(ai.position, explosionPos), ai, 'player', p, p.shooter || player);
                                 }
                             }
                         }
                     }
-                    if (playerHP > 0) {
+                    const allowPlayerExplosionAgainstHost = !coopSessionConnected
+                        || p.shooter === player || gameSettings.gameMode === 'ffa';
+                    if (allowPlayerExplosionAgainstHost && playerHP > 0) {
                         const distanceToPlayer = player.position.distanceTo(explosionPos);
                         if (distanceToPlayer < EXPLOSION_RADIUS_ACTUAL) {
                             const playerCenter = player.position.clone().add(new THREE.Vector3(0, 1, 0));
@@ -20265,6 +20461,10 @@ function animate() {
                                     setTimeout(() => { redFlashOverlay.style.backgroundColor = 'transparent'; }, 100);
                                 }
                                 if (playerHP <= 0 && !isPlayerDeathPlaying) {
+                                    if (coopSessionConnected && gameSettings.gameMode === 'ffa'
+                                        && isCoopRemoteCombatant(p.shooter)) {
+                                        coopRemotePlayerKills++;
+                                    }
                                     startPlayerDeathSequence(p);
                                 }
                             }
@@ -20376,7 +20576,7 @@ function animate() {
 
         if (ai && ai.hp > 0) {
             display.style.display = 'block';
-            if (isTeamModeOrTeamArcade) { // isTeamModeOrTeamArcadeに変更
+            if (isTeamModeOrTeamArcade && !coopSessionConnected) { // 通常版だけ味方AIを表示
                 if (i === 0) {
                     display.textContent = `Teammate HP: ${ai.hp === Infinity ? '∞' : ai.hp}`;
                     display.style.color = 'cyan';
@@ -20401,7 +20601,7 @@ function animate() {
             display.classList.remove('dead-ai-hp'); // 生きている場合はクラスを削除
         } else if (ai && ai.hp <= 0) { // AIが存在し、HPが0以下の場合
             display.style.display = 'block';
-            if (isTeamModeOrTeamArcade) { // isTeamModeOrTeamArcadeに変更
+            if (isTeamModeOrTeamArcade && !coopSessionConnected) { // 通常版だけ味方AIを表示
                 if (i === 0) {
                     display.textContent = `Teammate HP: 0`;
                     display.style.color = 'cyan';
@@ -20430,7 +20630,15 @@ function animate() {
     }
     // インドアコンバット（build battle）の勝利条件
     const hasPendingAIDeathForWin = isAnyRelevantAIDyingForVictory();
-    if (isClassicBillBattleMode()) {
+    if (coopSessionConnected && isCoopEliminationMode()) {
+        if (coopLocalRole === 'host' && !coopMatchEnded && isGameRunning
+            && !isAIDeathPlaying && !hasPendingAIDeathForWin) {
+            const allEnemiesDefeated = ais.length > 0 && ais.every(ai => ai.hp <= 0);
+            const bothPlayersDefeated = playerHP <= 0 && Number.isFinite(coopRemoteHP) && coopRemoteHP <= 0;
+            if (allEnemiesDefeated) finishCoopMatch('win', 'win', isClassicBillBattleMode() ? 'room-clear' : 'enemies-cleared');
+            else if (bothPlayersDefeated && !isPlayerDeathPlaying) finishCoopMatch('lose', 'lose', 'team-eliminated');
+        }
+    } else if (isClassicBillBattleMode()) {
         if (isBillBattleFloorCleared() && isGameRunning && !isAIDeathPlaying && !hasPendingAIDeathForWin) {
             showWinScreen();
         }
@@ -20458,7 +20666,8 @@ function animate() {
     } else if (gameSettings.gameMode === 'arcade' || gameSettings.gameMode === 'ffa') {
         if (killCountDisplay) {
             killCountDisplay.style.display = 'block';
-            killCountDisplay.textContent = `KILLS: ${playerKills}`;
+            killCountDisplay.textContent = coopSessionConnected && gameSettings.gameMode === 'ffa'
+                ? `P1: ${playerKills} | P2: ${coopRemotePlayerKills}` : `KILLS: ${playerKills}`;
         }
     } else {
         if (killCountDisplay) killCountDisplay.style.display = 'none';
@@ -20602,6 +20811,11 @@ rButtons.forEach(button => button.addEventListener('click', () => {
     const nextRoomRequested = button.dataset.nextRoom === 'true';
     if (isWinScreen && nextRoomRequested && isClassicBillBattleMode()) {
         if (winScreen) winScreen.style.display = 'none';
+        if (coopSessionConnected && coopLocalRole === 'host') {
+            window.dispatchEvent(new CustomEvent('gfa:coop-floor-advance', {
+                detail: { floor: billBattleFloor + 1 }
+            }));
+        }
         advanceBillBattleFloor();
         if (!(shouldShowTouchControls())) canvas.requestPointerLock();
         return;
