@@ -53,7 +53,7 @@ test('FFA PvP compensates remote rendering delay and resolves players before wal
   assert.match(script, /projectile\.coopLagCompensatedTargetBox = observedHostBox\.clone\(\)/);
   assert.match(script, /targetBoxes\.push\(projectile\.coopLagCompensatedTargetBox\)/);
   assert.match(script, /if \(!hitSomething \|\| hitType === 'obstacle'\)/);
-  assert.match(script, /bounds\.topY \+ 1\.15/);
+  assert.match(script, /bounds\.topY \+ 0\.35/);
   assert.match(script, /impactPoint: \[impactPoint\.x, impactPoint\.y, impactPoint\.z\]/);
 });
 
@@ -61,6 +61,12 @@ test('host shots use the rendered guest rig including the visible head', () => {
   assert.match(script, /GFACharacterModels\.boxes\(parts\)/);
   assert.match(script, /new THREE\.Box3\(\)\.setFromObject\(parts\.head\)/);
   assert.match(script, /hitBoxes\.push\(visibleHeadBox\.expandByScalar\(0\.06\)\)/);
+});
+
+test('co-op character eyes align with the local camera height', () => {
+  assert.match(script, /const COOP_MODEL_STANDING_EYE_HEIGHT = 2\.8065/);
+  assert.match(script, /pose\.height \/ COOP_MODEL_STANDING_EYE_HEIGHT/);
+  assert.match(script, /coopRemotePlayer\.scale\.set\(coopRemoteVisualScale, coopRemoteVisualScale, coopRemoteVisualScale\)/);
 });
 
 test('guest death sequence starts once until authoritative respawn HP arrives', () => {

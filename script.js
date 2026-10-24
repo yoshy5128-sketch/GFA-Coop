@@ -17140,6 +17140,9 @@ let coopRemoteMovingUntil = 0;
 let coopRemoteLowerBodyYaw = 0;
 let coopRemoteLastNetworkPosition = null;
 let coopLastSnapshotAt = 0;
+const COOP_MODEL_STANDING_EYE_HEIGHT = 2.8065;
+const COOP_DEFAULT_VISUAL_SCALE = 2.2 / COOP_MODEL_STANDING_EYE_HEIGHT;
+let coopRemoteVisualScale = COOP_DEFAULT_VISUAL_SCALE;
 
 function hideCoopEliminatedOverlay() {
     const overlay = document.getElementById('coop-eliminated-display');
@@ -17217,6 +17220,8 @@ function ensureCoopRemotePlayer() {
     coopRemotePlayer.name = 'GFA_COOP_REMOTE_PLAYER';
     coopRemotePlayer.visible = false;
     coopRemotePlayer.userData.isCoopRemotePlayer = true;
+    coopRemotePlayer.userData.gfaPoseScaleY = coopRemoteVisualScale;
+    coopRemotePlayer.scale.setScalar(coopRemoteVisualScale);
     coopRemotePlayer.traverse(object => {
         if (!object || !object.isMesh) return;
         object.castShadow = true;
@@ -17224,6 +17229,19 @@ function ensureCoopRemotePlayer() {
     });
     scene.add(coopRemotePlayer);
     return coopRemotePlayer;
+}
+
+function syncCoopRemoteVisualScale(pose = coopRemotePose) {
+    if (!coopRemotePlayer) return;
+    if (pose && pose.crouching !== true && Number.isFinite(pose.height)) {
+        coopRemoteVisualScale = THREE.MathUtils.clamp(
+            pose.height / COOP_MODEL_STANDING_EYE_HEIGHT,
+            0.72,
+            0.9
+        );
+    }
+    coopRemotePlayer.userData.gfaPoseScaleY = coopRemoteVisualScale;
+    coopRemotePlayer.scale.set(coopRemoteVisualScale, coopRemoteVisualScale, coopRemoteVisualScale);
 }
 
 function getCoopLocalCharacterCustomization() {
@@ -17364,6 +17382,7 @@ function applyCoopRemotePose(pose) {
     if (!coopRemoteLastNetworkPosition) coopRemoteLastNetworkPosition = new THREE.Vector3();
     coopRemoteLastNetworkPosition.copy(nextNetworkPosition);
     const remote = ensureCoopRemotePlayer();
+    syncCoopRemoteVisualScale(pose);
     if (coopLocalRole === 'host' && (coopRemoteHP === null
         || (wasInactive && coopRemoteHP <= 0 && (pose.invulnerable === true || pose.hp > 0)))) {
         coopRemoteHP = pose.invulnerable === true ? Infinity
@@ -17466,6 +17485,7 @@ function updateCoopRemotePlayer(delta) {
         }
     }
     if (parts && window.GFACharacterModels && typeof GFACharacterModels.pose === 'function') {
+        syncCoopRemoteVisualScale(coopRemotePose);
         const remoteMoving = Boolean(coopRemotePose.moving)
             || Number(coopRemotePose.moveSpeed) > 0.08
             || target.distanceToSquared(coopRemotePlayer.position) > 0.0001
@@ -17821,7 +17841,7 @@ function getCoopPvpTargetBoxes(targetRole) {
         // anchor. Match its visible crown instead of stopping at camera height.
         return [new THREE.Box3(
             new THREE.Vector3(player.position.x - 0.84, bounds.bottomY - 0.08, player.position.z - 0.84),
-            new THREE.Vector3(player.position.x + 0.84, bounds.topY + 1.15, player.position.z + 0.84)
+            new THREE.Vector3(player.position.x + 0.84, bounds.topY + 0.35, player.position.z + 0.84)
         )];
     }
     const remote = coopLocalRole === 'host'
@@ -18145,6 +18165,7 @@ window.GFACoopGameBridge = Object.freeze({
         coopRemoteMovingUntil = 0;
         coopRemoteLowerBodyYaw = 0;
         coopRemoteLastNetworkPosition = null;
+        coopRemoteVisualScale = COOP_DEFAULT_VISUAL_SCALE;
         coopLastSnapshotPosition = null;
         coopLastSnapshotAt = 0;
         coopBgmSyncPendingTrack = null;

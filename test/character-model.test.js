@@ -75,3 +75,17 @@ test('modern character hit boxes reach the rendered head instead of ending at ca
   assert.ok(bodyBox.max.y > 2.7);
   assert.ok(visibleHeadBox.max.y > 2.7);
 });
+
+test('remote visual scale survives pose updates', async () => {
+  const { models, THREE } = await loadCharacterModels();
+  const actor = models.create('#2586c9', {});
+  const parts = actor.userData.parts;
+  const visualScale = 2.2 / 2.8065;
+  actor.userData.gfaPoseScaleY = visualScale;
+  actor.scale.setScalar(visualScale);
+
+  models.pose(parts, false, 0.2, false, 0);
+  assert.ok(Math.abs(actor.scale.y - visualScale) < 1e-9);
+  const headCenter = parts.head.getWorldPosition(new THREE.Vector3());
+  assert.ok(Math.abs(headCenter.y - 2.2) < 0.03);
+});

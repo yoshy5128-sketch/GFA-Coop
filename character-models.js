@@ -1503,7 +1503,7 @@ function pose(parts,crouch,time,moving,lowerYaw=0){
     }
     if(r.recoilAmount>0)r.waist.rotation.x-=r.recoilAmount;
     parts.baseTorsoPosePitch=r.chest.rotation.x;
-    r.root.scale.y=1;r.root.updateMatrixWorld(true);
+    r.root.scale.y=Number.isFinite(r.root.userData.gfaPoseScaleY)?r.root.userData.gfaPoseScaleY:1;r.root.updateMatrixWorld(true);
 }
 function reset(parts,id){const r=rigs.get(parts);if(!r)return;activeRagdolls.delete(r);activeRecoils.delete(r);activeHitReactions.delete(r);r.death=null;r.recoilAmount=0;r.hitReaction=null;if(r.gun.parent!==r.aim)r.aim.add(r.gun);r.gun.position.set(0,0,0);r.gun.rotation.set(0,0,0);r.gun.scale.set(1,1,1);r.aim.rotation.set(0,0,0);r.pelvis.rotation.set(0,0,0);r.waist.rotation.set(0,0,0);r.chest.rotation.set(0,0,0);r.arms.forEach(l=>l.end.rotation.set(0,0,0));r.legs.forEach(l=>l.end.rotation.set(0,0,0));if(id)r.setWeapon(id);pose(parts,false,0,false);r.gun.visible=true;}
 // Reuse bounds, but update their coordinates on every call (including death/respawn).
