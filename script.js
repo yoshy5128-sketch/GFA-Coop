@@ -35,6 +35,7 @@
   let coopSharedMapName = '';
   let coopHostPreparedMapShare = null;
   let coopGuestLocalMapPreference = null;
+let coopGuestLocalSettingsPreference = null;
   let coopStartingFromHost = false;
   let gameSettings = {
       playerHP: 20,
@@ -1843,6 +1844,9 @@ function getMedikitHealAmount() {
 }
 
   function applyBillBattleModeConstraints() {
+    if (gameSettings.gameMode !== 'ffa' && Number(gameSettings.aiCount) < 1) {
+        gameSettings.aiCount = 1;
+    }
     if (!isBillBattleMode()) return;
     gameSettings.billBattleLighting = normalizeBillBattleLightingCount(gameSettings.billBattleLighting);
     gameSettings.billBattleObstacles = normalizeBillBattleObstacleLevel(gameSettings.billBattleObstacles);
@@ -1892,7 +1896,11 @@ function getMedikitHealAmount() {
     }
     setDisabled(aiHpSelect, false);
     aiCountRadios.forEach(radio => {
-        radio.disabled = false;
+        const isZeroAI = radio.value === '0';
+        radio.disabled = isZeroAI && gameSettings.gameMode !== 'ffa';
+        radio.checked = radio.value === String(gameSettings.aiCount);
+        const container = radio.closest && radio.closest('label') ? radio.closest('label') : radio;
+        if (container && container.style) container.style.opacity = radio.disabled ? 0.5 : 1.0;
     });
     // Map selection remains available in Indoor mode; choosing a map switches to Outdoor PvAI.
     setDisabled(unifiedMapSelector, false);
@@ -1921,6 +1929,7 @@ function getMedikitHealAmount() {
       if (!isBill) {
           hideBillBattleKillDisplay();
       }
+      if (coopSessionConnected && coopLocalRole === 'guest') applyCoopGuestSettingsPermissions();
   }
 
 function getPlayerMRClipAmmo() {
@@ -3292,7 +3301,15 @@ function saveSettings() {
     saveCurrentModeSpecificSettings(gameSettings.gameMode);
     applyBillBattleModeConstraints();
     updateSettingsAvailabilityForMode();
-    const settingsToPersist = { ...gameSettings };
+    let settingsToPersist = { ...gameSettings };
+    if (coopLocalRole === 'guest' && coopGuestLocalSettingsPreference) {
+        coopGuestLocalSettingsPreference.bgmMute = Boolean(gameSettings.bgmMute);
+        coopGuestLocalSettingsPreference.killCamMode = gameSettings.killCamMode;
+        coopGuestLocalSettingsPreference.autoAim = Boolean(gameSettings.autoAim);
+        coopGuestLocalSettingsPreference.buttonPositions = gameSettings.buttonPositions
+            ? JSON.parse(JSON.stringify(gameSettings.buttonPositions)) : null;
+        settingsToPersist = JSON.parse(JSON.stringify(coopGuestLocalSettingsPreference));
+    }
     if (coopLocalRole === 'guest' && coopGuestLocalMapPreference) {
         settingsToPersist.mapType = coopGuestLocalMapPreference.mapType;
         settingsToPersist.customMapName = coopGuestLocalMapPreference.customMapName;
@@ -14067,6 +14084,45 @@ function isSettingsScreenVisible() {
     ));
 }
 
+const COOP_GUEST_NAVIGATION_CONTROL_IDS = new Set([
+    'button-setting-btn',
+    'start-game-btn',
+    'resume-game-btn',
+    'back-to-title-btn'
+]);
+
+function isCoopGuestEditableSetting(control) {
+    if (!control) return false;
+    if (COOP_GUEST_NAVIGATION_CONTROL_IDS.has(control.id)) return true;
+    if (control.id === 'bgm-mute-checkbox') return true;
+    return control.name === 'killcam-mode' || control.name === 'auto-aim';
+}
+
+function clearCoopGuestSettingsLocks() {
+    const settings = document.getElementById('start-screen');
+    if (!settings) return;
+    settings.querySelectorAll('[data-coop-guest-locked="true"]').forEach(control => {
+        control.disabled = false;
+        control.classList.remove('coop-guest-locked-control');
+        delete control.dataset.coopGuestLocked;
+    });
+    const notice = document.getElementById('coop-guest-settings-notice');
+    if (notice) notice.style.display = 'none';
+}
+
+function applyCoopGuestSettingsPermissions() {
+    const settings = document.getElementById('start-screen');
+    if (!settings || !coopSessionConnected || coopLocalRole !== 'guest') return;
+    const notice = document.getElementById('coop-guest-settings-notice');
+    if (notice) notice.style.display = 'block';
+    settings.querySelectorAll('input, select, button').forEach(control => {
+        if (isCoopGuestEditableSetting(control)) return;
+        control.disabled = true;
+        control.dataset.coopGuestLocked = 'true';
+        control.classList.add('coop-guest-locked-control');
+    });
+}
+
 function isTitleScreenVisible() {
     const title = document.getElementById('title-logo-screen');
     return !!title && !title.classList.contains('title-logo-hidden');
@@ -16933,6 +16989,7 @@ function showSettingsAndPause() {
     
     // 統合マップセレクターを更新して現在マップを表示
     updateUnifiedMapSelector();
+    applyCoopGuestSettingsPermissions();
     updateMenuBGM();
 }
 
@@ -17773,11 +17830,15 @@ function startCoopGameFromHost(payload) {
         customMapName: gameSettings.customMapName
     };
     const localKillCamMode = gameSettings.killCamMode;
+    const localAutoAim = Boolean(gameSettings.autoAim);
+    const localBgmMute = Boolean(gameSettings.bgmMute);
     const localButtonPositions = gameSettings.buttonPositions
         ? JSON.parse(JSON.stringify(gameSettings.buttonPositions))
         : null;
     Object.assign(gameSettings, settings);
     if (typeof localKillCamMode === 'string') gameSettings.killCamMode = localKillCamMode;
+    gameSettings.autoAim = localAutoAim;
+    gameSettings.bgmMute = localBgmMute;
     if (localButtonPositions) gameSettings.buttonPositions = localButtonPositions;
     const usePlayer2Settings = settings.coopSettingsEnabled === true;
     gameSettings.playerHP = usePlayer2Settings
@@ -17800,6 +17861,11 @@ function startCoopGameFromHost(payload) {
     if (aiShotValue) aiShotValue.textContent = String(gameSettings.aiAimPrecision);
     const autoAimRadio = document.querySelector(`input[name="auto-aim"][value="${String(gameSettings.autoAim)}"]`);
     if (autoAimRadio) autoAimRadio.checked = true;
+    document.querySelectorAll('input[name="killcam-mode"]').forEach(radio => {
+        radio.checked = radio.value === gameSettings.killCamMode;
+    });
+    const bgmMuteCheckbox = document.getElementById('bgm-mute-checkbox');
+    if (bgmMuteCheckbox) bgmMuteCheckbox.checked = gameSettings.bgmMute;
     const barrelRadio = document.querySelector(`input[name="barrel-respawn"][value="${String(gameSettings.barrelRespawn)}"]`);
     if (barrelRadio) barrelRadio.checked = true;
     const nightMode = document.getElementById('night-mode');
@@ -17832,6 +17898,9 @@ window.GFACoopGameBridge = Object.freeze({
     setSession({ connected, role }) {
         coopSessionConnected = Boolean(connected);
         coopLocalRole = role === 'guest' ? 'guest' : 'host';
+        if (coopSessionConnected && coopLocalRole === 'guest' && !coopGuestLocalSettingsPreference) {
+            coopGuestLocalSettingsPreference = JSON.parse(JSON.stringify(gameSettings));
+        }
         coopSpawnApplied = false;
         coopRemoteHP = null;
         coopRemoteDead = false;
@@ -17855,9 +17924,17 @@ window.GFACoopGameBridge = Object.freeze({
             coopGuestLocalMapPreference = null;
         }
         if (!coopSessionConnected) {
+            clearCoopGuestSettingsLocks();
+            coopGuestLocalSettingsPreference = null;
+            updateSettingsAvailabilityForMode();
             coopRemotePoseInitialized = false;
             coopHostWorldReceivedAt = 0;
             if (coopRemotePlayer) coopRemotePlayer.visible = false;
+        } else if (coopLocalRole === 'guest') {
+            applyCoopGuestSettingsPermissions();
+        } else {
+            clearCoopGuestSettingsLocks();
+            updateSettingsAvailabilityForMode();
         }
     },
     getLocalPose: getCoopLocalPose,

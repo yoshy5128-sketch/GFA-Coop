@@ -223,6 +223,11 @@ body.settings-screen-active #follow-button {
     display: none !important;
     pointer-events: none !important;
 }
+
+#start-screen .coop-guest-locked-control {
+    opacity: 0.42 !important;
+    cursor: not-allowed !important;
+}
 #crosshair, #ai-hp-display { display: none; }
 #title-logo-screen {
     position: fixed;
