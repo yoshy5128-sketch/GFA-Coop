@@ -31,6 +31,11 @@
   const LAST_REGISTERED_RANDOM_MAP_STORAGE_KEY = 'lastRegisteredRandomMapName';
   let activeRandomMapData = null;
   let activeRandomMapName = '';
+  let coopSharedMapData = null;
+  let coopSharedMapName = '';
+  let coopHostPreparedMapShare = null;
+  let coopGuestLocalMapPreference = null;
+  let coopStartingFromHost = false;
   let gameSettings = {
       playerHP: 20,
       player2HP: 20,
@@ -3235,7 +3240,12 @@ function saveSettings() {
     saveCurrentModeSpecificSettings(gameSettings.gameMode);
     applyBillBattleModeConstraints();
     updateSettingsAvailabilityForMode();
-    localStorage.setItem('gameSettings', JSON.stringify(gameSettings));
+    const settingsToPersist = { ...gameSettings };
+    if (coopLocalRole === 'guest' && coopGuestLocalMapPreference) {
+        settingsToPersist.mapType = coopGuestLocalMapPreference.mapType;
+        settingsToPersist.customMapName = coopGuestLocalMapPreference.customMapName;
+    }
+    localStorage.setItem('gameSettings', JSON.stringify(settingsToPersist));
 }
 
 function normalizeAIShotLevel(level) {
@@ -10137,6 +10147,13 @@ function normalizeRegisteredMapData(rawMapData) {
 }
 
 function resolveCustomMapSelection() {
+    if (coopSharedMapData && (gameSettings.mapType === 'custom' || gameSettings.mapType === 'random')) {
+        return {
+            allCustomMaps: {},
+            mapName: coopSharedMapName || gameSettings.customMapName || 'HOST SHARED MAP',
+            mapData: coopSharedMapData
+        };
+    }
     if (gameSettings.mapType === 'random') {
         let allCustomMaps = {};
         try {
@@ -10197,6 +10214,41 @@ function resolveCustomMapSelection() {
         mapName = names[0];
     }
     return { allCustomMaps, mapName, mapData: normalizeRegisteredMapData(allCustomMaps[mapName]) };
+}
+
+const COOP_MAP_MAX_SERIALIZED_LENGTH = 2 * 1024 * 1024;
+
+function createCoopMapShare() {
+    if (gameSettings.mapType !== 'custom' && gameSettings.mapType !== 'random') return null;
+    const resolved = resolveCustomMapSelection();
+    const normalized = normalizeRegisteredMapData(resolved.mapData);
+    if (!normalized || !Array.isArray(normalized.obstacles)) return null;
+    const mapData = JSON.parse(JSON.stringify(normalized));
+    delete mapData.linkedSettings;
+    const serialized = JSON.stringify(mapData);
+    if (serialized.length > COOP_MAP_MAX_SERIALIZED_LENGTH) {
+        throw new Error('選択したマップがCO-OP転送上限（約2MB）を超えています。');
+    }
+    return {
+        version: 1,
+        mapType: gameSettings.mapType,
+        mapName: resolved.mapName || gameSettings.customMapName || 'HOST SHARED MAP',
+        mapData
+    };
+}
+
+function applyCoopMapShare(mapShare) {
+    if (!mapShare || typeof mapShare !== 'object') return false;
+    if (mapShare.mapType !== 'custom' && mapShare.mapType !== 'random') return false;
+    const mapData = normalizeRegisteredMapData(mapShare.mapData);
+    if (!mapData || !Array.isArray(mapData.obstacles)) return false;
+    const serialized = JSON.stringify(mapData);
+    if (serialized.length > COOP_MAP_MAX_SERIALIZED_LENGTH) return false;
+    coopSharedMapData = JSON.parse(serialized);
+    coopSharedMapName = String(mapShare.mapName || 'HOST SHARED MAP').slice(0, 120);
+    activeRandomMapData = mapShare.mapType === 'random' ? coopSharedMapData : null;
+    activeRandomMapName = mapShare.mapType === 'random' ? coopSharedMapName : '';
+    return true;
 }
 
 function getCompatibleCustomSpawnPoints(mapData) {
@@ -14478,7 +14530,7 @@ function shuffle(array) {
 function restartGame(options = {}) {
     debugLog('restartGame() called');
     if (!options.deferGameplay) setGameplayWakeLock(true);
-    if (options.rerollRandomMap && gameSettings.mapType === 'random') {
+    if (options.rerollRandomMap && gameSettings.mapType === 'random' && !coopSessionConnected) {
         activeRandomMapData = null;
     }
     resetMatchEventVoices();
@@ -17530,11 +17582,23 @@ function setCoopControlValue(id, value) {
 function startCoopGameFromHost(payload) {
     const settings = payload && payload.settings;
     if (!settings || typeof settings !== 'object') return false;
+    if ((settings.mapType === 'custom' || settings.mapType === 'random') && !applyCoopMapShare(payload.mapShare)) {
+        console.error('HOSTの共有マップデータを読み込めませんでした。');
+        return false;
+    }
+    if (settings.mapType !== 'custom' && settings.mapType !== 'random') {
+        coopSharedMapData = null;
+        coopSharedMapName = '';
+    }
+    coopGuestLocalMapPreference = {
+        mapType: gameSettings.mapType,
+        customMapName: gameSettings.customMapName
+    };
     const localKillCamMode = gameSettings.killCamMode;
     const localButtonPositions = gameSettings.buttonPositions
         ? JSON.parse(JSON.stringify(gameSettings.buttonPositions))
         : null;
-    Object.assign(gameSettings, settings, { mapType: 'default', customMapName: '' });
+    Object.assign(gameSettings, settings);
     if (typeof localKillCamMode === 'string') gameSettings.killCamMode = localKillCamMode;
     if (localButtonPositions) gameSettings.buttonPositions = localButtonPositions;
     const usePlayer2Settings = settings.coopSettingsEnabled === true;
@@ -17544,7 +17608,7 @@ function startCoopGameFromHost(payload) {
     gameSettings.defaultWeaponPlayer = usePlayer2Settings
         ? (settings.defaultWeaponPlayer2 || settings.defaultWeaponPlayer || WEAPON_MG)
         : (settings.defaultWeaponPlayer || WEAPON_MG);
-    activeRandomMapData = null;
+    if (gameSettings.mapType === 'random') activeRandomMapData = coopSharedMapData;
     setCoopControlValue('player-hp', gameSettings.playerHP);
     setCoopControlValue('ai-hp', gameSettings.aiHP);
     setCoopControlValue('mg-count', gameSettings.mgCount);
@@ -17569,7 +17633,6 @@ function startCoopGameFromHost(payload) {
     setCoopControlValue('billbattle-size', gameSettings.billBattleSize);
     setCoopControlValue('billbattle-obstacles', gameSettings.billBattleObstacles);
     setCoopControlValue('billbattle-lighting', gameSettings.billBattleLighting);
-    setCoopControlValue('unified-map-selector', 'default');
     document.querySelectorAll('input[name="ai-count"]').forEach(radio => {
         radio.checked = Number(radio.value) === Number(gameSettings.aiCount);
     });
@@ -17581,7 +17644,9 @@ function startCoopGameFromHost(payload) {
     if (titleScreen) titleScreen.classList.add('title-logo-hidden');
     if (overlay) overlay.hidden = true;
     const startButton = document.getElementById('start-game-btn');
+    coopStartingFromHost = true;
     if (startButton && startButton.dataset.loading !== 'true') startButton.click();
+    else coopStartingFromHost = false;
     return true;
 }
 
@@ -17601,6 +17666,12 @@ window.GFACoopGameBridge = Object.freeze({
         coopLastSnapshotAt = 0;
         coopBgmSyncPendingTrack = null;
         coopBgmLastCorrectionAt = 0;
+        if (coopSessionConnected) {
+            coopSharedMapData = null;
+            coopSharedMapName = '';
+            coopHostPreparedMapShare = null;
+            coopGuestLocalMapPreference = null;
+        }
         if (!coopSessionConnected) {
             coopRemotePoseInitialized = false;
             coopHostWorldReceivedAt = 0;
@@ -17620,20 +17691,28 @@ window.GFACoopGameBridge = Object.freeze({
     playRemotePlayerKill: playCoopRemotePlayerKill,
     startAsHost() {
         const mapSelector = document.getElementById('title-map-selector');
-        if (mapSelector && mapSelector.value !== 'default') {
-            return { ok: false, message: '初期CO-OP版はMAPをDefault Mapに設定してください。' };
-        }
         const startButton = document.getElementById('start-game-btn');
         if (!startButton || startButton.dataset.loading === 'true') {
             return { ok: false, message: '現在ゲームを開始できません。TOP画面へ戻ってください。' };
         }
         initializeAudio();
-        gameSettings.mapType = 'default';
-        gameSettings.customMapName = '';
-        setCoopControlValue('unified-map-selector', 'default');
+        if (mapSelector) applyTitleMapSelection(mapSelector.value);
+        const selectedMapValue = gameSettings.mapType === 'random'
+            ? RANDOM_MAP_OPTION_VALUE
+            : (gameSettings.mapType === 'custom' ? gameSettings.customMapName : 'default');
+        setCoopControlValue('unified-map-selector', selectedMapValue);
+        try {
+            coopHostPreparedMapShare = createCoopMapShare();
+        } catch (error) {
+            return { ok: false, message: error.message || 'マップデータを共有できません。' };
+        }
+        if ((gameSettings.mapType === 'custom' || gameSettings.mapType === 'random') && !coopHostPreparedMapShare) {
+            return { ok: false, message: '選択したマップデータがHOSTに見つかりません。' };
+        }
         saveSettings();
         const titleScreen = document.getElementById('title-logo-screen');
         if (titleScreen) titleScreen.classList.add('title-logo-hidden');
+        coopStartingFromHost = true;
         startButton.click();
         return { ok: true };
     },
@@ -20395,7 +20474,7 @@ if (startBtn) {
         }
         // 統合セレクターからマップ選択を取得
         const unifiedMapSelectorOnStart = document.getElementById('unified-map-selector');
-        if (unifiedMapSelectorOnStart && unifiedMapSelectorOnStart.value) {
+        if (!coopStartingFromHost && unifiedMapSelectorOnStart && unifiedMapSelectorOnStart.value) {
             const selectedValue = unifiedMapSelectorOnStart.value;
                 if (selectedValue === 'default') {
                     gameSettings.mapType = 'default';
@@ -20422,12 +20501,17 @@ if (startBtn) {
             gameSettings.gameDuration = parseInt(durationRadio.value, 10);
         }
         saveSettings();
+        const coopMapShare = coopLocalRole === 'host' && coopSessionConnected
+            ? coopHostPreparedMapShare
+            : null;
         window.dispatchEvent(new CustomEvent('gfa:game-starting', {
             detail: {
                 settings: JSON.parse(JSON.stringify(gameSettings)),
+                mapShare: coopMapShare,
                 startedAt: Date.now()
             }
         }));
+        coopStartingFromHost = false;
         let stageReady = false;
         try {
             await prepareGameStartAssets();

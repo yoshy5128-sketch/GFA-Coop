@@ -1,7 +1,10 @@
 import { GfaPeerTransport } from './net/peer-transport.js';
 import { normalizeRoomCode } from './net/protocol.js';
 
-const COOP_BUILD_ID = '20261024-v18';
+const COOP_BUILD_ID = '20261024-v19';
+const GAME_START_CHUNK_SIZE = 12000;
+const GAME_START_MAX_CHUNKS = 256;
+const GAME_START_MAX_LENGTH = 2.5 * 1024 * 1024;
 
 const launchButton = document.getElementById('title-coop-button');
 const overlay = document.getElementById('coop-lobby-overlay');
@@ -15,6 +18,7 @@ const resetButton = overlay.querySelector('#coop-reset');
 const roomInput = overlay.querySelector('#coop-room-code');
 let poseTimer = null;
 let poseTick = 0;
+let pendingGameStart = null;
 
 function gameBridge() {
   return window.GFACoopGameBridge || null;
@@ -52,10 +56,80 @@ function stopPoseExchange() {
   poseTick = 0;
 }
 
+function beginGuestGame(payload) {
+  updateStatus({ code: 'connected', message: 'HOSTの設定とマップでゲームを開始します…' });
+  overlay.hidden = true;
+  const started = gameBridge()?.startFromHost?.(payload);
+  if (started === false) {
+    overlay.hidden = false;
+    updateStatus({ code: 'error', message: 'HOSTの共有マップを読み込めませんでした。再接続してください。' });
+  }
+}
+
+function sendGameStart(payload) {
+  const serialized = JSON.stringify(payload);
+  if (serialized.length <= GAME_START_CHUNK_SIZE) {
+    return transport.sendEvent('game-start', payload);
+  }
+  if (serialized.length > GAME_START_MAX_LENGTH) {
+    updateStatus({ code: 'error', message: '共有マップが大きすぎるため送信できません。' });
+    return false;
+  }
+  const transferId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const total = Math.ceil(serialized.length / GAME_START_CHUNK_SIZE);
+  transport.sendEvent('game-start-begin', { transferId, total, length: serialized.length });
+  for (let index = 0; index < total; index += 1) {
+    transport.sendEvent('game-start-chunk', {
+      transferId,
+      index,
+      data: serialized.slice(index * GAME_START_CHUNK_SIZE, (index + 1) * GAME_START_CHUNK_SIZE)
+    });
+  }
+  return transport.sendEvent('game-start-end', { transferId });
+}
+
+function receiveGameStartChunk(message) {
+  const payload = message.payload || {};
+  if (message.type === 'game-start-begin') {
+    const total = Number(payload.total);
+    const length = Number(payload.length);
+    if (!payload.transferId || !Number.isInteger(total) || total < 1 || total > GAME_START_MAX_CHUNKS
+        || !Number.isFinite(length) || length < 1 || length > GAME_START_MAX_LENGTH) {
+      pendingGameStart = null;
+      return;
+    }
+    pendingGameStart = { transferId: payload.transferId, total, length, chunks: new Array(total) };
+    updateStatus({ code: 'connected', message: `HOSTマップを受信中… 0/${total}` });
+    return;
+  }
+  if (!pendingGameStart || payload.transferId !== pendingGameStart.transferId) return;
+  if (message.type === 'game-start-chunk') {
+    const index = Number(payload.index);
+    if (!Number.isInteger(index) || index < 0 || index >= pendingGameStart.total || typeof payload.data !== 'string') return;
+    pendingGameStart.chunks[index] = payload.data;
+    const received = pendingGameStart.chunks.filter(chunk => typeof chunk === 'string').length;
+    updateStatus({ code: 'connected', message: `HOSTマップを受信中… ${received}/${pendingGameStart.total}` });
+    return;
+  }
+  if (message.type === 'game-start-end') {
+    const transfer = pendingGameStart;
+    pendingGameStart = null;
+    if (transfer.chunks.some(chunk => typeof chunk !== 'string')) return;
+    const serialized = transfer.chunks.join('');
+    if (serialized.length !== transfer.length) return;
+    try {
+      beginGuestGame(JSON.parse(serialized));
+    } catch (error) {
+      updateStatus({ code: 'error', message: '共有マップデータが破損しています。再接続してください。' });
+    }
+  }
+}
+
 function resetConnection() {
   stopPoseExchange();
   transport?.close();
   transport = null;
+  pendingGameStart = null;
   gameBridge()?.setSession?.({ connected: false, role: selectedRole });
   connectButton.disabled = false;
   lockConnectionForm(false);
@@ -115,11 +189,9 @@ function createTransport() {
       if (message.type === 'hello-ack') {
         gameBridge()?.applyRemoteCharacterCustomization?.(message.payload?.character);
       }
-      if (message.type === 'game-start' && transport.role === 'guest') {
-        updateStatus({ code: 'connected', message: 'HOSTの設定でゲームを開始します…' });
-        overlay.hidden = true;
-        gameBridge()?.startFromHost?.(message.payload);
-      }
+      if (message.type === 'game-start' && transport.role === 'guest') beginGuestGame(message.payload);
+      if ((message.type === 'game-start-begin' || message.type === 'game-start-chunk'
+          || message.type === 'game-start-end') && transport.role === 'guest') receiveGameStartChunk(message);
       if (message.type === 'player-fire') {
         if (transport.role === 'host') gameBridge()?.handleGuestFire?.(message.payload);
         else gameBridge()?.showRemoteFire?.(message.payload);
@@ -184,7 +256,7 @@ startButton.addEventListener('click', () => {
 
 window.addEventListener('gfa:game-starting', event => {
   if (transport?.role !== 'host' || !transport.connected) return;
-  transport.sendEvent('game-start', event.detail);
+  sendGameStart(event.detail);
 });
 
 window.addEventListener('gfa:player-fire', event => {
