@@ -1,12 +1,12 @@
-const CACHE_NAME = 'gfa-coop-pwa-v12';
+const CACHE_NAME = 'gfa-coop-pwa-v13';
 const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './style.css?v=20261024b',
-  './character-models.js?v=20261024f',
-  './script.js?v=20261024i',
-  './coop/coop-bootstrap.js?v=20261024h',
+  './character-models.js?v=20261024g',
+  './script.js?v=20261024j',
+  './coop/coop-bootstrap.js?v=20261024i',
   './coop/net/peer-transport.js',
   './coop/net/protocol.js',
   './vendor/three-r128.min.js',
@@ -28,7 +28,13 @@ const CORE_ASSETS = [
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(CORE_ASSETS);
+    // Do not let the browser HTTP cache seed a new app cache with an older build.
+    await Promise.all(CORE_ASSETS.map(async asset => {
+      const request = new Request(asset, { cache: 'no-store' });
+      const response = await fetch(request);
+      if (!response.ok) throw new Error(`Failed to cache ${asset}: ${response.status}`);
+      await cache.put(asset, response);
+    }));
   })());
   self.skipWaiting();
 });
@@ -38,6 +44,11 @@ self.addEventListener('activate', event => {
     const keys = await caches.keys();
     await Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)));
     await self.clients.claim();
+    // Existing tabs can otherwise keep executing the previous JavaScript until
+    // the user happens to reload them. Reload each same-origin app tab once when
+    // this worker version activates.
+    const openClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    await Promise.all(openClients.map(client => client.navigate(client.url).catch(() => null)));
   })());
 });
 
@@ -53,7 +64,7 @@ self.addEventListener('fetch', event => {
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
       try {
-        const response = await fetch(request);
+        const response = await fetch(request, { cache: 'no-store' });
         const cache = await caches.open(CACHE_NAME);
         cache.put('./index.html', response.clone());
         return response;
@@ -68,7 +79,7 @@ self.addEventListener('fetch', event => {
   if (url.origin === self.location.origin && isCode) {
     event.respondWith((async () => {
       try {
-        const response = await fetch(request);
+        const response = await fetch(request, { cache: 'no-store' });
         if (response.ok) {
           const cache = await caches.open(CACHE_NAME);
           cache.put(request, response.clone());

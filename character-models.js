@@ -1323,7 +1323,7 @@ const accessory=(parent)=>{const group=pivot(parent);group.userData.isCharacterA
 
     const root=new THREE.Group();const pelvis=pivot(root);const waist=pivot(pelvis,0,.20,0);const chest=pivot(waist);
     shaped(pelvis,[[-.14,.40*p.hip,.27*p.depth],[0,.46*p.hip,.30*p.depth],[.17,.43*p.hip,.28*p.depth]],mats.pants);
-    shaped(waist,[[-.04,.40*p.torso,.26*p.depth],[.12,.43*p.torso,.26*p.depth],[.23,.45*p.torso,.28*p.depth]],mats.shirt);
+    shaped(chest,[[-.04,.40*p.torso,.26*p.depth],[.12,.43*p.torso,.26*p.depth],[.23,.45*p.torso,.28*p.depth]],mats.shirt);
     shaped(chest,[[.12,.43*p.torso,.28*p.depth],[.42,.58*p.torso,.31*p.depth],[.65,.66*p.torso,.29*p.depth],[.74,.47*p.torso,.25*p.depth]],mats.shirt);
     box(pelvis,.445*p.hip,.065,.295*p.depth,mats.belt,0,.14,0);box(pelvis,.09,.06,.015,mats.joint,0,.14,.156*p.depth);
     if(!isTShirt){

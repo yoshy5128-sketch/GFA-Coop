@@ -1397,13 +1397,16 @@
         })();
     </script>
     <script src="./vendor/tween-18.6.4.umd.js"></script>
-    <script src="character-models.js?v=20261024f"></script>
-    <script src="script.js?v=20261024i"></script>
-    <script type="module" src="coop/coop-bootstrap.js?v=20261024h"></script>
+    <script src="character-models.js?v=20261024g"></script>
+    <script src="script.js?v=20261024j"></script>
+    <script type="module" src="coop/coop-bootstrap.js?v=20261024i"></script>
     <script>
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', () => {
-            navigator.serviceWorker.register('./sw.js', { scope: './' })
+            navigator.serviceWorker.register('./sw.js', {
+              scope: './',
+              updateViaCache: 'none'
+            }).then(registration => registration.update())
               .catch(error => console.warn('Service Worker registration failed:', error));
           });
         }
