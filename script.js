@@ -8931,8 +8931,9 @@ function applyAimConstraints(parts, ownerYaw, targetWorldPos, smoothing = 1.0) {
     const relYaw = normalizeAngle(desiredYaw - ownerYaw);
     const clampedRelYaw = clampAngle(relYaw, -Math.PI / 3, Math.PI / 3); // ±60度
     // このリグでは+Xピッチで銃口が下を向くため、符号を反転する。
-    // 目標の上を狙いにくくするため、下方向の許容幅を広くする。
-    const clampedPitch = clampAngle(-desiredPitch, -0.6, 1.2);
+    // カメラの上下可動域と同じ範囲まで上半身と銃を追従させる。
+    const maxAimPitch = Math.PI / 2 - 0.1;
+    const clampedPitch = clampAngle(-desiredPitch, -maxAimPitch, maxAimPitch);
     const alpha = THREE.MathUtils.clamp(smoothing, 0, 1);
     parts.aimGroup.rotation.y += normalizeAngle(clampedRelYaw - parts.aimGroup.rotation.y) * alpha;
     parts.aimGroup.rotation.x = THREE.MathUtils.lerp(parts.aimGroup.rotation.x, clampedPitch, alpha);
@@ -12695,6 +12696,20 @@ function aiShoot(ai, timeElapsed) {
         }
         if (spreadDeg > 0.0001) {
             direction = applyAIAimSpread(direction, THREE.MathUtils.degToRad(spreadDeg));
+        }
+    }
+    // Spread is part of the AI's actual aim. Rotate the rendered upper body/gun
+    // to that final direction, then use the resulting barrel direction for physics.
+    if (ai.userData && ai.userData.parts) {
+        const spreadAimTarget = startPosition.clone().add(direction.clone().multiplyScalar(60));
+        applyAimConstraints(ai.userData.parts, ai.rotation.y, spreadAimTarget, 1);
+        ai.updateMatrixWorld(true);
+        const alignedMuzzle = getGunMuzzleInfo(ai.userData.parts);
+        if (alignedMuzzle && alignedMuzzle.direction) {
+            startPosition = alignedMuzzle.position.clone();
+            muzzlePositionForEffects = alignedMuzzle.position.clone();
+            muzzleDirection = alignedMuzzle.direction.clone().normalize();
+            direction.copy(muzzleDirection);
         }
     }
     let canAIShoot = false;
@@ -16723,6 +16738,9 @@ let coopRemoteHP = null;
 let coopRemoteDead = false;
 const coopRemoteLastFireAt = new Map();
 let coopForceSnapshotSnap = false;
+let coopRemoteMovingUntil = 0;
+let coopRemoteLowerBodyYaw = 0;
+let coopRemoteLastNetworkPosition = null;
 
 function ensureCoopRemotePlayer() {
     if (coopRemotePlayer) return coopRemotePlayer;
@@ -16735,8 +16753,22 @@ function ensureCoopRemotePlayer() {
     coopRemotePlayer.name = 'GFA_COOP_REMOTE_PLAYER';
     coopRemotePlayer.visible = false;
     coopRemotePlayer.userData.isCoopRemotePlayer = true;
+    coopRemotePlayer.traverse(object => {
+        if (!object || !object.isMesh) return;
+        object.castShadow = true;
+        object.receiveShadow = true;
+    });
     scene.add(coopRemotePlayer);
     return coopRemotePlayer;
+}
+
+function enableCoopRemoteShadows() {
+    if (!coopRemotePlayer) return;
+    coopRemotePlayer.traverse(object => {
+        if (!object || !object.isMesh) return;
+        object.castShadow = true;
+        object.receiveShadow = true;
+    });
 }
 
 function getCoopLocalPose() {
@@ -16748,8 +16780,10 @@ function getCoopLocalPose() {
     const moving = Boolean(previous && previous.distanceToSquared(position) > 0.0004);
     if (!coopLastSnapshotPosition) coopLastSnapshotPosition = new THREE.Vector3();
     coopLastSnapshotPosition.copy(position);
-    const forward = new THREE.Vector3();
-    camera.getWorldDirection(forward);
+    const aimDirection = new THREE.Vector3();
+    camera.getWorldDirection(aimDirection);
+    if (aimDirection.lengthSq() > 0.000001) aimDirection.normalize();
+    const forward = aimDirection.clone();
     forward.y = 0;
     if (forward.lengthSq() > 0.000001) forward.normalize();
     return {
@@ -16757,6 +16791,7 @@ function getCoopLocalPose() {
         position: [position.x, position.y, position.z],
         yaw: player.rotation.y,
         forward: [forward.x, forward.z],
+        aimDirection: [aimDirection.x, aimDirection.y, aimDirection.z],
         pitch: camera.rotation.x,
         height: playerTargetHeight,
         crouching: Boolean(isCrouchingToggle),
@@ -16780,14 +16815,35 @@ function applyCoopRemotePose(pose) {
     if (!pose || pose.active !== true || !Array.isArray(pose.position) || pose.position.length !== 3) {
         coopRemotePose = null;
         coopRemotePoseInitialized = false;
+        coopRemoteLastNetworkPosition = null;
+        coopRemoteMovingUntil = 0;
         if (coopRemotePlayer) coopRemotePlayer.visible = false;
         return;
     }
     if (!pose.position.every(Number.isFinite) || !Number.isFinite(pose.yaw)) return;
     const wasInactive = !coopRemotePose;
     const previousReceivedAt = coopRemotePoseReceivedAt;
+    const previousNetworkPosition = coopRemoteLastNetworkPosition;
     coopRemotePose = pose;
     coopRemotePoseReceivedAt = performance.now();
+    const nextNetworkPosition = new THREE.Vector3(...pose.position);
+    if (previousNetworkPosition) {
+        const movement = nextNetworkPosition.clone().sub(previousNetworkPosition);
+        movement.y = 0;
+        const elapsedSeconds = Math.max(0.001, (coopRemotePoseReceivedAt - previousReceivedAt) / 1000);
+        const speed = movement.length() / elapsedSeconds;
+        if (speed > 0.12 || pose.moving === true) {
+            coopRemoteMovingUntil = coopRemotePoseReceivedAt + 220;
+            if (movement.lengthSq() > 0.000001) {
+                const movementYaw = Math.atan2(movement.x, movement.z);
+                coopRemoteLowerBodyYaw = normalizeCoopAngle(movementYaw - getCoopRemoteVisualYaw(pose));
+            }
+        }
+    } else if (pose.moving === true) {
+        coopRemoteMovingUntil = coopRemotePoseReceivedAt + 220;
+    }
+    if (!coopRemoteLastNetworkPosition) coopRemoteLastNetworkPosition = new THREE.Vector3();
+    coopRemoteLastNetworkPosition.copy(nextNetworkPosition);
     const remote = ensureCoopRemotePlayer();
     if (coopLocalRole === 'host' && (coopRemoteHP === null
         || (wasInactive && coopRemoteHP <= 0 && (pose.invulnerable === true || pose.hp > 0)))) {
@@ -16806,6 +16862,27 @@ function applyCoopRemotePose(pose) {
 
 function normalizeCoopAngle(angle) {
     return Math.atan2(Math.sin(angle), Math.cos(angle));
+}
+
+function getCoopAimDirection(payload = coopRemotePose) {
+    const values = payload && Array.isArray(payload.aimDirection) ? payload.aimDirection
+        : (payload && Array.isArray(payload.direction) ? payload.direction : null);
+    if (!values || values.length !== 3 || !values.every(Number.isFinite)) return null;
+    const direction = new THREE.Vector3(...values);
+    return direction.lengthSq() > 0.000001 ? direction.normalize() : null;
+}
+
+function aimCoopRemoteUpperBody(direction, smoothing = 1) {
+    if (!coopRemotePlayer || !direction) return null;
+    const parts = coopRemotePlayer.userData && coopRemotePlayer.userData.parts;
+    if (!parts) return null;
+    coopRemotePlayer.updateMatrixWorld(true);
+    const target = coopRemotePlayer.position.clone().add(new THREE.Vector3(0, 1.4, 0))
+        .add(direction.clone().multiplyScalar(50));
+    applyAimConstraints(parts, coopRemotePlayer.rotation.y, target, smoothing);
+    syncHeadToAimDirection(parts);
+    coopRemotePlayer.updateMatrixWorld(true);
+    return getGunMuzzleInfo(parts);
 }
 
 function updateCoopRemotePlayer(delta) {
@@ -16836,16 +16913,22 @@ function updateCoopRemotePlayer(delta) {
     const parts = coopRemotePlayer.userData && coopRemotePlayer.userData.parts;
     if (parts && coopRemotePose.weapon !== coopRemoteWeapon) {
         coopRemoteWeapon = coopRemotePose.weapon || WEAPON_PISTOL;
-        if (parts.gun) applyGunStyle(parts.gun, coopRemoteWeapon);
+        if (parts.gun) {
+            applyGunStyle(parts.gun, coopRemoteWeapon);
+            enableCoopRemoteShadows();
+        }
     }
     if (parts && window.GFACharacterModels && typeof GFACharacterModels.pose === 'function') {
+        const remoteMoving = Boolean(coopRemotePose.moving) || performance.now() < coopRemoteMovingUntil;
         GFACharacterModels.pose(
             parts,
             Boolean(coopRemotePose.crouching),
             clock.getElapsedTime(),
-            Boolean(coopRemotePose.moving),
-            0
+            remoteMoving,
+            coopRemoteLowerBodyYaw
         );
+        const aimDirection = getCoopAimDirection(coopRemotePose);
+        if (aimDirection) aimCoopRemoteUpperBody(aimDirection, 1 - Math.exp(-Math.max(0, delta) * 18));
     }
 }
 
@@ -16865,16 +16948,22 @@ function getCoopHostWorldState() {
             playerTeamKills: Number.isFinite(playerTeamKills) ? playerTeamKills : 0,
             enemyTeamKills: Number.isFinite(enemyTeamKills) ? enemyTeamKills : 0
         },
-        ais: ais.map(ai => ({
-            position: [ai.position.x, ai.position.y, ai.position.z],
-            yaw: ai.rotation.y,
-            crouching: Boolean(ai.isCrouching),
-            moving: ['MOVING', 'FOLLOWING', 'MOVING_TO_LADDER', 'CLIMBING', 'DESCENDING'].includes(ai.state),
-            weapon: ai.currentWeapon || WEAPON_PISTOL,
-            hp: Number.isFinite(ai.hp) ? ai.hp : null,
-            kills: Number.isFinite(ai.kills) ? ai.kills : 0,
-            visible: Boolean(ai.visible && ai.hp > 0)
-        }))
+        ais: ais.map(ai => {
+            const parts = ai.userData && ai.userData.parts;
+            const muzzle = parts ? getGunMuzzleInfo(parts) : null;
+            return {
+                position: [ai.position.x, ai.position.y, ai.position.z],
+                yaw: ai.rotation.y,
+                aimDirection: muzzle && muzzle.direction
+                    ? [muzzle.direction.x, muzzle.direction.y, muzzle.direction.z] : null,
+                crouching: Boolean(ai.isCrouching),
+                moving: ['MOVING', 'FOLLOWING', 'MOVING_TO_LADDER', 'CLIMBING', 'DESCENDING'].includes(ai.state),
+                weapon: ai.currentWeapon || WEAPON_PISTOL,
+                hp: Number.isFinite(ai.hp) ? ai.hp : null,
+                kills: Number.isFinite(ai.kills) ? ai.kills : 0,
+                visible: Boolean(ai.visible && ai.hp > 0)
+            };
+        })
     };
 }
 
@@ -16909,6 +16998,9 @@ function applyCoopHostWorldState(state) {
         }
         ai.userData.coopTargetPosition = new THREE.Vector3(...snapshot.position);
         ai.userData.coopTargetYaw = Number.isFinite(snapshot.yaw) ? snapshot.yaw : ai.rotation.y;
+        ai.userData.coopAimDirection = Array.isArray(snapshot.aimDirection)
+            && snapshot.aimDirection.length === 3 && snapshot.aimDirection.every(Number.isFinite)
+            ? new THREE.Vector3(...snapshot.aimDirection).normalize() : null;
         ai.userData.coopMoving = Boolean(snapshot.moving);
         ai.isCrouching = Boolean(snapshot.crouching);
         ai.visible = Boolean(snapshot.visible);
@@ -16937,6 +17029,14 @@ function updateCoopGuestAI(ai, delta) {
         const parts = ai.userData.parts;
         if (parts && window.GFACharacterModels && typeof GFACharacterModels.pose === 'function') {
             GFACharacterModels.pose(parts, Boolean(ai.isCrouching), clock.getElapsedTime(), Boolean(ai.userData.coopMoving), 0);
+            const aimDirection = ai.userData.coopAimDirection;
+            if (aimDirection) {
+                const aimTarget = ai.position.clone().add(new THREE.Vector3(0, 1.4, 0))
+                    .add(aimDirection.clone().multiplyScalar(50));
+                applyAimConstraints(parts, ai.rotation.y, aimTarget, 1 - Math.exp(-Math.max(0, delta) * 18));
+                syncHeadToAimDirection(parts);
+                ai.updateMatrixWorld(true);
+            }
         }
     }
     return true;
@@ -16950,15 +17050,17 @@ function showCoopRemoteFire(payload) {
     if (parts.gun && weapon && weapon !== coopRemoteWeapon) {
         coopRemoteWeapon = weapon;
         applyGunStyle(parts.gun, weapon);
+        enableCoopRemoteShadows();
     }
     if (window.GFACharacterModels && typeof GFACharacterModels.recoil === 'function') {
         GFACharacterModels.recoil(parts, weapon || WEAPON_PISTOL);
     }
-    const muzzle = getGunMuzzleInfo(parts);
+    const requestedDirection = getCoopAimDirection(payload)
+        || new THREE.Vector3(0, 0, 1).applyQuaternion(coopRemotePlayer.quaternion);
+    const muzzle = aimCoopRemoteUpperBody(requestedDirection, 1) || getGunMuzzleInfo(parts);
     if (muzzle && muzzle.position) {
-        const direction = Array.isArray(payload && payload.direction) && payload.direction.every(Number.isFinite)
-            ? new THREE.Vector3(...payload.direction).normalize()
-            : new THREE.Vector3(0, 0, 1).applyQuaternion(coopRemotePlayer.quaternion);
+        // Visual effects and replicated projectiles must leave along the rendered barrel.
+        const direction = muzzle.direction.clone().normalize();
         createMuzzleFlash(muzzle.position, 35, 1.3, 55, 0xffff00, direction, 0.45);
         const sound = getCoopWeaponSound(weapon, false);
         if (sound) playSpatialSound(sound, muzzle.position, { gainBoost: 0.9 });
@@ -16987,11 +17089,26 @@ function showCoopHostAIFire(payload) {
         || !payload.position.every(Number.isFinite) || !Array.isArray(payload.direction)
         || payload.direction.length !== 3 || !payload.direction.every(Number.isFinite)) return false;
     const weapon = getCoopFireSpec(payload.weapon) ? payload.weapon : WEAPON_PISTOL;
-    const position = new THREE.Vector3(...payload.position);
-    const direction = new THREE.Vector3(...payload.direction);
+    let position = new THREE.Vector3(...payload.position);
+    let direction = new THREE.Vector3(...payload.direction);
     if (direction.lengthSq() < 0.25) return false;
     direction.normalize();
     const parts = ai.userData && ai.userData.parts;
+    if (parts && parts.gun && ai.currentWeapon !== weapon) {
+        ai.currentWeapon = weapon;
+        applyGunStyle(parts.gun, weapon);
+    }
+    if (parts) {
+        const aimTarget = ai.position.clone().add(new THREE.Vector3(0, 1.4, 0))
+            .add(direction.clone().multiplyScalar(50));
+        applyAimConstraints(parts, ai.rotation.y, aimTarget, 1);
+        ai.updateMatrixWorld(true);
+        const muzzle = getGunMuzzleInfo(parts);
+        if (muzzle && muzzle.position && muzzle.direction) {
+            position = muzzle.position.clone();
+            direction = muzzle.direction.clone().normalize();
+        }
+    }
     if (parts && window.GFACharacterModels && typeof GFACharacterModels.recoil === 'function') {
         GFACharacterModels.recoil(parts, weapon);
     }
@@ -17021,17 +17138,18 @@ function handleCoopGuestFire(payload) {
     const spec = getCoopFireSpec(weapon);
     if (!remote || !spec || !Array.isArray(payload.direction) || payload.direction.length !== 3
         || !payload.direction.every(Number.isFinite)) return false;
-    const direction = new THREE.Vector3(...payload.direction);
-    if (direction.lengthSq() < 0.25) return false;
-    direction.normalize();
+    const requestedDirection = new THREE.Vector3(...payload.direction);
+    if (requestedDirection.lengthSq() < 0.25) return false;
+    requestedDirection.normalize();
     const now = performance.now();
     const previous = coopRemoteLastFireAt.get(weapon) || -Infinity;
     if (now - previous < spec.rate * 700) return false;
     coopRemoteLastFireAt.set(weapon, now);
     const parts = remote.userData && remote.userData.parts;
-    const muzzle = parts ? getGunMuzzleInfo(parts) : null;
-    if (!muzzle || !muzzle.position) return false;
     showCoopRemoteFire(payload);
+    const muzzle = parts ? getGunMuzzleInfo(parts) : null;
+    if (!muzzle || !muzzle.position || !muzzle.direction) return false;
+    const direction = muzzle.direction.clone().normalize();
     const weaponType = weapon === WEAPON_SG || weapon === WEAPON_MR ? weapon : null;
     if (spec.shotgun) {
         const up = new THREE.Vector3(0, 1, 0);
@@ -17141,6 +17259,9 @@ window.GFACoopGameBridge = Object.freeze({
         coopRemoteDead = false;
         coopRemoteLastFireAt.clear();
         coopForceSnapshotSnap = false;
+        coopRemoteMovingUntil = 0;
+        coopRemoteLowerBodyYaw = 0;
+        coopRemoteLastNetworkPosition = null;
         coopBgmSyncPendingTrack = null;
         coopBgmLastCorrectionAt = 0;
         if (!coopSessionConnected) {
