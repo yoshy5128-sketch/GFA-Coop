@@ -9536,6 +9536,32 @@ function isVisibleToPlayer(ai) {
     return true;
 }
 
+function getActiveCoopRemoteCombatant() {
+    if (!coopSessionConnected || coopLocalRole !== 'host' || !coopRemotePlayer || !coopRemotePose
+        || !coopRemotePlayer.visible || !(coopRemoteHP > 0)) return null;
+    return coopRemotePlayer;
+}
+
+function isCoopRemoteCombatant(actor) {
+    return Boolean(actor && actor === coopRemotePlayer && actor.userData && actor.userData.isCoopRemotePlayer);
+}
+
+function getCoopRemoteBodyPoints(actor = getActiveCoopRemoteCombatant()) {
+    if (!actor) return null;
+    const crouching = Boolean(coopRemotePose && coopRemotePose.crouching);
+    const height = crouching ? 1.15 : 2.2;
+    return {
+        body: actor.position.clone().add(new THREE.Vector3(0, height * 0.42, 0)),
+        upper: actor.position.clone().add(new THREE.Vector3(0, height * 0.68, 0)),
+        head: actor.position.clone().add(new THREE.Vector3(0, height * 0.9, 0))
+    };
+}
+
+function addCoopRemoteOpponent(targets) {
+    const remote = getActiveCoopRemoteCombatant();
+    if (remote && !targets.includes(remote)) targets.push(remote);
+}
+
 function getOpponentTargetsForAI(ai) {
     const targets = [];
     if (isTeamBasedAIMode()) {
@@ -9545,6 +9571,7 @@ function getOpponentTargetsForAI(ai) {
             }
         } else if (ai.team === 'enemy') {
             if (playerHP > 0) targets.push(player);
+            addCoopRemoteOpponent(targets);
             for (const other of ais) {
                 if (other !== ai && other.team === 'player' && other.hp > 0) targets.push(other);
             }
@@ -9553,10 +9580,12 @@ function getOpponentTargetsForAI(ai) {
     }
     if (isBillBattleMode()) {
         if (playerHP > 0) targets.push(player);
+        addCoopRemoteOpponent(targets);
         return targets;
     }
     if (gameSettings.gameMode === 'ffa') {
         if (playerHP > 0) targets.push(player);
+        addCoopRemoteOpponent(targets);
         for (const other of ais) {
             if (other !== ai && other.hp > 0) targets.push(other);
         }
@@ -9565,10 +9594,12 @@ function getOpponentTargetsForAI(ai) {
     if (gameSettings.gameMode === 'arcade') {
         // Outdoor PvAI: AI同士は敵対せず、プレイヤーのみを狙う。
         if (playerHP > 0) targets.push(player);
+        addCoopRemoteOpponent(targets);
         return targets;
     }
     // 非チームモードではプレイヤーだけでなく近くのAIも標的候補に含める
     if (playerHP > 0) targets.push(player);
+    addCoopRemoteOpponent(targets);
     for (const other of ais) {
         if (other !== ai && other.hp > 0) targets.push(other);
     }
@@ -9601,6 +9632,11 @@ function canAISeeAnyOpponent(ai) {
             if (checkLineOfSight(aiHeadPos, pHead, obstacles) || checkLineOfSight(aiHeadPos, pUpper, obstacles) || checkLineOfSight(aiHeadPos, pBody, obstacles)) {
                 return true;
             }
+        } else if (isCoopRemoteCombatant(t)) {
+            const points = getCoopRemoteBodyPoints(t);
+            if (points && (checkLineOfSight(aiHeadPos, points.head, obstacles)
+                || checkLineOfSight(aiHeadPos, points.upper, obstacles)
+                || checkLineOfSight(aiHeadPos, points.body, obstacles))) return true;
         } else {
             const h = getAIUpperTorsoPos(t);
             const b = getAILowerTorsoPos(t);
@@ -10674,6 +10710,13 @@ function getVisibleOpponentInfo(ai) {
             if (checkLineOfSight(aiHeadPos, pHead, obstacles)) targetPos = pHead;
             else if (checkLineOfSight(aiHeadPos, pUpper, obstacles)) targetPos = pUpper;
             else if (checkLineOfSight(aiHeadPos, pBody, obstacles)) targetPos = pBody;
+            if (targetPos && (!best || dist < best.distance)) best = { target: t, targetPos, distance: dist };
+        } else if (isCoopRemoteCombatant(t)) {
+            const points = getCoopRemoteBodyPoints(t);
+            let targetPos = null;
+            if (points && checkLineOfSight(aiHeadPos, points.head, obstacles)) targetPos = points.head;
+            else if (points && checkLineOfSight(aiHeadPos, points.upper, obstacles)) targetPos = points.upper;
+            else if (points && checkLineOfSight(aiHeadPos, points.body, obstacles)) targetPos = points.body;
             if (targetPos && (!best || dist < best.distance)) best = { target: t, targetPos, distance: dist };
         } else {
             const tUpper = getAIUpperTorsoPos(t);
@@ -12194,6 +12237,7 @@ function handleFireRelease() {
               } else {
                   createProjectile(safeFire.startPosition, direction, 0xffff00, 0.1, false, 'player', projectileSpeed * 2, true, WEAPON_SR);
               }
+            broadcastCoopPlayerFire(direction, WEAPON_SR);
             lastFireTime = clock.getElapsedTime();
             if (!isInfiniteDefaultWeaponActive(WEAPON_SR) && --ammoSR === 0) {
                 setTimeout(() => {
@@ -12209,6 +12253,16 @@ function handleFireRelease() {
         }, 100);
     }
     isMouseButtonDown = false;
+}
+
+function broadcastCoopPlayerFire(direction, weapon = currentWeapon) {
+    if (!direction || !Number.isFinite(direction.x) || !Number.isFinite(direction.y) || !Number.isFinite(direction.z)) return;
+    window.dispatchEvent(new CustomEvent('gfa:player-fire', {
+        detail: {
+            weapon,
+            direction: [direction.x, direction.y, direction.z]
+        }
+    }));
 }
 
 function shoot() {
@@ -12293,12 +12347,7 @@ function shoot() {
               createMuzzleFlash(safeFire.muzzlePosition, 60, 1.7, 65, projectileColor, baseDirection, muzzleScale);
           }
           tryHitBillBattleLight(safeFire.startPosition, baseDirection);
-          window.dispatchEvent(new CustomEvent('gfa:player-fire', {
-              detail: {
-                  weapon: currentWeapon,
-                  direction: [baseDirection.x, baseDirection.y, baseDirection.z]
-              }
-          }));
+          broadcastCoopPlayerFire(baseDirection, currentWeapon);
           // 旧グローバルオートエイムは削除済み。
         // オートエイムは現在、animate()でスコープを動かす狙撃スコープ時のみ有効。
         if (safeFire.blocked) {
@@ -12556,6 +12605,25 @@ function aiShoot(ai, timeElapsed) {
         }
         distanceToTarget = ai.position.distanceTo(player.position);
         targetIsPlayer = true;
+    }
+
+    // CO-OPゲストもホスト側では正式な戦闘対象として扱う。
+    // 味方AIは狙わず、敵AIだけが視認できる最寄りプレイヤーを選ぶ。
+    const remoteCombatant = getActiveCoopRemoteCombatant();
+    if (remoteCombatant && !(isTeamModeOrTeamArcade && ai.team === 'player')) {
+        const remotePoints = getCoopRemoteBodyPoints(remoteCombatant);
+        let visibleRemotePoint = null;
+        if (remotePoints) {
+            if (canSeeFrom(aimOrigin, remotePoints.head)) visibleRemotePoint = remotePoints.head;
+            else if (canSeeFrom(aimOrigin, remotePoints.upper)) visibleRemotePoint = remotePoints.upper;
+            else if (canSeeFrom(aimOrigin, remotePoints.body)) visibleRemotePoint = remotePoints.body;
+        }
+        const remoteDistance = ai.position.distanceTo(remoteCombatant.position);
+        if (visibleRemotePoint && (targetPosition === null || remoteDistance < distanceToTarget)) {
+            targetPosition = visibleRemotePoint.clone();
+            distanceToTarget = remoteDistance;
+            targetIsPlayer = true;
+        }
     }
     
     if (isTeamModeOrTeamArcade && ai.team === 'player' && targetIsPlayer) {
@@ -16562,6 +16630,9 @@ let coopWasGameRunning = false;
 let coopSpawnApplied = false;
 let coopRemotePoseInitialized = false;
 let coopHostWorldReceivedAt = 0;
+let coopRemoteHP = null;
+let coopRemoteDead = false;
+const coopRemoteLastFireAt = new Map();
 
 function ensureCoopRemotePlayer() {
     if (coopRemotePlayer) return coopRemotePlayer;
@@ -16601,7 +16672,8 @@ function getCoopLocalPose() {
         crouching: Boolean(isCrouchingToggle),
         moving,
         weapon: currentWeapon,
-        hp: Number.isFinite(playerHP) ? playerHP : null
+        hp: Number.isFinite(playerHP) ? playerHP : null,
+        invulnerable: playerHP === Infinity
     };
 }
 
@@ -16622,10 +16694,18 @@ function applyCoopRemotePose(pose) {
         return;
     }
     if (!pose.position.every(Number.isFinite) || !Number.isFinite(pose.yaw)) return;
+    const wasInactive = !coopRemotePose;
     const previousReceivedAt = coopRemotePoseReceivedAt;
     coopRemotePose = pose;
     coopRemotePoseReceivedAt = performance.now();
     const remote = ensureCoopRemotePlayer();
+    if (coopLocalRole === 'host' && (coopRemoteHP === null
+        || (wasInactive && coopRemoteHP <= 0 && (pose.invulnerable === true || pose.hp > 0)))) {
+        coopRemoteHP = pose.invulnerable === true ? Infinity
+            : (Number.isFinite(pose.hp) ? Math.max(0, pose.hp) : 3);
+        coopRemoteDead = coopRemoteHP <= 0;
+    }
+    remote.hp = coopRemoteHP;
     if (!coopRemotePoseInitialized || coopRemotePoseReceivedAt - previousReceivedAt > 1500) {
         const height = Number.isFinite(pose.height) ? pose.height : 2.2;
         remote.position.set(pose.position[0], pose.position[1] - height, pose.position[2]);
@@ -16661,7 +16741,7 @@ function updateCoopRemotePlayer(delta) {
     const remoteVisualYaw = getCoopRemoteVisualYaw(coopRemotePose);
     const yawDelta = normalizeCoopAngle(remoteVisualYaw - coopRemotePlayer.rotation.y);
     coopRemotePlayer.rotation.y += yawDelta * blend;
-    coopRemotePlayer.visible = true;
+    coopRemotePlayer.visible = coopLocalRole !== 'host' || coopRemoteHP === null || coopRemoteHP > 0;
 
     const parts = coopRemotePlayer.userData && coopRemotePlayer.userData.parts;
     if (parts && coopRemotePose.weapon !== coopRemoteWeapon) {
@@ -16683,6 +16763,8 @@ function getCoopHostWorldState() {
     if (!coopSessionConnected || coopLocalRole !== 'host' || !isGameRunning) return { active: false };
     return {
         active: true,
+        guestPlayerHp: Number.isFinite(coopRemoteHP) ? coopRemoteHP : null,
+        guestPlayerInvulnerable: coopRemoteHP === Infinity,
         ais: ais.map(ai => ({
             position: [ai.position.x, ai.position.y, ai.position.z],
             yaw: ai.rotation.y,
@@ -16698,6 +16780,11 @@ function getCoopHostWorldState() {
 function applyCoopHostWorldState(state) {
     if (coopLocalRole !== 'guest' || !state || state.active !== true || !Array.isArray(state.ais)) return;
     coopHostWorldReceivedAt = performance.now();
+    if (state.guestPlayerInvulnerable === true && playerHP !== Infinity) {
+        playerHP = Infinity;
+    } else if (Number.isFinite(state.guestPlayerHp) && state.guestPlayerHp !== playerHP) {
+        applyCoopLocalDamage({ hp: Math.max(0, state.guestPlayerHp), direction: [0, 0, 1], correction: true });
+    }
     state.ais.forEach((snapshot, index) => {
         const ai = ais[index];
         if (!ai || !snapshot || !Array.isArray(snapshot.position) || !snapshot.position.every(Number.isFinite)) return;
@@ -16753,6 +16840,102 @@ function showCoopRemoteFire(payload) {
     }
 }
 
+function getCoopFireSpec(weapon) {
+    const specs = {
+        [WEAPON_PISTOL]: { color: 0xffff00, size: 0.1, rate: FIRE_RATE_PISTOL, speed: projectileSpeed },
+        [WEAPON_MG]: { color: 0xffff00, size: 0.1, rate: FIRE_RATE_MG, speed: projectileSpeed },
+        [WEAPON_RR]: { color: 0xff8c00, size: 0.5, rate: FIRE_RATE_RR, speed: projectileSpeed, rocket: true },
+        [WEAPON_SR]: { color: 0xffff00, size: 0.1, rate: FIRE_RATE_SR, speed: projectileSpeed * 2, sniper: true },
+        [WEAPON_SG]: { color: 0xffa500, size: 0.05, rate: FIRE_RATE_SG, speed: projectileSpeed, shotgun: true },
+        [WEAPON_MR]: { color: 0xffff00, size: 0.1, rate: FIRE_RATE_MR_PLAYER, speed: projectileSpeed * MR_PROJECTILE_SPEED_MULT }
+    };
+    return specs[weapon] || null;
+}
+
+function handleCoopGuestFire(payload) {
+    const remote = getActiveCoopRemoteCombatant();
+    const weapon = payload && typeof payload.weapon === 'string' ? payload.weapon : '';
+    const spec = getCoopFireSpec(weapon);
+    if (!remote || !spec || !Array.isArray(payload.direction) || payload.direction.length !== 3
+        || !payload.direction.every(Number.isFinite)) return false;
+    const direction = new THREE.Vector3(...payload.direction);
+    if (direction.lengthSq() < 0.25) return false;
+    direction.normalize();
+    const now = performance.now();
+    const previous = coopRemoteLastFireAt.get(weapon) || -Infinity;
+    if (now - previous < spec.rate * 700) return false;
+    coopRemoteLastFireAt.set(weapon, now);
+    const parts = remote.userData && remote.userData.parts;
+    const muzzle = parts ? getGunMuzzleInfo(parts) : null;
+    if (!muzzle || !muzzle.position) return false;
+    showCoopRemoteFire(payload);
+    const weaponType = weapon === WEAPON_SG || weapon === WEAPON_MR ? weapon : null;
+    if (spec.shotgun) {
+        const up = new THREE.Vector3(0, 1, 0);
+        let right = new THREE.Vector3().crossVectors(direction, up);
+        if (right.lengthSq() < 1e-6) right.set(1, 0, 0);
+        right.normalize();
+        const spreadStep = SHOTGUN_SPREAD_ANGLE / SHOTGUN_PELLET_COUNT;
+        for (let i = 0; i < SHOTGUN_PELLET_COUNT; i++) {
+            const shotDirection = direction.clone();
+            const offset = (i - (SHOTGUN_PELLET_COUNT - 1) / 2) * spreadStep;
+            shotDirection.applyAxisAngle(up, offset + (Math.random() - 0.5) * SHOTGUN_SPREAD_ANGLE);
+            shotDirection.applyAxisAngle(right, (Math.random() - 0.5) * SHOTGUN_SPREAD_ANGLE);
+            createProjectile(muzzle.position, shotDirection, spec.color, spec.size, false, 'player', spec.speed, false, WEAPON_SG, remote);
+        }
+    } else {
+        createProjectile(muzzle.position, direction, spec.color, spec.size, Boolean(spec.rocket), 'player', spec.speed, Boolean(spec.sniper), weaponType, remote);
+    }
+    return true;
+}
+
+function damageCoopRemotePlayer(damageAmount, projectile) {
+    const remote = getActiveCoopRemoteCombatant();
+    if (!remote || coopRemoteHP === Infinity || !(damageAmount > 0)) return false;
+    const wasAlive = coopRemoteHP > 0;
+    coopRemoteHP = Math.max(0, coopRemoteHP - damageAmount);
+    remote.hp = coopRemoteHP;
+    createRedSmokeEffect(remote.position.clone().add(new THREE.Vector3(0, 1.2, 0)));
+    if (coopRemoteHP > 0) triggerCharacterHitReaction(remote, projectile && projectile.velocity);
+    const velocity = projectile && projectile.velocity ? projectile.velocity.clone().normalize() : new THREE.Vector3(0, 0, 1);
+    window.dispatchEvent(new CustomEvent('gfa:remote-player-damage', {
+        detail: { hp: coopRemoteHP, direction: [velocity.x, velocity.y, velocity.z] }
+    }));
+    if (wasAlive && coopRemoteHP <= 0 && !coopRemoteDead) {
+        coopRemoteDead = true;
+        remote.visible = false;
+        if (projectile && projectile.shooter && projectile.shooter.kills !== undefined) projectile.shooter.kills++;
+        if (isTeamBasedAIMode()) addEnemyTeamKillScore();
+        else if (gameSettings.gameMode === 'arcade') enemyTeamKills++;
+    }
+    return true;
+}
+
+function applyCoopLocalDamage(payload) {
+    if (coopLocalRole !== 'guest' || !payload || !Number.isFinite(payload.hp) || playerHP === Infinity) return false;
+    const nextHP = Math.max(0, payload.hp);
+    const tookDamage = nextHP < playerHP;
+    playerHP = nextHP;
+    if (playerHPDisplay) playerHPDisplay.textContent = `HP: ${playerHP}`;
+    if (tookDamage) {
+        screenShakeDuration = SHAKE_DURATION_MAX;
+        if (redFlashOverlay) {
+            redFlashOverlay.style.display = 'block';
+            redFlashOverlay.style.backgroundColor = 'rgba(255, 0, 0, 0.5)';
+            setTimeout(() => {
+                redFlashOverlay.style.backgroundColor = 'transparent';
+                redFlashOverlay.style.display = 'none';
+            }, 180);
+        }
+    }
+    if (playerHP <= 0 && !isPlayerDeathPlaying) {
+        const direction = Array.isArray(payload.direction) && payload.direction.length === 3 && payload.direction.every(Number.isFinite)
+            ? new THREE.Vector3(...payload.direction) : new THREE.Vector3(0, 0, 1);
+        startPlayerDeathSequence({ velocity: direction, source: 'ai' });
+    }
+    return true;
+}
+
 function setCoopControlValue(id, value) {
     const element = document.getElementById(id);
     if (element && value !== undefined && value !== null) element.value = String(value);
@@ -16791,6 +16974,9 @@ window.GFACoopGameBridge = Object.freeze({
         coopSessionConnected = Boolean(connected);
         coopLocalRole = role === 'guest' ? 'guest' : 'host';
         coopSpawnApplied = false;
+        coopRemoteHP = null;
+        coopRemoteDead = false;
+        coopRemoteLastFireAt.clear();
         if (!coopSessionConnected) {
             coopRemotePoseInitialized = false;
             coopHostWorldReceivedAt = 0;
@@ -16802,6 +16988,8 @@ window.GFACoopGameBridge = Object.freeze({
     getHostWorldState: getCoopHostWorldState,
     applyHostWorldState: applyCoopHostWorldState,
     showRemoteFire: showCoopRemoteFire,
+    handleGuestFire: handleCoopGuestFire,
+    applyLocalDamage: applyCoopLocalDamage,
     startAsHost() {
         const mapSelector = document.getElementById('title-map-selector');
         if (mapSelector && mapSelector.value !== 'default') {
@@ -19124,6 +19312,34 @@ function animate() {
                 }
                 if (hitSomething) break;
             }
+
+            if (allowActorDamage && !hitSomething && (!isTeamBasedAIMode() || shooterTeam === 'enemy')) {
+                const remote = getActiveCoopRemoteCombatant();
+                if (remote) {
+                    const crouching = Boolean(coopRemotePose && coopRemotePose.crouching);
+                    const remoteHeight = crouching ? 1.2 : 2.2;
+                    const remoteBox = new THREE.Box3(
+                        new THREE.Vector3(remote.position.x - 0.7, remote.position.y, remote.position.z - 0.7),
+                        new THREE.Vector3(remote.position.x + 0.7, remote.position.y + remoteHeight, remote.position.z + 0.7)
+                    );
+                    if (remoteBox.intersectsSphere(bulletSphere) || doesSegmentHitBox(prevProjectilePos, p.mesh.position, remoteBox)) {
+                        hitSomething = true;
+                        hitObject = remote;
+                        hitType = 'coop-player';
+                        let damageAmount = 1;
+                        if (p.weaponType === WEAPON_SG) damageAmount = SHOTGUN_PELLET_DAMAGE;
+                        else if (p.weaponType === WEAPON_MR) damageAmount = 9;
+                        else if (p.isSniper || p.isRocket) damageAmount = coopRemoteHP;
+                        damageCoopRemotePlayer(damageAmount, p);
+                        if (p.weaponType === WEAPON_SG) {
+                            scene.remove(p.mesh);
+                            clearAIRocketInFlight(p);
+                            const removeIndex = projectiles.indexOf(p);
+                            if (removeIndex !== -1) projectiles.splice(removeIndex, 1);
+                        }
+                    }
+                }
+            }
             
             if (allowActorDamage && !hitSomething && (!isTeamBasedAIMode() || shooterTeam === 'enemy')) {
                 const playerPos = player.position;
@@ -19308,6 +19524,15 @@ function animate() {
                                 }
                                 startPlayerDeathSequence(p);
                             }
+                        }
+                    }
+                }
+                if (allowActorDamage && p.source === 'ai' && coopRemoteHP > 0) {
+                    const remote = getActiveCoopRemoteCombatant();
+                    if (remote && remote.position.distanceTo(explosionPos) < EXPLOSION_RADIUS_ACTUAL) {
+                        const remoteCenter = remote.position.clone().add(new THREE.Vector3(0, 1, 0));
+                        if (checkLineOfSight(explosionPos, remoteCenter, obstacles)) {
+                            damageCoopRemotePlayer(coopRemoteHP, p);
                         }
                     }
                 }

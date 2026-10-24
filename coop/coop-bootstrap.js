@@ -79,7 +79,13 @@ function createTransport() {
         overlay.hidden = true;
         gameBridge()?.startFromHost?.(message.payload);
       }
-      if (message.type === 'player-fire') gameBridge()?.showRemoteFire?.(message.payload);
+      if (message.type === 'player-fire') {
+        if (transport.role === 'host') gameBridge()?.handleGuestFire?.(message.payload);
+        else gameBridge()?.showRemoteFire?.(message.payload);
+      }
+      if (message.type === 'player-damage' && transport.role === 'guest') {
+        gameBridge()?.applyLocalDamage?.(message.payload);
+      }
     },
     onDisconnect() {
       gameBridge()?.setSession?.({ connected: false, role: selectedRole });
@@ -134,6 +140,11 @@ window.addEventListener('gfa:game-starting', event => {
 window.addEventListener('gfa:player-fire', event => {
   if (!transport?.connected) return;
   transport.sendEvent('player-fire', event.detail);
+});
+
+window.addEventListener('gfa:remote-player-damage', event => {
+  if (transport?.role !== 'host' || !transport.connected) return;
+  transport.sendEvent('player-damage', event.detail);
 });
 
 roomInput.addEventListener('keydown', event => {
