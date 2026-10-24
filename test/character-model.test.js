@@ -63,3 +63,15 @@ test('attached upper body aims the barrel exactly at an arbitrary world directio
   assert.equal(parts.aimGroup.parent, parts.torso);
   assert.ok(parts.aimGroup.quaternion.angleTo(new THREE.Quaternion()) < 1e-8);
 });
+
+test('modern character hit boxes reach the rendered head instead of ending at camera height', async () => {
+  const { models, THREE } = await loadCharacterModels();
+  const actor = models.create('#2586c9', { headwearType: 'helmet' });
+  const parts = actor.userData.parts;
+  actor.updateMatrixWorld(true);
+
+  const bodyBox = models.bodyBox(parts);
+  const visibleHeadBox = new THREE.Box3().setFromObject(parts.head);
+  assert.ok(bodyBox.max.y > 2.7);
+  assert.ok(visibleHeadBox.max.y > 2.7);
+});

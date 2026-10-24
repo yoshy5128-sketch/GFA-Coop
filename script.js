@@ -12521,11 +12521,19 @@ function broadcastCoopPlayerFire(direction, weapon = currentWeapon, origin = nul
     let observedTargetBounds = null;
     if (coopSessionConnected && coopLocalRole === 'guest' && gameSettings.gameMode === 'ffa'
         && coopRemotePlayer && coopRemotePlayer.visible) {
-        const observedHeight = coopRemotePose && coopRemotePose.crouching ? 1.35 : 2.45;
-        observedTargetBounds = {
-            min: [coopRemotePlayer.position.x - 0.84, coopRemotePlayer.position.y - 0.08, coopRemotePlayer.position.z - 0.84],
-            max: [coopRemotePlayer.position.x + 0.84, coopRemotePlayer.position.y + observedHeight, coopRemotePlayer.position.z + 0.84]
-        };
+        const parts = coopRemotePlayer.userData && coopRemotePlayer.userData.parts;
+        const bodyBox = parts && parts.modernRig && window.GFACharacterModels
+            ? GFACharacterModels.bodyBox(parts) : null;
+        if (bodyBox && !bodyBox.isEmpty()) {
+            if (parts.head) {
+                const visibleHeadBox = new THREE.Box3().setFromObject(parts.head);
+                if (!visibleHeadBox.isEmpty()) bodyBox.union(visibleHeadBox);
+            }
+            observedTargetBounds = {
+                min: [bodyBox.min.x, bodyBox.min.y, bodyBox.min.z],
+                max: [bodyBox.max.x, bodyBox.max.y, bodyBox.max.z]
+            };
+        }
     }
     window.dispatchEvent(new CustomEvent('gfa:player-fire', {
         detail: {
@@ -17125,6 +17133,7 @@ let coopRemoteDead = false;
 var coopLocalEliminated = false;
 var coopMatchEnded = false;
 var coopRemotePlayerKills = 0;
+let coopLocalDeathSequenceHandled = false;
 const coopRemoteLastFireAt = new Map();
 let coopForceSnapshotSnap = false;
 let coopRemoteMovingUntil = 0;
@@ -17544,9 +17553,13 @@ function applyCoopHostWorldState(state) {
         if (enemyTeamKillsDisplay) enemyTeamKillsDisplay.textContent = `ENEMY TEAM KILLS: ${enemyTeamKills}`;
     }
     if (state.guestPlayerInvulnerable === true && playerHP !== Infinity) {
+        coopLocalDeathSequenceHandled = false;
         playerHP = Infinity;
-    } else if (Number.isFinite(state.guestPlayerHp) && state.guestPlayerHp !== playerHP) {
-        applyCoopLocalDamage({ hp: Math.max(0, state.guestPlayerHp), direction: [0, 0, 1], correction: true });
+    } else if (Number.isFinite(state.guestPlayerHp)) {
+        if (state.guestPlayerHp > 0) coopLocalDeathSequenceHandled = false;
+        if (state.guestPlayerHp !== playerHP) {
+            applyCoopLocalDamage({ hp: Math.max(0, state.guestPlayerHp), direction: [0, 0, 1], correction: true });
+        }
     }
     state.ais.forEach((snapshot, index) => {
         const ai = ais[index];
@@ -17722,7 +17735,7 @@ function getValidatedGuestObservedHostBox(payload) {
         || !bounds.min.every(Number.isFinite) || !bounds.max.every(Number.isFinite)) return null;
     const claimed = new THREE.Box3(new THREE.Vector3(...bounds.min), new THREE.Vector3(...bounds.max));
     const size = claimed.getSize(new THREE.Vector3());
-    if (size.x < 0.5 || size.x > 2.4 || size.y < 0.8 || size.y > 3.2 || size.z < 0.5 || size.z > 2.4) return null;
+    if (size.x < 0.5 || size.x > 2.4 || size.y < 0.8 || size.y > 4.0 || size.z < 0.5 || size.z > 2.4) return null;
     const current = getCoopPvpTargetBox('host');
     if (!current) return null;
     const claimedCenter = claimed.getCenter(new THREE.Vector3());
@@ -17801,21 +17814,45 @@ function getCoopPvpShooterRole(projectile) {
     return '';
 }
 
-function getCoopPvpTargetBox(targetRole) {
+function getCoopPvpTargetBoxes(targetRole) {
     if (targetRole === 'host') {
         const bounds = getPlayerCombatBounds();
-        return new THREE.Box3(
+        // Remote clients render the modern character rig above the camera-root
+        // anchor. Match its visible crown instead of stopping at camera height.
+        return [new THREE.Box3(
             new THREE.Vector3(player.position.x - 0.84, bounds.bottomY - 0.08, player.position.z - 0.84),
-            new THREE.Vector3(player.position.x + 0.84, bounds.topY + 0.25, player.position.z + 0.84)
-        );
+            new THREE.Vector3(player.position.x + 0.84, bounds.topY + 1.15, player.position.z + 0.84)
+        )];
     }
-    const remote = getActiveCoopRemoteCombatant();
-    if (!remote) return null;
-    const remoteHeight = coopRemotePose && coopRemotePose.crouching ? 1.35 : 2.45;
-    return new THREE.Box3(
+    const remote = coopLocalRole === 'host'
+        ? getActiveCoopRemoteCombatant()
+        : (coopRemotePlayer && coopRemotePlayer.visible ? coopRemotePlayer : null);
+    if (!remote) return [];
+    const parts = remote.userData && remote.userData.parts;
+    if (parts && parts.modernRig && window.GFACharacterModels) {
+        const rigBoxes = GFACharacterModels.boxes(parts);
+        if (Array.isArray(rigBoxes) && rigBoxes.length) {
+            const hitBoxes = rigBoxes.filter(box => box && !box.isEmpty()).map(box => box.clone().expandByScalar(0.035));
+            if (parts.head) {
+                const visibleHeadBox = new THREE.Box3().setFromObject(parts.head);
+                if (!visibleHeadBox.isEmpty()) hitBoxes.push(visibleHeadBox.expandByScalar(0.06));
+            }
+            return hitBoxes;
+        }
+    }
+    const remoteHeight = coopRemotePose && coopRemotePose.crouching ? 2.35 : 3.15;
+    return [new THREE.Box3(
         new THREE.Vector3(remote.position.x - 0.84, remote.position.y - 0.08, remote.position.z - 0.84),
         new THREE.Vector3(remote.position.x + 0.84, remote.position.y + remoteHeight, remote.position.z + 0.84)
-    );
+    )];
+}
+
+function getCoopPvpTargetBox(targetRole) {
+    const boxes = getCoopPvpTargetBoxes(targetRole);
+    if (!boxes.length) return null;
+    const union = new THREE.Box3();
+    boxes.forEach(box => union.union(box));
+    return union;
 }
 
 function resolveCoopPvpProjectileHit(projectile, previousPosition, bulletSphere) {
@@ -17823,9 +17860,8 @@ function resolveCoopPvpProjectileHit(projectile, previousPosition, bulletSphere)
     const shooterRole = getCoopPvpShooterRole(projectile);
     if (!shooterRole) return null;
     const targetRole = shooterRole === 'host' ? 'guest' : 'host';
-    const currentTargetBox = getCoopPvpTargetBox(targetRole);
-    if (!currentTargetBox) return null;
-    const targetBoxes = [currentTargetBox];
+    const targetBoxes = getCoopPvpTargetBoxes(targetRole);
+    if (!targetBoxes.length) return null;
     if (targetRole === 'host' && projectile.coopLagCompensatedTargetBox
         && performance.now() <= Number(projectile.coopLagCompensationUntil || 0)) {
         targetBoxes.push(projectile.coopLagCompensatedTargetBox);
@@ -17929,11 +17965,8 @@ function showCoopRemotePlayerHit(payload) {
         : coopRemotePlayer.position.clone().add(new THREE.Vector3(0, 1.2, 0));
     if (payload && Array.isArray(payload.hitRatio) && payload.hitRatio.length === 3
         && payload.hitRatio.every(Number.isFinite)) {
-        const remoteHeight = coopRemotePose && coopRemotePose.crouching ? 1.35 : 2.45;
-        const remoteBox = new THREE.Box3(
-            new THREE.Vector3(coopRemotePlayer.position.x - 0.84, coopRemotePlayer.position.y - 0.08, coopRemotePlayer.position.z - 0.84),
-            new THREE.Vector3(coopRemotePlayer.position.x + 0.84, coopRemotePlayer.position.y + remoteHeight, coopRemotePlayer.position.z + 0.84)
-        );
+        const remoteBox = getCoopPvpTargetBox('guest');
+        if (!remoteBox) return false;
         const size = remoteBox.getSize(new THREE.Vector3());
         impactPoint = new THREE.Vector3(
             remoteBox.min.x + size.x * THREE.MathUtils.clamp(payload.hitRatio[0], 0, 1),
@@ -17952,6 +17985,10 @@ function showCoopRemotePlayerHit(payload) {
 function applyCoopLocalDamage(payload) {
     if (coopLocalRole !== 'guest' || !payload || !Number.isFinite(payload.hp) || playerHP === Infinity) return false;
     const nextHP = Math.max(0, payload.hp);
+    // The reliable death event and periodic world snapshot may both contain HP 0.
+    // Once one death sequence has started, ignore stale zero corrections until
+    // the authoritative host reports the positive respawn HP.
+    if (nextHP <= 0 && (coopLocalDeathSequenceHandled || isPlayerDeathPlaying)) return false;
     const tookDamage = nextHP < playerHP;
     playerHP = nextHP;
     if (playerHPDisplay) playerHPDisplay.textContent = `HP: ${playerHP}`;
@@ -17967,6 +18004,7 @@ function applyCoopLocalDamage(payload) {
         }
     }
     if (playerHP <= 0 && !isPlayerDeathPlaying) {
+        coopLocalDeathSequenceHandled = true;
         const direction = Array.isArray(payload.direction) && payload.direction.length === 3 && payload.direction.every(Number.isFinite)
             ? new THREE.Vector3(...payload.direction) : new THREE.Vector3(0, 0, 1);
         startPlayerDeathSequence({ velocity: direction, source: 'ai' });
@@ -18100,6 +18138,7 @@ window.GFACoopGameBridge = Object.freeze({
         coopLocalEliminated = false;
         coopMatchEnded = false;
         coopRemotePlayerKills = 0;
+        coopLocalDeathSequenceHandled = false;
         hideCoopEliminatedOverlay();
         coopRemoteLastFireAt.clear();
         coopForceSnapshotSnap = false;

@@ -53,8 +53,20 @@ test('FFA PvP compensates remote rendering delay and resolves players before wal
   assert.match(script, /projectile\.coopLagCompensatedTargetBox = observedHostBox\.clone\(\)/);
   assert.match(script, /targetBoxes\.push\(projectile\.coopLagCompensatedTargetBox\)/);
   assert.match(script, /if \(!hitSomething \|\| hitType === 'obstacle'\)/);
-  assert.match(script, /bounds\.topY \+ 0\.25/);
+  assert.match(script, /bounds\.topY \+ 1\.15/);
   assert.match(script, /impactPoint: \[impactPoint\.x, impactPoint\.y, impactPoint\.z\]/);
+});
+
+test('host shots use the rendered guest rig including the visible head', () => {
+  assert.match(script, /GFACharacterModels\.boxes\(parts\)/);
+  assert.match(script, /new THREE\.Box3\(\)\.setFromObject\(parts\.head\)/);
+  assert.match(script, /hitBoxes\.push\(visibleHeadBox\.expandByScalar\(0\.06\)\)/);
+});
+
+test('guest death sequence starts once until authoritative respawn HP arrives', () => {
+  assert.match(script, /let coopLocalDeathSequenceHandled = false/);
+  assert.match(script, /nextHP <= 0 && \(coopLocalDeathSequenceHandled \|\| isPlayerDeathPlaying\)/);
+  assert.match(script, /if \(state\.guestPlayerHp > 0\) coopLocalDeathSequenceHandled = false/);
 });
 
 test('wake lock remains requested on title and co-op title exit requires confirmation', () => {
