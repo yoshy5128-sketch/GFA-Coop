@@ -1,7 +1,7 @@
 import { GfaPeerTransport } from './net/peer-transport.js';
 import { normalizeRoomCode } from './net/protocol.js';
 
-const COOP_BUILD_ID = '20261024-v23';
+const COOP_BUILD_ID = '20261024-v24';
 const GAME_START_CHUNK_SIZE = 12000;
 const GAME_START_MAX_CHUNKS = 256;
 const GAME_START_MAX_LENGTH = 2.5 * 1024 * 1024;
@@ -199,6 +199,9 @@ function createTransport() {
       if (message.type === 'player-damage' && transport.role === 'guest') {
         gameBridge()?.applyLocalDamage?.(message.payload);
       }
+      if (message.type === 'host-player-hit' && transport.role === 'guest') {
+        gameBridge()?.showRemotePlayerHit?.(message.payload);
+      }
       if (message.type === 'ai-fire' && transport.role === 'guest') {
         gameBridge()?.showHostAIFire?.(message.payload);
       }
@@ -273,6 +276,11 @@ window.addEventListener('gfa:player-fire', event => {
 window.addEventListener('gfa:remote-player-damage', event => {
   if (transport?.role !== 'host' || !transport.connected) return;
   transport.sendEvent('player-damage', event.detail);
+});
+
+window.addEventListener('gfa:host-player-hit', event => {
+  if (transport?.role !== 'host' || !transport.connected) return;
+  transport.sendEvent('host-player-hit', event.detail);
 });
 
 window.addEventListener('gfa:ai-fire', event => {

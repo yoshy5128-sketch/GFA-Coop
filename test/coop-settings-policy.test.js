@@ -37,3 +37,12 @@ test('co-op FFA assigns both player projectiles and resolves PvP before the floo
   assert.match(script, /damageCoopRemotePlayer\(/);
   assert.match(script, /damageCoopHostPlayer\(/);
 });
+
+test('guest fire preserves a validated muzzle origin and reports host hit feedback', () => {
+  assert.match(script, /broadcastCoopPlayerFire\(baseDirection, currentWeapon, safeFire\.startPosition\)/);
+  assert.match(script, /origin: validOrigin \? \[origin\.x, origin\.y, origin\.z\] : null/);
+  assert.match(script, /requestedOrigin\.distanceTo\(reportedPlayerTop\) <= 4/);
+  assert.match(script, /createProjectile\(projectileOrigin, direction/);
+  assert.match(script, /new CustomEvent\('gfa:host-player-hit'/);
+  assert.match(script, /showRemotePlayerHit: showCoopRemotePlayerHit/);
+});

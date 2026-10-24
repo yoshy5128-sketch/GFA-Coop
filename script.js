@@ -12485,7 +12485,7 @@ function handleFireRelease() {
               } else {
                   createProjectile(safeFire.startPosition, direction, 0xffff00, 0.1, false, getLocalPlayerProjectileSource(), projectileSpeed * 2, true, WEAPON_SR, player);
               }
-            broadcastCoopPlayerFire(direction, WEAPON_SR);
+            broadcastCoopPlayerFire(direction, WEAPON_SR, safeFire.startPosition);
             lastFireTime = clock.getElapsedTime();
             if (!isInfiniteDefaultWeaponActive(WEAPON_SR) && --ammoSR === 0) {
                 setTimeout(() => {
@@ -12503,12 +12503,14 @@ function handleFireRelease() {
     isMouseButtonDown = false;
 }
 
-function broadcastCoopPlayerFire(direction, weapon = currentWeapon) {
+function broadcastCoopPlayerFire(direction, weapon = currentWeapon, origin = null) {
     if (!direction || !Number.isFinite(direction.x) || !Number.isFinite(direction.y) || !Number.isFinite(direction.z)) return;
+    const validOrigin = origin && Number.isFinite(origin.x) && Number.isFinite(origin.y) && Number.isFinite(origin.z);
     window.dispatchEvent(new CustomEvent('gfa:player-fire', {
         detail: {
             weapon,
-            direction: [direction.x, direction.y, direction.z]
+            direction: [direction.x, direction.y, direction.z],
+            origin: validOrigin ? [origin.x, origin.y, origin.z] : null
         }
     }));
 }
@@ -12599,7 +12601,7 @@ function shoot() {
               createMuzzleFlash(safeFire.muzzlePosition, 60, 1.7, 65, projectileColor, baseDirection, muzzleScale);
           }
           tryHitBillBattleLight(safeFire.startPosition, baseDirection);
-          broadcastCoopPlayerFire(baseDirection, currentWeapon);
+          broadcastCoopPlayerFire(baseDirection, currentWeapon, safeFire.startPosition);
           // 旧グローバルオートエイムは削除済み。
         // オートエイムは現在、animate()でスコープを動かす狙撃スコープ時のみ有効。
         if (safeFire.blocked) {
@@ -17700,6 +17702,16 @@ function handleCoopGuestFire(payload) {
     showCoopRemoteFire(payload);
     const muzzle = parts ? getGunMuzzleInfo(parts) : null;
     if (!muzzle || !muzzle.position || !muzzle.direction) return false;
+    let projectileOrigin = muzzle.position.clone();
+    if (Array.isArray(payload.origin) && payload.origin.length === 3 && payload.origin.every(Number.isFinite)
+        && coopRemotePose && Array.isArray(coopRemotePose.position)) {
+        const requestedOrigin = new THREE.Vector3(...payload.origin);
+        const reportedPlayerTop = new THREE.Vector3(...coopRemotePose.position);
+        // Accept the real guest muzzle only when it remains close to the latest
+        // replicated player pose. This removes interpolation error without
+        // allowing an arbitrary remote projectile origin.
+        if (requestedOrigin.distanceTo(reportedPlayerTop) <= 4) projectileOrigin = requestedOrigin;
+    }
     // The guest's crosshair direction is the authoritative firing direction.
     // The replicated rig is interpolated and can lag by a frame, so deriving game
     // physics from its barrel could make a visibly correct shot miss Player 1.
@@ -17716,10 +17728,10 @@ function handleCoopGuestFire(payload) {
             const offset = (i - (SHOTGUN_PELLET_COUNT - 1) / 2) * spreadStep;
             shotDirection.applyAxisAngle(up, offset + (Math.random() - 0.5) * SHOTGUN_SPREAD_ANGLE);
             shotDirection.applyAxisAngle(right, (Math.random() - 0.5) * SHOTGUN_SPREAD_ANGLE);
-            createProjectile(muzzle.position, shotDirection, spec.color, spec.size, false, 'player', spec.speed, false, WEAPON_SG, remote);
+            createProjectile(projectileOrigin, shotDirection, spec.color, spec.size, false, 'player', spec.speed, false, WEAPON_SG, remote);
         }
     } else {
-        createProjectile(muzzle.position, direction, spec.color, spec.size, Boolean(spec.rocket), 'player', spec.speed, Boolean(spec.sniper), weaponType, remote);
+        createProjectile(projectileOrigin, direction, spec.color, spec.size, Boolean(spec.rocket), 'player', spec.speed, Boolean(spec.sniper), weaponType, remote);
     }
     return true;
 }
@@ -17797,12 +17809,37 @@ function damageCoopRemotePlayer(damageAmount, projectile) {
 function damageCoopHostPlayer(damageAmount, projectile) {
     if (coopLocalRole !== 'host' || playerHP === Infinity || playerHP <= 0 || !(damageAmount > 0)) return false;
     playerHP = Math.max(0, playerHP - damageAmount);
+    createRedSmokeEffect(getPlayerUpperTorsoPos());
     screenShakeDuration = SHAKE_DURATION_MAX;
     if (playerHP > 0) triggerCharacterHitReaction(player, projectile && projectile.velocity);
+    if (playerHPDisplay) playerHPDisplay.textContent = `HP: ${playerHP}`;
+    if (redFlashOverlay && playerHP > 0) {
+        redFlashOverlay.style.display = 'block';
+        redFlashOverlay.style.backgroundColor = 'rgba(255, 0, 0, 0.5)';
+        setTimeout(() => {
+            redFlashOverlay.style.backgroundColor = 'transparent';
+            redFlashOverlay.style.display = 'none';
+        }, 180);
+    }
+    const velocity = projectile && projectile.velocity
+        ? projectile.velocity.clone().normalize() : new THREE.Vector3(0, 0, 1);
+    window.dispatchEvent(new CustomEvent('gfa:host-player-hit', {
+        detail: { hp: playerHP, direction: [velocity.x, velocity.y, velocity.z] }
+    }));
     if (playerHP <= 0 && !isPlayerDeathPlaying) {
         coopRemotePlayerKills++;
         startPlayerDeathSequence(projectile || { velocity: new THREE.Vector3(0, 0, 1), source: 'player' });
     }
+    return true;
+}
+
+function showCoopRemotePlayerHit(payload) {
+    if (coopLocalRole !== 'guest' || !coopRemotePlayer || !coopRemotePlayer.visible) return false;
+    createRedSmokeEffect(coopRemotePlayer.position.clone().add(new THREE.Vector3(0, 1.2, 0)));
+    const direction = payload && Array.isArray(payload.direction) && payload.direction.length === 3
+        && payload.direction.every(Number.isFinite)
+        ? new THREE.Vector3(...payload.direction) : new THREE.Vector3(0, 0, 1);
+    triggerCharacterHitReaction(coopRemotePlayer, direction);
     return true;
 }
 
@@ -17997,6 +18034,7 @@ window.GFACoopGameBridge = Object.freeze({
     showHostAIFire: showCoopHostAIFire,
     handleGuestFire: handleCoopGuestFire,
     applyLocalDamage: applyCoopLocalDamage,
+    showRemotePlayerHit: showCoopRemotePlayerHit,
     playRemotePlayerKill: playCoopRemotePlayerKill,
     applyMatchResult: applyCoopMatchResult,
     applyFloorAdvance: applyCoopFloorAdvance,
