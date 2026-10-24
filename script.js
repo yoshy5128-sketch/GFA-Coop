@@ -12293,6 +12293,12 @@ function shoot() {
               createMuzzleFlash(safeFire.muzzlePosition, 60, 1.7, 65, projectileColor, baseDirection, muzzleScale);
           }
           tryHitBillBattleLight(safeFire.startPosition, baseDirection);
+          window.dispatchEvent(new CustomEvent('gfa:player-fire', {
+              detail: {
+                  weapon: currentWeapon,
+                  direction: [baseDirection.x, baseDirection.y, baseDirection.z]
+              }
+          }));
           // 旧グローバルオートエイムは削除済み。
         // オートエイムは現在、animate()でスコープを動かす狙撃スコープ時のみ有効。
         if (safeFire.blocked) {
@@ -16543,12 +16549,195 @@ function resumeGame() {
     updateMenuBGM();
 }
 
+// CO-OPの通信層からゲーム固有処理を分離するための小さな橋渡し。
+// 通信モジュールはThree.jsやゲーム内部変数へ直接依存しない。
+let coopSessionConnected = false;
+let coopLocalRole = null;
+let coopRemotePlayer = null;
+let coopRemotePose = null;
+let coopRemotePoseReceivedAt = 0;
+let coopRemoteWeapon = null;
+let coopLastSnapshotPosition = null;
+let coopWasGameRunning = false;
+let coopSpawnApplied = false;
+
+function ensureCoopRemotePlayer() {
+    if (coopRemotePlayer) return coopRemotePlayer;
+    const customization = normalizeCharacterCustomization(
+        characterCustomization.enemy1 || CHARACTER_DEFAULTS.enemy1,
+        '#2586c9'
+    );
+    customization.clothingColor = '#2586c9';
+    coopRemotePlayer = createCharacterModel(0x2586c9, customization);
+    coopRemotePlayer.name = 'GFA_COOP_REMOTE_PLAYER';
+    coopRemotePlayer.visible = false;
+    coopRemotePlayer.userData.isCoopRemotePlayer = true;
+    scene.add(coopRemotePlayer);
+    return coopRemotePlayer;
+}
+
+function getCoopLocalPose() {
+    if (!coopSessionConnected || !isGameRunning || !player || !camera) {
+        return { active: false };
+    }
+    const position = player.position;
+    const previous = coopLastSnapshotPosition;
+    const moving = Boolean(previous && previous.distanceToSquared(position) > 0.0004);
+    if (!coopLastSnapshotPosition) coopLastSnapshotPosition = new THREE.Vector3();
+    coopLastSnapshotPosition.copy(position);
+    return {
+        active: true,
+        position: [position.x, position.y, position.z],
+        yaw: player.rotation.y,
+        pitch: camera.rotation.x,
+        height: playerTargetHeight,
+        crouching: Boolean(isCrouchingToggle),
+        moving,
+        weapon: currentWeapon,
+        hp: Number.isFinite(playerHP) ? playerHP : null
+    };
+}
+
+function applyCoopRemotePose(pose) {
+    if (!pose || pose.active !== true || !Array.isArray(pose.position) || pose.position.length !== 3) {
+        coopRemotePose = null;
+        if (coopRemotePlayer) coopRemotePlayer.visible = false;
+        return;
+    }
+    if (!pose.position.every(Number.isFinite) || !Number.isFinite(pose.yaw)) return;
+    coopRemotePose = pose;
+    coopRemotePoseReceivedAt = performance.now();
+    ensureCoopRemotePlayer();
+}
+
+function normalizeCoopAngle(angle) {
+    return Math.atan2(Math.sin(angle), Math.cos(angle));
+}
+
+function updateCoopRemotePlayer(delta) {
+    if (isGameRunning && !coopWasGameRunning) coopSpawnApplied = false;
+    coopWasGameRunning = isGameRunning;
+    if (coopSessionConnected && isGameRunning && !coopSpawnApplied) {
+        coopSpawnApplied = true;
+        if (coopLocalRole === 'guest') player.position.x += 3;
+    }
+
+    if (!coopRemotePlayer || !coopRemotePose || !isGameRunning || performance.now() - coopRemotePoseReceivedAt > 1500) {
+        if (coopRemotePlayer) coopRemotePlayer.visible = false;
+        return;
+    }
+
+    const [x, y, z] = coopRemotePose.position;
+    const height = Number.isFinite(coopRemotePose.height) ? coopRemotePose.height : 2.2;
+    const target = new THREE.Vector3(x, y - height, z);
+    const blend = 1 - Math.exp(-Math.max(0, delta) * 14);
+    coopRemotePlayer.position.lerp(target, blend);
+    const yawDelta = normalizeCoopAngle(coopRemotePose.yaw - coopRemotePlayer.rotation.y);
+    coopRemotePlayer.rotation.y += yawDelta * blend;
+    coopRemotePlayer.visible = true;
+
+    const parts = coopRemotePlayer.userData && coopRemotePlayer.userData.parts;
+    if (parts && coopRemotePose.weapon !== coopRemoteWeapon) {
+        coopRemoteWeapon = coopRemotePose.weapon || WEAPON_PISTOL;
+        if (parts.gun) applyGunStyle(parts.gun, coopRemoteWeapon);
+    }
+    if (parts && window.GFACharacterModels && typeof GFACharacterModels.pose === 'function') {
+        GFACharacterModels.pose(
+            parts,
+            Boolean(coopRemotePose.crouching),
+            clock.getElapsedTime(),
+            Boolean(coopRemotePose.moving),
+            0
+        );
+    }
+}
+
+function showCoopRemoteFire(payload) {
+    if (!coopRemotePlayer || !coopRemotePlayer.visible) return;
+    const parts = coopRemotePlayer.userData && coopRemotePlayer.userData.parts;
+    if (!parts) return;
+    const weapon = payload && typeof payload.weapon === 'string' ? payload.weapon : coopRemoteWeapon;
+    if (parts.gun && weapon && weapon !== coopRemoteWeapon) {
+        coopRemoteWeapon = weapon;
+        applyGunStyle(parts.gun, weapon);
+    }
+    if (window.GFACharacterModels && typeof GFACharacterModels.recoil === 'function') {
+        GFACharacterModels.recoil(parts, weapon || WEAPON_PISTOL);
+    }
+    const muzzle = getGunMuzzleInfo(parts);
+    if (muzzle && muzzle.position) {
+        const direction = Array.isArray(payload && payload.direction) && payload.direction.every(Number.isFinite)
+            ? new THREE.Vector3(...payload.direction).normalize()
+            : new THREE.Vector3(0, 0, 1).applyQuaternion(coopRemotePlayer.quaternion);
+        createMuzzleFlash(muzzle.position, 35, 1.3, 55, 0xffff00, direction, 0.45);
+    }
+}
+
+function setCoopControlValue(id, value) {
+    const element = document.getElementById(id);
+    if (element && value !== undefined && value !== null) element.value = String(value);
+}
+
+function startCoopGameFromHost(payload) {
+    const settings = payload && payload.settings;
+    if (!settings || typeof settings !== 'object') return false;
+    Object.assign(gameSettings, settings, { mapType: 'default', customMapName: '' });
+    activeRandomMapData = null;
+    setCoopControlValue('player-hp', gameSettings.playerHP);
+    setCoopControlValue('ai-hp', gameSettings.aiHP);
+    setCoopControlValue('mg-count', gameSettings.mgCount);
+    setCoopControlValue('rr-count', gameSettings.rrCount);
+    setCoopControlValue('sr-count', gameSettings.srCount);
+    setCoopControlValue('sg-count', gameSettings.sgCount);
+    setCoopControlValue('mr-count', gameSettings.mrCount);
+    setCoopControlValue('unified-map-selector', 'default');
+    document.querySelectorAll('input[name="ai-count"]').forEach(radio => {
+        radio.checked = Number(radio.value) === Number(gameSettings.aiCount);
+    });
+    document.querySelectorAll('input[name="game-duration"]').forEach(radio => {
+        radio.checked = Number(radio.value) === Number(gameSettings.gameDuration);
+    });
+    const titleScreen = document.getElementById('title-logo-screen');
+    const overlay = document.getElementById('coop-lobby-overlay');
+    if (titleScreen) titleScreen.classList.add('title-logo-hidden');
+    if (overlay) overlay.hidden = true;
+    const startButton = document.getElementById('start-game-btn');
+    if (startButton && startButton.dataset.loading !== 'true') startButton.click();
+    return true;
+}
+
+window.GFACoopGameBridge = Object.freeze({
+    setSession({ connected, role }) {
+        coopSessionConnected = Boolean(connected);
+        coopLocalRole = role === 'guest' ? 'guest' : 'host';
+        coopSpawnApplied = false;
+        if (!coopSessionConnected && coopRemotePlayer) coopRemotePlayer.visible = false;
+    },
+    getLocalPose: getCoopLocalPose,
+    applyRemotePose: applyCoopRemotePose,
+    showRemoteFire: showCoopRemoteFire,
+    startAsHost() {
+        const mapSelector = document.getElementById('title-map-selector');
+        if (mapSelector && mapSelector.value !== 'default') {
+            return { ok: false, message: '初期CO-OP版はMAPをDefault Mapに設定してください。' };
+        }
+        const deployButton = document.getElementById('title-deploy-button');
+        if (!deployButton || deployButton.disabled) {
+            return { ok: false, message: '現在ゲームを開始できません。TOP画面へ戻ってください。' };
+        }
+        deployButton.click();
+        return { ok: true };
+    },
+    startFromHost: startCoopGameFromHost
+});
+
 function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
     if (window.GFACharacterModels && GFACharacterModels.update) {
         GFACharacterModels.update(delta);
     }
+    updateCoopRemotePlayer(delta);
     
     if (window.justRestarted) {
         window.justRestarted = false;
@@ -19282,6 +19471,12 @@ if (startBtn) {
             gameSettings.gameDuration = parseInt(durationRadio.value, 10);
         }
         saveSettings();
+        window.dispatchEvent(new CustomEvent('gfa:game-starting', {
+            detail: {
+                settings: JSON.parse(JSON.stringify(gameSettings)),
+                startedAt: Date.now()
+            }
+        }));
         let stageReady = false;
         try {
             await prepareGameStartAssets();

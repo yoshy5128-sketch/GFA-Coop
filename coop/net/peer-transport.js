@@ -56,7 +56,7 @@ export class GfaPeerTransport {
 
   sendState(type, payload) {
     const channel = this.channels.state;
-    if (this.role !== 'host' || channel?.readyState !== 'open' || channel.bufferedAmount >= STATE_BUFFER_LIMIT) return false;
+    if (channel?.readyState !== 'open' || channel.bufferedAmount >= STATE_BUFFER_LIMIT) return false;
     channel.send(JSON.stringify(createEnvelope('state', type, this.sequence.state++, payload)));
     return true;
   }
@@ -108,6 +108,7 @@ export class GfaPeerTransport {
     this.channels[kind] = channel;
     channel.onopen = () => this._checkConnected();
     channel.onclose = () => {
+      if (this.closedByUser) return;
       this.connected = false;
       this._status('disconnected', 'P2Pゲーム通信が切断されました。再入室してください。');
       this.handlers.onDisconnect?.('data-channel-closed');

@@ -500,7 +500,7 @@
         }
     </style>
     
-    <link rel="stylesheet" href="style.css?v=20261024a">
+    <link rel="stylesheet" href="style.css?v=20261024b">
     <link rel="manifest" href="./manifest.json">
 
     <script src="./vendor/nipplejs-0.8.4.js"></script>
@@ -563,8 +563,9 @@
                 <input id="coop-room-code" maxlength="6" value="GFA001" autocomplete="off" autocapitalize="characters" inputmode="text" enterkeyhint="done">
             </label>
             <button id="coop-connect" type="button">P2P接続を開始</button>
+            <button id="coop-start" type="button" hidden disabled>HOSTからCO-OPを開始</button>
             <div id="coop-status" role="status">未接続</div>
-            <p class="coop-lobby-note">初回接続にはシグナリングサーバーへの通信が必要です。ゲーム状態は接続後に端末間で直接交換します。</p>
+            <p class="coop-lobby-note">接続後、HOSTがCO-OP開始を押してください。初期プレイ版は標準マップに対応しています。</p>
         </section>
     </div>
     <div id="start-screen" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); z-index: 500; display: flex; justify-content: center; align-items: center; overflow-y: auto;">
@@ -1397,8 +1398,8 @@
     </script>
     <script src="./vendor/tween-18.6.4.umd.js"></script>
     <script src="character-models.js?v=20260924c"></script>
-    <script src="script.js?v=20261024a"></script>
-    <script type="module" src="coop/coop-bootstrap.js?v=20261024c"></script>
+    <script src="script.js?v=20261024b"></script>
+    <script type="module" src="coop/coop-bootstrap.js?v=20261024d"></script>
     <script>
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', () => {
