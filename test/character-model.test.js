@@ -46,3 +46,20 @@ test('modern character leg joints change throughout a run cycle', async () => {
 
   assert.notDeepEqual(first, second);
 });
+
+test('attached upper body aims the barrel exactly at an arbitrary world direction', async () => {
+  const { models, THREE } = await loadCharacterModels();
+  const actor = models.create('#2586c9', {});
+  const parts = actor.userData.parts;
+  actor.rotation.y = 0.72;
+  models.pose(parts, false, 0.4, false, 0);
+
+  const requested = new THREE.Vector3(-0.55, 0.38, 0.74).normalize();
+  models.aim(parts, requested);
+  const actual = models.muzzle(parts).direction.normalize();
+
+  assert.ok(actual.angleTo(requested) < 1e-6);
+  assert.equal(parts.head.parent, parts.aimGroup);
+  assert.equal(parts.aimGroup.parent, parts.torso);
+  assert.ok(parts.aimGroup.quaternion.angleTo(new THREE.Quaternion()) < 1e-8);
+});

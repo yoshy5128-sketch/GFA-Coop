@@ -8936,14 +8936,17 @@ function applyAimConstraints(parts, ownerYaw, targetWorldPos, smoothing = 1.0) {
     const clampedPitch = clampAngle(-desiredPitch, -maxAimPitch, maxAimPitch);
     const alpha = THREE.MathUtils.clamp(smoothing, 0, 1);
     if (parts.modernRig && parts.torso) {
-        // Rotate the complete upper body as one rigid hierarchy. Splitting the
-        // angle with aimGroup rotates the head and arms around the waist and can
-        // visibly pull the neck and shoulders away from the torso.
-        const baseTorsoPitch = Number.isFinite(parts.baseTorsoPosePitch) ? parts.baseTorsoPosePitch : 0;
-        parts.torso.rotation.x = THREE.MathUtils.lerp(parts.torso.rotation.x, baseTorsoPitch + clampedPitch, alpha);
-        parts.torso.rotation.y += normalizeAngle(clampedRelYaw - parts.torso.rotation.y) * alpha;
-        parts.aimGroup.rotation.x = THREE.MathUtils.lerp(parts.aimGroup.rotation.x, 0, alpha);
-        parts.aimGroup.rotation.y += normalizeAngle(-parts.aimGroup.rotation.y) * alpha;
+        const worldYaw = ownerYaw + clampedRelYaw;
+        const worldPitch = -clampedPitch;
+        const horizontal = Math.cos(worldPitch);
+        const desiredDirection = new THREE.Vector3(
+            Math.sin(worldYaw) * horizontal,
+            Math.sin(worldPitch),
+            Math.cos(worldYaw) * horizontal
+        ).normalize();
+        // The modern rig solves its complete attached upper body against the
+        // actual barrel direction, avoiding Euler-order errors and neck gaps.
+        GFACharacterModels.aim(parts, desiredDirection);
     } else {
         parts.aimGroup.rotation.y += normalizeAngle(clampedRelYaw - parts.aimGroup.rotation.y) * alpha;
         parts.aimGroup.rotation.x = THREE.MathUtils.lerp(parts.aimGroup.rotation.x, clampedPitch, alpha);
@@ -16974,22 +16977,15 @@ function applyCoopRemoteUpperBodyPose(parts, pose, smoothing = 1) {
     const cameraPitch = Number.isFinite(pose.pitch)
         ? pose.pitch
         : (direction ? Math.asin(THREE.MathUtils.clamp(direction.y, -1, 1)) : 0);
-    // Camera +X looks upward, while this visible +Z-facing rig needs -X.
-    const totalPitch = THREE.MathUtils.clamp(-cameraPitch, -Math.PI / 2 + 0.1, Math.PI / 2 - 0.1);
-    const alpha = THREE.MathUtils.clamp(smoothing, 0, 1);
-    const baseTorsoPitch = Number.isFinite(parts.baseTorsoPosePitch) ? parts.baseTorsoPosePitch : 0;
-    parts.torso.rotation.x = THREE.MathUtils.lerp(
-        parts.torso.rotation.x,
-        baseTorsoPitch + totalPitch,
-        alpha
-    );
-    parts.torso.rotation.y += normalizeCoopAngle(relativeYaw - parts.torso.rotation.y) * alpha;
-    parts.aimGroup.rotation.x = THREE.MathUtils.lerp(
-        parts.aimGroup.rotation.x,
-        0,
-        alpha
-    );
-    parts.aimGroup.rotation.y += normalizeCoopAngle(-parts.aimGroup.rotation.y) * alpha;
+    const worldYaw = remoteYaw + relativeYaw;
+    const verticalPitch = THREE.MathUtils.clamp(cameraPitch, -Math.PI / 2 + 0.1, Math.PI / 2 - 0.1);
+    const horizontal = Math.cos(verticalPitch);
+    const desiredDirection = new THREE.Vector3(
+        Math.sin(worldYaw) * horizontal,
+        Math.sin(verticalPitch),
+        Math.cos(worldYaw) * horizontal
+    ).normalize();
+    GFACharacterModels.aim(parts, desiredDirection);
     coopRemotePlayer.updateMatrixWorld(true);
 }
 

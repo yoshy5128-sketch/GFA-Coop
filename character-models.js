@@ -1511,6 +1511,22 @@ function boxes(parts){const r=rigs.get(parts);if(!r)return [];r.root.updateWorld
 function bodyBox(parts){const b=new THREE.Box3();boxes(parts).forEach(x=>b.union(x));return b;}
 const muzzleEnds={pistol:[0,.01,.308],m1rifle:[0,.026,1.015],machinegun:[0,.024,.817],sniperrifle:[0,.03,1.215],shotgun:[0,.025,.711],rocketlauncher:[0,0,.85]};
 function muzzle(parts){const r=rigs.get(parts);r.gun.updateWorldMatrix(true,false);return {position:V(...muzzleEnds[r.weapon]).applyMatrix4(r.gun.matrixWorld),direction:V(0,0,1).transformDirection(r.gun.matrixWorld)};}
+function aim(parts,direction){
+    const r=rigs.get(parts);if(!r||!direction||direction.lengthSq()<1e-8)return;
+    // Head, arms and gun remain rigidly attached to the chest. Rotate that
+    // complete hierarchy by the exact world-space correction required for the
+    // barrel to match the requested direction.
+    r.aim.quaternion.identity();
+    r.root.updateWorldMatrix(true,true);
+    const currentDirection=V(0,0,1).transformDirection(r.gun.matrixWorld);
+    const desiredDirection=direction.clone().normalize();
+    const correction=new THREE.Quaternion().setFromUnitVectors(currentDirection,desiredDirection);
+    const currentWorld=r.chest.getWorldQuaternion(new THREE.Quaternion());
+    const desiredWorld=correction.multiply(currentWorld);
+    const parentWorld=r.chest.parent.getWorldQuaternion(new THREE.Quaternion());
+    r.chest.quaternion.copy(parentWorld.invert().multiply(desiredWorld));
+    r.root.updateWorldMatrix(true,true);
+}
 function beginRagdoll(parts,impactVelocity=null,hitPoint=null,seed=Math.random()){
     const r=rigs.get(parts);if(!r)return;
     activeRecoils.delete(r);activeHitReactions.delete(r);r.recoilAmount=0;r.hitReaction=null;
@@ -1635,6 +1651,6 @@ function hitReaction(parts,impactVelocity=null,strength=1){
     activeHitReactions.add(r);
 }
 function loose(parts,seed){beginRagdoll(parts,null,null,seed);}
-return {create,createWeapon,setWeapon,pose,reset,bodyBox,boxes,muzzle,loose,beginRagdoll,update,nudge,recoil,hitReaction,adopt};
+return {create,createWeapon,setWeapon,pose,reset,bodyBox,boxes,muzzle,aim,loose,beginRagdoll,update,nudge,recoil,hitReaction,adopt};
 
 })();
