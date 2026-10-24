@@ -16587,10 +16587,15 @@ function getCoopLocalPose() {
     const moving = Boolean(previous && previous.distanceToSquared(position) > 0.0004);
     if (!coopLastSnapshotPosition) coopLastSnapshotPosition = new THREE.Vector3();
     coopLastSnapshotPosition.copy(position);
+    const forward = new THREE.Vector3();
+    camera.getWorldDirection(forward);
+    forward.y = 0;
+    if (forward.lengthSq() > 0.000001) forward.normalize();
     return {
         active: true,
         position: [position.x, position.y, position.z],
         yaw: player.rotation.y,
+        forward: [forward.x, forward.z],
         pitch: camera.rotation.x,
         height: playerTargetHeight,
         crouching: Boolean(isCrouchingToggle),
@@ -16598,6 +16603,15 @@ function getCoopLocalPose() {
         weapon: currentWeapon,
         hp: Number.isFinite(playerHP) ? playerHP : null
     };
+}
+
+function getCoopRemoteVisualYaw(pose) {
+    if (pose && Array.isArray(pose.forward) && pose.forward.length === 2
+        && pose.forward.every(Number.isFinite)) {
+        const [x, z] = pose.forward;
+        if (x * x + z * z > 0.000001) return Math.atan2(x, z);
+    }
+    return normalizeCoopAngle(pose.yaw + Math.PI);
 }
 
 function applyCoopRemotePose(pose) {
@@ -16615,7 +16629,7 @@ function applyCoopRemotePose(pose) {
     if (!coopRemotePoseInitialized || coopRemotePoseReceivedAt - previousReceivedAt > 1500) {
         const height = Number.isFinite(pose.height) ? pose.height : 2.2;
         remote.position.set(pose.position[0], pose.position[1] - height, pose.position[2]);
-        remote.rotation.y = normalizeCoopAngle(pose.yaw + Math.PI);
+        remote.rotation.y = getCoopRemoteVisualYaw(pose);
         coopRemotePoseInitialized = true;
     }
 }
@@ -16642,8 +16656,9 @@ function updateCoopRemotePlayer(delta) {
     const target = new THREE.Vector3(x, y - height, z);
     const blend = 1 - Math.exp(-Math.max(0, delta) * 14);
     coopRemotePlayer.position.lerp(target, blend);
-    // The first-person player holder faces opposite to the visible character model.
-    const remoteVisualYaw = normalizeCoopAngle(coopRemotePose.yaw + Math.PI);
+    // Use the actual camera-forward vector. This stays consistent across mouse
+    // and touch look controls even if their holder rotations differ.
+    const remoteVisualYaw = getCoopRemoteVisualYaw(coopRemotePose);
     const yawDelta = normalizeCoopAngle(remoteVisualYaw - coopRemotePlayer.rotation.y);
     coopRemotePlayer.rotation.y += yawDelta * blend;
     coopRemotePlayer.visible = true;
