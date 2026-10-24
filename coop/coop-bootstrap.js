@@ -86,6 +86,9 @@ function createTransport() {
       if (message.type === 'player-damage' && transport.role === 'guest') {
         gameBridge()?.applyLocalDamage?.(message.payload);
       }
+      if (message.type === 'ai-fire' && transport.role === 'guest') {
+        gameBridge()?.showHostAIFire?.(message.payload);
+      }
     },
     onDisconnect() {
       gameBridge()?.setSession?.({ connected: false, role: selectedRole });
@@ -145,6 +148,11 @@ window.addEventListener('gfa:player-fire', event => {
 window.addEventListener('gfa:remote-player-damage', event => {
   if (transport?.role !== 'host' || !transport.connected) return;
   transport.sendEvent('player-damage', event.detail);
+});
+
+window.addEventListener('gfa:ai-fire', event => {
+  if (transport?.role !== 'host' || !transport.connected) return;
+  transport.sendEvent('ai-fire', event.detail);
 });
 
 roomInput.addEventListener('keydown', event => {

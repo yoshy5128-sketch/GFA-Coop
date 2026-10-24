@@ -12235,7 +12235,7 @@ function handleFireRelease() {
                   createImpactSparkEffect(safeFire.impactPoint || safeFire.muzzlePosition, 0xffdd88, direction);
                   createSmokeEffect(safeFire.impactPoint || safeFire.muzzlePosition);
               } else {
-                  createProjectile(safeFire.startPosition, direction, 0xffff00, 0.1, false, 'player', projectileSpeed * 2, true, WEAPON_SR);
+                  createProjectile(safeFire.startPosition, direction, 0xffff00, 0.1, false, getLocalPlayerProjectileSource(), projectileSpeed * 2, true, WEAPON_SR);
               }
             broadcastCoopPlayerFire(direction, WEAPON_SR);
             lastFireTime = clock.getElapsedTime();
@@ -12263,6 +12263,10 @@ function broadcastCoopPlayerFire(direction, weapon = currentWeapon) {
             direction: [direction.x, direction.y, direction.z]
         }
     }));
+}
+
+function getLocalPlayerProjectileSource() {
+    return coopSessionConnected && coopLocalRole === 'guest' ? 'coop-player-visual' : 'player';
 }
 
 function shoot() {
@@ -12365,10 +12369,10 @@ function shoot() {
                 const randomAngleY = (Math.random() - 0.5) * SHOTGUN_SPREAD_ANGLE;
                 spreadDirection.applyAxisAngle(upVector, angleOffset + randomAngleX);
                 spreadDirection.applyAxisAngle(rightVector, randomAngleY);
-                createProjectile(safeFire.startPosition, spreadDirection, projectileColor, projectileSize, false, 'player', projectileSpeed, false, WEAPON_SG);
+                createProjectile(safeFire.startPosition, spreadDirection, projectileColor, projectileSize, false, getLocalPlayerProjectileSource(), projectileSpeed, false, WEAPON_SG);
             }
         } else {
-            createProjectile(safeFire.startPosition, baseDirection, projectileColor, projectileSize, currentWeapon === WEAPON_RR, 'player', projectileSpeedOverride, isSniperShot, weaponType);
+            createProjectile(safeFire.startPosition, baseDirection, projectileColor, projectileSize, currentWeapon === WEAPON_RR, getLocalPlayerProjectileSource(), projectileSpeedOverride, isSniperShot, weaponType);
         }
         lastFireTime = now;
         if (currentWeapon === WEAPON_MG) {
@@ -12809,6 +12813,16 @@ function aiShoot(ai, timeElapsed) {
         const aiMuzzleScale = ai.currentWeapon === WEAPON_RR ? 1.55 : (ai.currentWeapon === WEAPON_SG ? 1.25 : (ai.currentWeapon === WEAPON_MG ? 0.85 : 1.0));
         createMuzzleFlash(aiMuzzlePosition, 150, 3.0, 90, aiProjectileColor || 0xffffff, direction, aiMuzzleScale);
         createGroundFlash(aiMuzzlePosition, 0xffffff, 1.5, 150);
+        if (coopSessionConnected && coopLocalRole === 'host') {
+            window.dispatchEvent(new CustomEvent('gfa:ai-fire', {
+                detail: {
+                    aiIndex: ais.indexOf(ai),
+                    weapon: ai.currentWeapon,
+                    position: [aiMuzzlePosition.x, aiMuzzlePosition.y, aiMuzzlePosition.z],
+                    direction: [direction.x, direction.y, direction.z]
+                }
+            }));
+        }
         if (ai.currentWeapon === WEAPON_SG) {
             const upVector = new THREE.Vector3(0, 1, 0);
             const rightVector = new THREE.Vector3().crossVectors(direction, upVector).normalize();
@@ -13818,6 +13832,10 @@ let gameBgmBufferSource = null;
 let gameBgmGainNode = null;
 let gameBgmBufferTrack = null;
 let gameBgmRequestToken = 0;
+let gameBgmStartedAtContextTime = 0;
+let gameBgmStartOffset = 0;
+let coopBgmSyncPendingTrack = null;
+let coopBgmLastCorrectionAt = 0;
 
 function normalizeBgmVolume(value) {
     const num = Number(value);
@@ -13879,6 +13897,8 @@ function releaseGameBgmBufferSource(invalidatePending = true) {
     gameBgmBufferSource = null;
     gameBgmGainNode = null;
     gameBgmBufferTrack = null;
+    gameBgmStartedAtContextTime = 0;
+    gameBgmStartOffset = 0;
     if (source) {
         source.onended = null;
         try { source.stop(); } catch (e) {}
@@ -13889,7 +13909,7 @@ function releaseGameBgmBufferSource(invalidatePending = true) {
     }
 }
 
-async function playGameBgmWithWebAudio(track, restart = false) {
+async function playGameBgmWithWebAudio(track, restart = false, requestedOffset = null) {
     if (!track || gameSettings.bgmMute) return false;
     if (gameBgmBufferSource && gameBgmBufferTrack === track && !restart) {
         applyBgmVolume();
@@ -13905,6 +13925,7 @@ async function playGameBgmWithWebAudio(track, restart = false) {
     }
 
     const requestToken = ++gameBgmRequestToken;
+    const offsetRequestedAt = performance.now();
     const soundId = `gameBgm:${track}`;
     if (!audioMetaById.has(soundId)) {
         audioMetaById.set(soundId, { url: track, baseGain: 1.0 });
@@ -13915,6 +13936,7 @@ async function playGameBgmWithWebAudio(track, restart = false) {
     if (requestToken !== gameBgmRequestToken) return null;
     if (gameSettings.bgmMute || !isGameRunning || isSettingsScreenVisible()) return null;
 
+    if (gameBgmAudio) gameBgmAudio.pause();
     releaseGameBgmBufferSource(false);
     const source = ctx.createBufferSource();
     const gain = ctx.createGain();
@@ -13926,6 +13948,13 @@ async function playGameBgmWithWebAudio(track, restart = false) {
     gameBgmBufferSource = source;
     gameBgmGainNode = gain;
     gameBgmBufferTrack = track;
+    let startOffset = 0;
+    if (Number.isFinite(requestedOffset) && requestedOffset >= 0) {
+        startOffset = requestedOffset + Math.max(0, performance.now() - offsetRequestedAt) / 1000;
+        if (buffer.duration > 0) startOffset %= buffer.duration;
+    }
+    gameBgmStartedAtContextTime = ctx.currentTime;
+    gameBgmStartOffset = startOffset;
     source.onended = () => {
         if (gameBgmBufferSource !== source) return;
         try { source.disconnect(); } catch (e) {}
@@ -13933,13 +13962,66 @@ async function playGameBgmWithWebAudio(track, restart = false) {
         gameBgmBufferSource = null;
         gameBgmGainNode = null;
         gameBgmBufferTrack = null;
+        gameBgmStartedAtContextTime = 0;
+        gameBgmStartOffset = 0;
         if (gameSettings.bgmPlayMode !== 'continuous' || gameSettings.bgmMute
             || !isGameRunning || isSettingsScreenVisible()) return;
         currentBgmTrack = pickNextBgmTrack();
         if (currentBgmTrack) playGameBGM(false);
     };
-    source.start(0);
+    source.start(0, startOffset);
     return true;
+}
+
+function getCurrentGameBgmPosition() {
+    if (gameBgmBufferSource && gameBgmBufferTrack && audioCtx && gameBgmBufferSource.buffer) {
+        let position = gameBgmStartOffset + Math.max(0, audioCtx.currentTime - gameBgmStartedAtContextTime);
+        const duration = gameBgmBufferSource.buffer.duration;
+        if (gameBgmBufferSource.loop && duration > 0) position %= duration;
+        return position;
+    }
+    if (gameBgmAudio && !gameBgmAudio.paused && Number.isFinite(gameBgmAudio.currentTime)) {
+        return gameBgmAudio.currentTime;
+    }
+    return null;
+}
+
+function getCircularBgmDrift(current, target, duration) {
+    const direct = Math.abs(current - target);
+    if (!(duration > 0)) return direct;
+    return Math.min(direct, Math.abs(duration - direct));
+}
+
+async function syncCoopGameBgm(snapshot) {
+    if (coopLocalRole !== 'guest' || !isGameRunning || isPaused || isSettingsScreenVisible()
+        || !snapshot || typeof snapshot.track !== 'string' || !BGM_TRACKS.includes(snapshot.track)
+        || !Number.isFinite(snapshot.position) || snapshot.position < 0 || gameSettings.bgmMute) return;
+    const trackChanged = currentBgmTrack !== snapshot.track || gameBgmBufferTrack !== snapshot.track;
+    const currentPosition = getCurrentGameBgmPosition();
+    const duration = gameBgmBufferSource && gameBgmBufferSource.buffer ? gameBgmBufferSource.buffer.duration : 0;
+    const drift = Number.isFinite(currentPosition)
+        ? getCircularBgmDrift(currentPosition, snapshot.position, duration)
+        : Infinity;
+    if (!trackChanged && drift < 0.8) return;
+    if (!trackChanged && performance.now() - coopBgmLastCorrectionAt < 3000) return;
+    if (coopBgmSyncPendingTrack === snapshot.track) return;
+    coopBgmSyncPendingTrack = snapshot.track;
+    coopBgmLastCorrectionAt = performance.now();
+    currentBgmTrack = snapshot.track;
+    try {
+        const started = await playGameBgmWithWebAudio(snapshot.track, true, snapshot.position);
+        if (started === false && gameBgmAudio) {
+            setBgmTrack(snapshot.track, false);
+            const applyPosition = () => {
+                try { gameBgmAudio.currentTime = snapshot.position; } catch (e) {}
+                playBgmAudioWithRetry(gameBgmAudio);
+            };
+            if (gameBgmAudio.readyState >= 1) applyPosition();
+            else gameBgmAudio.addEventListener('loadedmetadata', applyPosition, { once: true });
+        }
+    } finally {
+        if (coopBgmSyncPendingTrack === snapshot.track) coopBgmSyncPendingTrack = null;
+    }
 }
 
 function isTrackLoaded(track, audio = gameBgmAudio) {
@@ -16547,6 +16629,9 @@ function showSettingsAndPause() {
 function resumeGame() {
     debugLog('resumeGame() called');
     const settingsChanged = JSON.stringify(originalSettings) !== JSON.stringify(gameSettings);
+    // ゲスト端末のボタン配置などはローカル設定。ゲストだけゲームを再生成すると
+    // ホストのAI/マップ状態から分岐するため、CO-OP中は再開時に再生成しない。
+    const requiresRestart = settingsChanged && !(coopSessionConnected && coopLocalRole === 'guest');
 
     applySettingsScreenLighting(false);
     document.body.classList.remove('settings-screen-active');
@@ -16555,7 +16640,7 @@ function resumeGame() {
     document.getElementById('restart-pause-btn').style.display = 'none';
     document.getElementById('start-game-btn').style.display = 'inline-block';
 
-    if (settingsChanged) {
+    if (requiresRestart) {
         restartGame({ rerollRandomMap: gameSettings.mapType === 'random' });
     } else {
         isPaused = false;
@@ -16612,6 +16697,10 @@ function resumeGame() {
         enforceTouchUIVisibility();
 
         isGameRunning = true;
+        if (coopSessionConnected && coopLocalRole === 'guest') {
+            coopForceSnapshotSnap = true;
+            coopRemotePoseInitialized = false;
+        }
         updateMobileWeaponButtonVisibility();
     }
     updateMenuBGM();
@@ -16633,6 +16722,7 @@ let coopHostWorldReceivedAt = 0;
 let coopRemoteHP = null;
 let coopRemoteDead = false;
 const coopRemoteLastFireAt = new Map();
+let coopForceSnapshotSnap = false;
 
 function ensureCoopRemotePlayer() {
     if (coopRemotePlayer) return coopRemotePlayer;
@@ -16765,6 +16855,16 @@ function getCoopHostWorldState() {
         active: true,
         guestPlayerHp: Number.isFinite(coopRemoteHP) ? coopRemoteHP : null,
         guestPlayerInvulnerable: coopRemoteHP === Infinity,
+        bgm: currentBgmTrack && Number.isFinite(getCurrentGameBgmPosition()) ? {
+            track: currentBgmTrack,
+            position: getCurrentGameBgmPosition()
+        } : null,
+        gameTimer: Number.isFinite(gameTimer) ? gameTimer : null,
+        scores: {
+            playerKills: Number.isFinite(playerKills) ? playerKills : 0,
+            playerTeamKills: Number.isFinite(playerTeamKills) ? playerTeamKills : 0,
+            enemyTeamKills: Number.isFinite(enemyTeamKills) ? enemyTeamKills : 0
+        },
         ais: ais.map(ai => ({
             position: [ai.position.x, ai.position.y, ai.position.z],
             yaw: ai.rotation.y,
@@ -16772,6 +16872,7 @@ function getCoopHostWorldState() {
             moving: ['MOVING', 'FOLLOWING', 'MOVING_TO_LADDER', 'CLIMBING', 'DESCENDING'].includes(ai.state),
             weapon: ai.currentWeapon || WEAPON_PISTOL,
             hp: Number.isFinite(ai.hp) ? ai.hp : null,
+            kills: Number.isFinite(ai.kills) ? ai.kills : 0,
             visible: Boolean(ai.visible && ai.hp > 0)
         }))
     };
@@ -16780,6 +16881,19 @@ function getCoopHostWorldState() {
 function applyCoopHostWorldState(state) {
     if (coopLocalRole !== 'guest' || !state || state.active !== true || !Array.isArray(state.ais)) return;
     coopHostWorldReceivedAt = performance.now();
+    if (state.bgm) syncCoopGameBgm(state.bgm);
+    if (Number.isFinite(state.gameTimer)) {
+        gameTimer = Math.max(0, Math.floor(state.gameTimer));
+        updateTimerDisplay();
+    }
+    if (state.scores && typeof state.scores === 'object') {
+        if (Number.isFinite(state.scores.playerKills)) playerKills = state.scores.playerKills;
+        if (Number.isFinite(state.scores.playerTeamKills)) playerTeamKills = state.scores.playerTeamKills;
+        if (Number.isFinite(state.scores.enemyTeamKills)) enemyTeamKills = state.scores.enemyTeamKills;
+        if (killCountDisplay) killCountDisplay.textContent = `KILLS: ${playerKills}`;
+        if (playerTeamKillsDisplay) playerTeamKillsDisplay.textContent = `PLAYER TEAM KILLS: ${playerTeamKills}`;
+        if (enemyTeamKillsDisplay) enemyTeamKillsDisplay.textContent = `ENEMY TEAM KILLS: ${enemyTeamKills}`;
+    }
     if (state.guestPlayerInvulnerable === true && playerHP !== Infinity) {
         playerHP = Infinity;
     } else if (Number.isFinite(state.guestPlayerHp) && state.guestPlayerHp !== playerHP) {
@@ -16789,22 +16903,31 @@ function applyCoopHostWorldState(state) {
         const ai = ais[index];
         if (!ai || !snapshot || !Array.isArray(snapshot.position) || !snapshot.position.every(Number.isFinite)) return;
         if (!ai.userData) ai.userData = {};
+        if (coopForceSnapshotSnap) {
+            ai.position.set(...snapshot.position);
+            if (Number.isFinite(snapshot.yaw)) ai.rotation.y = snapshot.yaw;
+        }
         ai.userData.coopTargetPosition = new THREE.Vector3(...snapshot.position);
         ai.userData.coopTargetYaw = Number.isFinite(snapshot.yaw) ? snapshot.yaw : ai.rotation.y;
         ai.userData.coopMoving = Boolean(snapshot.moving);
         ai.isCrouching = Boolean(snapshot.crouching);
         ai.visible = Boolean(snapshot.visible);
         if (Number.isFinite(snapshot.hp)) ai.hp = snapshot.hp;
+        if (Number.isFinite(snapshot.kills)) ai.kills = snapshot.kills;
         if (typeof snapshot.weapon === 'string' && snapshot.weapon !== ai.currentWeapon) {
             ai.currentWeapon = snapshot.weapon;
             const parts = ai.userData.parts;
             if (parts && parts.gun) applyGunStyle(parts.gun, ai.currentWeapon);
         }
     });
+    coopForceSnapshotSnap = false;
 }
 
 function updateCoopGuestAI(ai, delta) {
-    if (!coopSessionConnected || coopLocalRole !== 'guest' || performance.now() - coopHostWorldReceivedAt > 1500) return false;
+    if (!coopSessionConnected || coopLocalRole !== 'guest') return false;
+    // 通信が一時停止してもゲストAIをローカル思考へ戻さない。
+    // 復帰後の二重シミュレーションと大きな位置ずれを防ぐ。
+    if (performance.now() - coopHostWorldReceivedAt > 1500) return true;
     const target = ai.userData && ai.userData.coopTargetPosition;
     if (target) {
         const blend = 1 - Math.exp(-Math.max(0, delta) * 12);
@@ -16837,7 +16960,47 @@ function showCoopRemoteFire(payload) {
             ? new THREE.Vector3(...payload.direction).normalize()
             : new THREE.Vector3(0, 0, 1).applyQuaternion(coopRemotePlayer.quaternion);
         createMuzzleFlash(muzzle.position, 35, 1.3, 55, 0xffff00, direction, 0.45);
+        const sound = getCoopWeaponSound(weapon, false);
+        if (sound) playSpatialSound(sound, muzzle.position, { gainBoost: 0.9 });
+        if (coopLocalRole === 'guest') {
+            const spec = getCoopFireSpec(weapon) || getCoopFireSpec(WEAPON_PISTOL);
+            const weaponType = weapon === WEAPON_SG || weapon === WEAPON_MR ? weapon : null;
+            createProjectile(muzzle.position, direction, spec.color, spec.size, Boolean(spec.rocket),
+                'coop-player-visual', spec.speed, Boolean(spec.sniper), weaponType, coopRemotePlayer);
+        }
     }
+}
+
+function getCoopWeaponSound(weapon, aiWeapon = false) {
+    if (weapon === WEAPON_MG) return aiWeapon ? aimgGunSound : mgGunSound;
+    if (weapon === WEAPON_RR) return rrGunSound;
+    if (weapon === WEAPON_SR) return aiWeapon ? aiSrGunSound : srGunSound;
+    if (weapon === WEAPON_SG) return aiWeapon ? aiSgSound : playerSgSound;
+    if (weapon === WEAPON_MR) return aiWeapon ? aiM1GunSound : m1GunSound;
+    return aiWeapon ? aiGunSound : playerGunSound;
+}
+
+function showCoopHostAIFire(payload) {
+    if (coopLocalRole !== 'guest' || !payload || !Number.isInteger(payload.aiIndex)) return false;
+    const ai = ais[payload.aiIndex];
+    if (!ai || !Array.isArray(payload.position) || payload.position.length !== 3
+        || !payload.position.every(Number.isFinite) || !Array.isArray(payload.direction)
+        || payload.direction.length !== 3 || !payload.direction.every(Number.isFinite)) return false;
+    const weapon = getCoopFireSpec(payload.weapon) ? payload.weapon : WEAPON_PISTOL;
+    const position = new THREE.Vector3(...payload.position);
+    const direction = new THREE.Vector3(...payload.direction);
+    if (direction.lengthSq() < 0.25) return false;
+    direction.normalize();
+    const parts = ai.userData && ai.userData.parts;
+    if (parts && window.GFACharacterModels && typeof GFACharacterModels.recoil === 'function') {
+        GFACharacterModels.recoil(parts, weapon);
+    }
+    const spec = getCoopFireSpec(weapon);
+    const sound = getCoopWeaponSound(weapon, true);
+    if (sound) playSpatialSound(sound, position, { gainBoost: 0.9 });
+    createMuzzleFlash(position, 90, 2.2, 75, spec.color, direction, weapon === WEAPON_RR ? 1.2 : 0.8);
+    createProjectile(position, direction, spec.color, spec.size, Boolean(spec.rocket), 'coop-ai-visual', spec.speed, Boolean(spec.sniper), weapon === WEAPON_SG || weapon === WEAPON_MR ? weapon : null, ai);
+    return true;
 }
 
 function getCoopFireSpec(weapon) {
@@ -16977,6 +17140,9 @@ window.GFACoopGameBridge = Object.freeze({
         coopRemoteHP = null;
         coopRemoteDead = false;
         coopRemoteLastFireAt.clear();
+        coopForceSnapshotSnap = false;
+        coopBgmSyncPendingTrack = null;
+        coopBgmLastCorrectionAt = 0;
         if (!coopSessionConnected) {
             coopRemotePoseInitialized = false;
             coopHostWorldReceivedAt = 0;
@@ -16988,6 +17154,7 @@ window.GFACoopGameBridge = Object.freeze({
     getHostWorldState: getCoopHostWorldState,
     applyHostWorldState: applyCoopHostWorldState,
     showRemoteFire: showCoopRemoteFire,
+    showHostAIFire: showCoopHostAIFire,
     handleGuestFire: handleCoopGuestFire,
     applyLocalDamage: applyCoopLocalDamage,
     startAsHost() {
@@ -19162,7 +19329,7 @@ function animate() {
             hitObject = floor;
             hitType = 'floor';
         }
-        if (!hitSomething && p.source === 'player') {
+        if (!hitSomething && (p.source === 'player' || p.source === 'coop-player-visual')) {
             if (!(isBillBattleMode() && !billBattlePlayerEntered)) {
                 for (let j = ais.length - 1; j >= 0; j--) {
                     const ai = ais[j];
@@ -19179,12 +19346,15 @@ function animate() {
                         hitSomething = true;
                         hitObject = ai;
                         hitType = 'ai';
+                        const visualOnlyCoopHit = p.source === 'coop-player-visual';
                         let damageAmount = 1;
                         if (p.weaponType === WEAPON_SG) damageAmount = SHOTGUN_PELLET_DAMAGE;
                         else if (p.weaponType === WEAPON_MR) damageAmount = 9;
                         else if (p.isSniper || p.isRocket) damageAmount = ai.hp;
 
-                        if (ai.hp !== Infinity) {
+                        if (visualOnlyCoopHit) {
+                            createRedSmokeEffect(ai.position.clone().add(new THREE.Vector3(0, 1.5, 0)));
+                        } else if (ai.hp !== Infinity) {
                               if (isBillBattleMode()) {
                                   markBillBattlePlayerDamage(ai, timeElapsed);
                               }
