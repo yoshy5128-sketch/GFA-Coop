@@ -1276,10 +1276,43 @@ let isGameRunning = false;
 let gameplayWakeLock = null;
 let gameplayWakeLockRequest = null;
 let gameplayWakeLockWanted = false;
+let gameplayWakeLockRetryTimer = null;
+let gameplayWakeLockWatchdog = null;
+
+function clearGameplayWakeLockRetry() {
+    if (gameplayWakeLockRetryTimer) clearTimeout(gameplayWakeLockRetryTimer);
+    gameplayWakeLockRetryTimer = null;
+}
+
+function scheduleGameplayWakeLockRetry(delay = 1000) {
+    if (!gameplayWakeLockWanted || document.visibilityState !== 'visible') return;
+    clearGameplayWakeLockRetry();
+    gameplayWakeLockRetryTimer = setTimeout(() => {
+        gameplayWakeLockRetryTimer = null;
+        void requestGameplayWakeLock();
+    }, delay);
+}
+
+function updateGameplayWakeLockWatchdog() {
+    if (!gameplayWakeLockWanted) {
+        if (gameplayWakeLockWatchdog) clearInterval(gameplayWakeLockWatchdog);
+        gameplayWakeLockWatchdog = null;
+        return;
+    }
+    if (gameplayWakeLockWatchdog) return;
+    gameplayWakeLockWatchdog = setInterval(() => {
+        if (gameplayWakeLockWanted && document.visibilityState === 'visible'
+            && (!gameplayWakeLock || gameplayWakeLock.released)) {
+            void requestGameplayWakeLock();
+        }
+    }, 10000);
+}
 
 async function requestGameplayWakeLock() {
-    if (!gameplayWakeLockWanted || document.visibilityState !== 'visible'
-        || !shouldShowTouchControls() || !('wakeLock' in navigator)) return false;
+    if (!gameplayWakeLockWanted || document.visibilityState !== 'visible') return false;
+    // Some phones/tablets report a fine pointer when a stylus, mouse or desktop-mode
+    // browser is present. Wake Lock must follow gameplay state, not touch-UI detection.
+    if (!('wakeLock' in navigator)) return false;
     if (gameplayWakeLock && !gameplayWakeLock.released) return true;
     if (gameplayWakeLockRequest) return gameplayWakeLockRequest;
     gameplayWakeLockRequest = (async () => {
@@ -1290,12 +1323,17 @@ async function requestGameplayWakeLock() {
                 return false;
             }
             gameplayWakeLock = sentinel;
+            clearGameplayWakeLockRetry();
             sentinel.addEventListener('release', () => {
                 if (gameplayWakeLock === sentinel) gameplayWakeLock = null;
+                if (gameplayWakeLockWanted && document.visibilityState === 'visible') {
+                    scheduleGameplayWakeLockRetry(500);
+                }
             });
             return true;
         } catch (error) {
             console.warn('Screen wake lock is unavailable:', error);
+            scheduleGameplayWakeLockRetry(10000);
             return false;
         } finally {
             gameplayWakeLockRequest = null;
@@ -1307,9 +1345,12 @@ async function requestGameplayWakeLock() {
 function setGameplayWakeLock(active) {
     gameplayWakeLockWanted = Boolean(active);
     if (gameplayWakeLockWanted) {
+        updateGameplayWakeLockWatchdog();
         void requestGameplayWakeLock();
         return;
     }
+    clearGameplayWakeLockRetry();
+    updateGameplayWakeLockWatchdog();
     const sentinel = gameplayWakeLock;
     gameplayWakeLock = null;
     if (sentinel && !sentinel.released) void sentinel.release().catch(() => {});
@@ -1317,8 +1358,14 @@ function setGameplayWakeLock(active) {
 
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && gameplayWakeLockWanted) {
-        void requestGameplayWakeLock();
+        scheduleGameplayWakeLockRetry(0);
     }
+});
+window.addEventListener('pageshow', () => {
+    if (gameplayWakeLockWanted) scheduleGameplayWakeLockRetry(0);
+});
+window.addEventListener('focus', () => {
+    if (gameplayWakeLockWanted) scheduleGameplayWakeLockRetry(0);
 });
 document.addEventListener('pointerdown', () => {
     if (gameplayWakeLockWanted && (!gameplayWakeLock || gameplayWakeLock.released)) {
