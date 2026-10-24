@@ -16778,7 +16778,7 @@ let coopForceSnapshotSnap = false;
 let coopRemoteMovingUntil = 0;
 let coopRemoteLowerBodyYaw = 0;
 let coopRemoteLastNetworkPosition = null;
-let coopRemoteWalkTime = 0;
+let coopLastSnapshotAt = 0;
 
 function ensureCoopRemotePlayer() {
     if (coopRemotePlayer) return coopRemotePlayer;
@@ -16815,9 +16815,14 @@ function getCoopLocalPose() {
     }
     const position = player.position;
     const previous = coopLastSnapshotPosition;
+    const snapshotAt = performance.now();
+    const snapshotSeconds = coopLastSnapshotAt > 0
+        ? Math.max(0.001, (snapshotAt - coopLastSnapshotAt) / 1000)
+        : 0;
     const positionDelta = previous ? position.clone().sub(previous) : new THREE.Vector3();
     positionDelta.y = 0;
-    const sampledMoving = positionDelta.lengthSq() > 0.0004;
+    const moveSpeed = snapshotSeconds > 0 ? positionDelta.length() / snapshotSeconds : 0;
+    const sampledMoving = moveSpeed > 0.08;
     const localMoveInput = joystickMoveVector.lengthSq() > 0.0001
         ? joystickMoveVector.clone()
         : keyboardMoveVector.clone();
@@ -16837,6 +16842,7 @@ function getCoopLocalPose() {
     }
     if (!coopLastSnapshotPosition) coopLastSnapshotPosition = new THREE.Vector3();
     coopLastSnapshotPosition.copy(position);
+    coopLastSnapshotAt = snapshotAt;
     const aimDirection = new THREE.Vector3();
     camera.getWorldDirection(aimDirection);
     if (aimDirection.lengthSq() > 0.000001) aimDirection.normalize();
@@ -16853,6 +16859,7 @@ function getCoopLocalPose() {
         height: playerTargetHeight,
         crouching: Boolean(isCrouchingToggle),
         moving: sampledMoving || inputMoving || Boolean(isElevating),
+        moveSpeed,
         movementDirection: [movementDirection.x, movementDirection.z],
         weapon: currentWeapon,
         hp: Number.isFinite(playerHP) ? playerHP : null,
@@ -16875,7 +16882,6 @@ function applyCoopRemotePose(pose) {
         coopRemotePoseInitialized = false;
         coopRemoteLastNetworkPosition = null;
         coopRemoteMovingUntil = 0;
-        coopRemoteWalkTime = 0;
         if (coopRemotePlayer) coopRemotePlayer.visible = false;
         return;
     }
@@ -16891,15 +16897,15 @@ function applyCoopRemotePose(pose) {
         movement.y = 0;
         const elapsedSeconds = Math.max(0.001, (coopRemotePoseReceivedAt - previousReceivedAt) / 1000);
         const speed = movement.length() / elapsedSeconds;
-        if (speed > 0.12 || pose.moving === true) {
-            coopRemoteMovingUntil = coopRemotePoseReceivedAt + 360;
+        if (speed > 0.08 || Number(pose.moveSpeed) > 0.08 || pose.moving === true) {
+            coopRemoteMovingUntil = coopRemotePoseReceivedAt + 500;
             if (movement.lengthSq() > 0.000001) {
                 const movementYaw = Math.atan2(movement.x, movement.z);
                 coopRemoteLowerBodyYaw = normalizeCoopAngle(movementYaw - getCoopRemoteVisualYaw(pose));
             }
         }
     } else if (pose.moving === true) {
-        coopRemoteMovingUntil = coopRemotePoseReceivedAt + 360;
+        coopRemoteMovingUntil = coopRemotePoseReceivedAt + 500;
     }
     if (pose.moving === true && Array.isArray(pose.movementDirection)
         && pose.movementDirection.length === 2 && pose.movementDirection.every(Number.isFinite)) {
@@ -16908,7 +16914,7 @@ function applyCoopRemotePose(pose) {
             const movementYaw = Math.atan2(moveX, moveZ);
             coopRemoteLowerBodyYaw = normalizeCoopAngle(movementYaw - getCoopRemoteVisualYaw(pose));
         }
-        coopRemoteMovingUntil = coopRemotePoseReceivedAt + 360;
+        coopRemoteMovingUntil = coopRemotePoseReceivedAt + 500;
     }
     if (!coopRemoteLastNetworkPosition) coopRemoteLastNetworkPosition = new THREE.Vector3();
     coopRemoteLastNetworkPosition.copy(nextNetworkPosition);
@@ -16953,6 +16959,38 @@ function aimCoopRemoteUpperBody(direction, smoothing = 1) {
     return getGunMuzzleInfo(parts);
 }
 
+function applyCoopRemoteUpperBodyPose(parts, pose, smoothing = 1) {
+    if (!parts || !parts.aimGroup || !coopRemotePlayer) return;
+    const direction = getCoopAimDirection(pose);
+    const remoteYaw = coopRemotePlayer.rotation.y;
+    const desiredYaw = direction ? Math.atan2(direction.x, direction.z) : remoteYaw;
+    const relativeYaw = THREE.MathUtils.clamp(
+        normalizeCoopAngle(desiredYaw - remoteYaw),
+        -Math.PI / 3,
+        Math.PI / 3
+    );
+    const cameraPitch = Number.isFinite(pose.pitch)
+        ? pose.pitch
+        : (direction ? Math.asin(THREE.MathUtils.clamp(direction.y, -1, 1)) : 0);
+    // Camera +X looks upward, while this visible +Z-facing rig needs -X.
+    const totalPitch = THREE.MathUtils.clamp(-cameraPitch, -Math.PI / 2 + 0.1, Math.PI / 2 - 0.1);
+    const alpha = THREE.MathUtils.clamp(smoothing, 0, 1);
+    const torsoPitch = totalPitch * 0.7;
+    const baseTorsoPitch = Number.isFinite(parts.baseTorsoPosePitch) ? parts.baseTorsoPosePitch : 0;
+    parts.torso.rotation.x = THREE.MathUtils.lerp(
+        parts.torso.rotation.x,
+        baseTorsoPitch + torsoPitch,
+        alpha
+    );
+    parts.aimGroup.rotation.x = THREE.MathUtils.lerp(
+        parts.aimGroup.rotation.x,
+        totalPitch - torsoPitch,
+        alpha
+    );
+    parts.aimGroup.rotation.y += normalizeCoopAngle(relativeYaw - parts.aimGroup.rotation.y) * alpha;
+    coopRemotePlayer.updateMatrixWorld(true);
+}
+
 function updateCoopRemotePlayer(delta) {
     if (isGameRunning && !coopWasGameRunning) coopSpawnApplied = false;
     coopWasGameRunning = isGameRunning;
@@ -16987,17 +17025,18 @@ function updateCoopRemotePlayer(delta) {
         }
     }
     if (parts && window.GFACharacterModels && typeof GFACharacterModels.pose === 'function') {
-        const remoteMoving = Boolean(coopRemotePose.moving) || performance.now() < coopRemoteMovingUntil;
-        if (remoteMoving) coopRemoteWalkTime += Math.max(0, Math.min(delta, 0.1));
+        const remoteMoving = Boolean(coopRemotePose.moving)
+            || Number(coopRemotePose.moveSpeed) > 0.08
+            || target.distanceToSquared(coopRemotePlayer.position) > 0.0001
+            || performance.now() < coopRemoteMovingUntil;
         GFACharacterModels.pose(
             parts,
             Boolean(coopRemotePose.crouching),
-            coopRemoteWalkTime,
+            performance.now() / 1000,
             remoteMoving,
             coopRemoteLowerBodyYaw
         );
-        const aimDirection = getCoopAimDirection(coopRemotePose);
-        if (aimDirection) aimCoopRemoteUpperBody(aimDirection, 1 - Math.exp(-Math.max(0, delta) * 18));
+        applyCoopRemoteUpperBodyPose(parts, coopRemotePose, 1 - Math.exp(-Math.max(0, delta) * 18));
     }
 }
 
@@ -17371,7 +17410,8 @@ window.GFACoopGameBridge = Object.freeze({
         coopRemoteMovingUntil = 0;
         coopRemoteLowerBodyYaw = 0;
         coopRemoteLastNetworkPosition = null;
-        coopRemoteWalkTime = 0;
+        coopLastSnapshotPosition = null;
+        coopLastSnapshotAt = 0;
         coopBgmSyncPendingTrack = null;
         coopBgmLastCorrectionAt = 0;
         if (!coopSessionConnected) {

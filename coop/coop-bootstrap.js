@@ -1,6 +1,8 @@
 import { GfaPeerTransport } from './net/peer-transport.js';
 import { normalizeRoomCode } from './net/protocol.js';
 
+const COOP_BUILD_ID = '20261024-v14';
+
 const launchButton = document.getElementById('title-coop-button');
 const overlay = document.getElementById('coop-lobby-overlay');
 
@@ -65,7 +67,7 @@ function createTransport() {
     onConnect(info) {
       gameBridge()?.setSession?.({ connected: true, role: info.role });
       startPoseExchange();
-      transport.sendEvent('hello', { role: info.role, build: 'gfa-coop-0.1.0' });
+      transport.sendEvent('hello', { role: info.role, build: COOP_BUILD_ID });
     },
     onState(message) {
       if (message.type === 'player-pose') gameBridge()?.applyRemotePose?.(message.payload);
@@ -73,7 +75,10 @@ function createTransport() {
     },
     onEvent(message) {
       if (message.type === 'hello') transport.sendEvent('hello-ack', { receivedAt: Date.now() });
-      if (message.type === 'hello-ack') updateStatus({ code: 'connected', message: 'P2P接続成功・双方向通信確認済み' });
+      if (message.type === 'hello-ack') updateStatus({
+        code: 'connected',
+        message: `P2P接続成功・双方向通信確認済み / Build ${COOP_BUILD_ID}`
+      });
       if (message.type === 'game-start' && transport.role === 'guest') {
         updateStatus({ code: 'connected', message: 'HOSTの設定でゲームを開始します…' });
         overlay.hidden = true;
