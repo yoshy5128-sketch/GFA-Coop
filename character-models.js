@@ -1321,18 +1321,18 @@ const profiles={slim:{torso:.84,depth:.86,limb:.82,hip:.86,head:.95},standard:{t
 const p=profiles[custom.bodyType]||profiles.standard,hairParts=[],gearParts=[];
 const accessory=(parent)=>{const group=pivot(parent);group.userData.isCharacterAccessory=true;return group;};
 
-    const root=new THREE.Group();const pelvis=pivot(root);const waist=pivot(pelvis,0,.20,0);
+    const root=new THREE.Group();const pelvis=pivot(root);const waist=pivot(pelvis,0,.20,0);const chest=pivot(waist);
     shaped(pelvis,[[-.14,.40*p.hip,.27*p.depth],[0,.46*p.hip,.30*p.depth],[.17,.43*p.hip,.28*p.depth]],mats.pants);
     shaped(waist,[[-.04,.40*p.torso,.26*p.depth],[.12,.43*p.torso,.26*p.depth],[.23,.45*p.torso,.28*p.depth]],mats.shirt);
-    shaped(waist,[[.12,.43*p.torso,.28*p.depth],[.42,.58*p.torso,.31*p.depth],[.65,.66*p.torso,.29*p.depth],[.74,.47*p.torso,.25*p.depth]],mats.shirt);
+    shaped(chest,[[.12,.43*p.torso,.28*p.depth],[.42,.58*p.torso,.31*p.depth],[.65,.66*p.torso,.29*p.depth],[.74,.47*p.torso,.25*p.depth]],mats.shirt);
     box(pelvis,.445*p.hip,.065,.295*p.depth,mats.belt,0,.14,0);box(pelvis,.09,.06,.015,mats.joint,0,.14,.156*p.depth);
     if(!isTShirt){
         const jacketFront=.153*p.depth;
-        box(waist,.019,.46,.014,mats.seam,0,.40,jacketFront);
-        [-1,1].forEach(s=>{box(waist,.16*p.torso,.14,.024,mats.shirt,s*.165*p.torso,.47,jacketFront+.007);box(waist,.16*p.torso,.026,.029,mats.seam,s*.165*p.torso,.53,jacketFront+.009);});
+        box(chest,.019,.46,.014,mats.seam,0,.40,jacketFront);
+        [-1,1].forEach(s=>{box(chest,.16*p.torso,.14,.024,mats.shirt,s*.165*p.torso,.47,jacketFront+.007);box(chest,.16*p.torso,.026,.029,mats.seam,s*.165*p.torso,.53,jacketFront+.009);});
     }
-    mesh(waist,new THREE.CylinderGeometry(.086,.094,.14,10),mats.skin,V(0,.79,0));
-    const head=pivot(waist,-.065,1.0225,0);
+    mesh(chest,new THREE.CylinderGeometry(.086,.094,.14,10),mats.skin,V(0,.79,0));
+    const head=pivot(chest,-.065,1.0225,0);
     const hs=p.head;
     shaped(head,[[-.1875,.16*hs,.20*hs],[-.12,.245*hs,.265*hs],[.025,.285*hs,.28*hs],[.145,.27*hs,.26*hs],[.1875,.21*hs,.215*hs]],mats.skin);
     const expressions={
@@ -1374,24 +1374,24 @@ const accessory=(parent)=>{const group=pivot(parent);group.userData.isCharacterA
         }
     }
     if(custom.armorType&&custom.armorType!=='none'){
-        const armor=accessory(waist);gearParts.push(armor);const heavy=custom.armorType==='heavy';
+        const armor=accessory(chest);gearParts.push(armor);const heavy=custom.armorType==='heavy';
         shaped(armor,[[.15,.46*p.torso,.34*p.depth],[.39,(heavy?.61:.56)*p.torso,.36*p.depth],[.65,(heavy?.57:.52)*p.torso,.33*p.depth]],mats.armor);
         box(armor,.16,.22,.055,mats.armor,0,.39,.20*p.depth);
         if(heavy)[-1,1].forEach(s=>box(armor,.17,.11,.31,mats.armor,s*.31*p.torso,.61,0));
     }
     if(custom.neckwearType&&custom.neckwearType!=='none'){
-        const neckwear=accessory(waist);gearParts.push(neckwear);
+        const neckwear=accessory(chest);gearParts.push(neckwear);
         if(custom.neckwearType==='tie'){const knot=box(neckwear,.075,.075,.027,mats.neckwear,0,.695,.172*p.depth);knot.rotation.z=Math.PI/4;shaped(neckwear,[[.67,.052,.026],[.32,.074,.027],[.22,.012,.027]],mats.neckwear);neckwear.children[neckwear.children.length-1].position.z=.172*p.depth;}
         else {const scarf=mesh(neckwear,new THREE.TorusGeometry(.115,.038,6,12),mats.neckwear,V(0,.76,0));scarf.rotation.x=Math.PI/2;}
     }
     // The character faces +Z: its anatomical right arm is on -X.
     const armMaterial=isTShirt?mats.skin:mats.shirt;
-    const arms=[limb(waist,[-.35*p.torso,.67,0],.52,.48,.18*p.limb,armMaterial,armMaterial,mats.shirt),limb(waist,[.35*p.torso,.67,0],.52,.48,.18*p.limb,armMaterial,armMaterial,mats.shirt)];
+    const arms=[limb(chest,[-.35*p.torso,.67,0],.52,.48,.18*p.limb,armMaterial,armMaterial,mats.shirt),limb(chest,[.35*p.torso,.67,0],.52,.48,.18*p.limb,armMaterial,armMaterial,mats.shirt)];
     const [rightArm,leftArm]=arms;
     arms.forEach((arm,i)=>{box(arm.end,.115,.135,.12,mats.skin,0,.028,0);box(arm.end,.038,.088,.06,mats.skin,i===0?.07:-.07,.05,.01);});
     const legs=[limb(pelvis,[-.195*p.hip,0,0],.75,.70,.235*p.limb,mats.pants,mats.pants),limb(pelvis,[.195*p.hip,0,0],.75,.70,.235*p.limb,mats.pants,mats.pants)];
     legs.forEach(l=>{box(l.end,.195,.17,.34,mats.boot,0,-.035,.062);box(l.end,.20,.032,.35,mats.sole,0,-.104,.062);});
-    const gun=pivot(waist);
+    const gun=pivot(chest);
     let weaponId='m1rifle',weaponVariant='A';
     function setWeapon(id,variant=weaponVariant){
         variant=['A','B','C'].includes(String(variant).toUpperCase())?String(variant).toUpperCase():'A';
@@ -1416,7 +1416,7 @@ const accessory=(parent)=>{const group=pivot(parent);group.userData.isCharacterA
                 return V(i===0?-.20:.20,.12+lift*.31,stride*.68);
             });
         }
-        pelvis.position.set(0,hipY,hipZ);pelvis.rotation.x=mode==='run'?.055:0;waist.rotation.x=lean;
+        pelvis.position.set(0,hipY,hipZ);pelvis.rotation.x=mode==='run'?.055:0;waist.rotation.x=lean;chest.rotation.set(0,0,0);
         const breathing=mode==='run'?Math.sin(t*8)*.009:Math.sin(t*2)*.006;
         const profile=weaponProfiles[weaponId];
         gun.position.fromArray(profile.position);gun.position.y+=breathing;
@@ -1436,7 +1436,7 @@ const accessory=(parent)=>{const group=pivot(parent);group.userData.isCharacterA
         }
 
     }
-    return {root,pelvis,waist,head,arms,legs,gun,markers,pose,setWeapon,shirt:mats.shirt,hairParts,gearParts,get weapon(){return weaponId}};
+    return {root,pelvis,waist,chest,head,arms,legs,gun,markers,pose,setWeapon,shirt:mats.shirt,hairParts,gearParts,get weapon(){return weaponId}};
 }
 
 const rigs=new WeakMap(),gunRigs=new WeakMap(),activeRagdolls=new Set();
@@ -1444,10 +1444,10 @@ const activeRecoils=new Set();
 const activeHitReactions=new Set();
 function create(color,customization){
     const r=character(color,customization);r.pose('stand',0);
-    const aim=pivot(r.waist);
+    const aim=pivot(r.chest);
     [r.head,r.arms[0].root,r.arms[1].root,r.gun].forEach(o=>aim.add(o));
     r.aim=aim;r.mode='stand';r.time=0;
-    const parts={modernRig:true,body:r.waist.children.find(o=>o.isMesh&&o.geometry.attributes.position.count>24),head:r.head,waist:r.pelvis,torso:r.waist,aimGroup:aim,gun:r.gun,baseTorsoPosePitch:0,
+    const parts={modernRig:true,body:r.chest.children.find(o=>o.isMesh&&o.geometry.attributes.position.count>24),head:r.head,waist:r.pelvis,torso:r.chest,aimGroup:aim,gun:r.gun,baseTorsoPosePitch:0,
         leftArm:r.arms[1].root,rightArm:r.arms[0].root,leftElbow:r.arms[1].bend,rightElbow:r.arms[0].bend,leftForearm:r.arms[1].bend,rightForearm:r.arms[0].bend,leftHand:r.arms[1].end,rightHand:r.arms[0].end,
         leftHip:r.legs[1].root,rightHip:r.legs[0].root,leftKnee:r.legs[1].bend,rightKnee:r.legs[0].bend,leftFoot:r.legs[1].end,rightFoot:r.legs[0].end,baseHeadY:r.head.position.y,baseAimY:0,hairParts:r.hairParts,gearParts:r.gearParts};
     r.root.userData.parts=parts;r.root.userData.footOffset=0;r.root.userData.hairParts=r.hairParts;r.root.userData.gearParts=r.gearParts;
@@ -1502,10 +1502,10 @@ function pose(parts,crouch,time,moving,lowerYaw=0){
         }
     }
     if(r.recoilAmount>0)r.waist.rotation.x-=r.recoilAmount;
-    parts.baseTorsoPosePitch=r.waist.rotation.x;
+    parts.baseTorsoPosePitch=r.chest.rotation.x;
     r.root.scale.y=1;r.root.updateMatrixWorld(true);
 }
-function reset(parts,id){const r=rigs.get(parts);if(!r)return;activeRagdolls.delete(r);activeRecoils.delete(r);activeHitReactions.delete(r);r.death=null;r.recoilAmount=0;r.hitReaction=null;if(r.gun.parent!==r.aim)r.aim.add(r.gun);r.gun.position.set(0,0,0);r.gun.rotation.set(0,0,0);r.gun.scale.set(1,1,1);r.aim.rotation.set(0,0,0);r.pelvis.rotation.set(0,0,0);r.waist.rotation.set(0,0,0);r.arms.forEach(l=>l.end.rotation.set(0,0,0));r.legs.forEach(l=>l.end.rotation.set(0,0,0));if(id)r.setWeapon(id);pose(parts,false,0,false);r.gun.visible=true;}
+function reset(parts,id){const r=rigs.get(parts);if(!r)return;activeRagdolls.delete(r);activeRecoils.delete(r);activeHitReactions.delete(r);r.death=null;r.recoilAmount=0;r.hitReaction=null;if(r.gun.parent!==r.aim)r.aim.add(r.gun);r.gun.position.set(0,0,0);r.gun.rotation.set(0,0,0);r.gun.scale.set(1,1,1);r.aim.rotation.set(0,0,0);r.pelvis.rotation.set(0,0,0);r.waist.rotation.set(0,0,0);r.chest.rotation.set(0,0,0);r.arms.forEach(l=>l.end.rotation.set(0,0,0));r.legs.forEach(l=>l.end.rotation.set(0,0,0));if(id)r.setWeapon(id);pose(parts,false,0,false);r.gun.visible=true;}
 // Reuse bounds, but update their coordinates on every call (including death/respawn).
 function boxes(parts){const r=rigs.get(parts);if(!r)return [];r.root.updateWorldMatrix(true,true);for(const c of r.colliders){c.box.makeEmpty();for(const m of c.meshes)c.box.union(r.scratchBox.copy(m.geometry.boundingBox).applyMatrix4(m.matrixWorld));}return r.colliderBoxes;}
 function bodyBox(parts){const b=new THREE.Box3();boxes(parts).forEach(x=>b.union(x));return b;}

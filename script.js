@@ -16778,6 +16778,7 @@ let coopForceSnapshotSnap = false;
 let coopRemoteMovingUntil = 0;
 let coopRemoteLowerBodyYaw = 0;
 let coopRemoteLastNetworkPosition = null;
+let coopRemoteWalkTime = 0;
 
 function ensureCoopRemotePlayer() {
     if (coopRemotePlayer) return coopRemotePlayer;
@@ -16814,7 +16815,26 @@ function getCoopLocalPose() {
     }
     const position = player.position;
     const previous = coopLastSnapshotPosition;
-    const moving = Boolean(previous && previous.distanceToSquared(position) > 0.0004);
+    const positionDelta = previous ? position.clone().sub(previous) : new THREE.Vector3();
+    positionDelta.y = 0;
+    const sampledMoving = positionDelta.lengthSq() > 0.0004;
+    const localMoveInput = joystickMoveVector.lengthSq() > 0.0001
+        ? joystickMoveVector.clone()
+        : keyboardMoveVector.clone();
+    const inputMoving = localMoveInput.lengthSq() > 0.0001;
+    const movementDirection = positionDelta.lengthSq() > 0.000001
+        ? positionDelta.clone().normalize()
+        : new THREE.Vector3();
+    if (movementDirection.lengthSq() <= 0.000001 && inputMoving) {
+        const playerForward = new THREE.Vector3();
+        player.getWorldDirection(playerForward);
+        playerForward.y = 0;
+        if (playerForward.lengthSq() > 0.000001) playerForward.normalize();
+        const playerRight = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), playerForward);
+        movementDirection.addScaledVector(playerRight, localMoveInput.x);
+        movementDirection.addScaledVector(playerForward, -localMoveInput.y);
+        if (movementDirection.lengthSq() > 0.000001) movementDirection.normalize();
+    }
     if (!coopLastSnapshotPosition) coopLastSnapshotPosition = new THREE.Vector3();
     coopLastSnapshotPosition.copy(position);
     const aimDirection = new THREE.Vector3();
@@ -16832,7 +16852,8 @@ function getCoopLocalPose() {
         pitch: camera.rotation.x,
         height: playerTargetHeight,
         crouching: Boolean(isCrouchingToggle),
-        moving,
+        moving: sampledMoving || inputMoving || Boolean(isElevating),
+        movementDirection: [movementDirection.x, movementDirection.z],
         weapon: currentWeapon,
         hp: Number.isFinite(playerHP) ? playerHP : null,
         invulnerable: playerHP === Infinity
@@ -16854,6 +16875,7 @@ function applyCoopRemotePose(pose) {
         coopRemotePoseInitialized = false;
         coopRemoteLastNetworkPosition = null;
         coopRemoteMovingUntil = 0;
+        coopRemoteWalkTime = 0;
         if (coopRemotePlayer) coopRemotePlayer.visible = false;
         return;
     }
@@ -16870,14 +16892,23 @@ function applyCoopRemotePose(pose) {
         const elapsedSeconds = Math.max(0.001, (coopRemotePoseReceivedAt - previousReceivedAt) / 1000);
         const speed = movement.length() / elapsedSeconds;
         if (speed > 0.12 || pose.moving === true) {
-            coopRemoteMovingUntil = coopRemotePoseReceivedAt + 220;
+            coopRemoteMovingUntil = coopRemotePoseReceivedAt + 360;
             if (movement.lengthSq() > 0.000001) {
                 const movementYaw = Math.atan2(movement.x, movement.z);
                 coopRemoteLowerBodyYaw = normalizeCoopAngle(movementYaw - getCoopRemoteVisualYaw(pose));
             }
         }
     } else if (pose.moving === true) {
-        coopRemoteMovingUntil = coopRemotePoseReceivedAt + 220;
+        coopRemoteMovingUntil = coopRemotePoseReceivedAt + 360;
+    }
+    if (pose.moving === true && Array.isArray(pose.movementDirection)
+        && pose.movementDirection.length === 2 && pose.movementDirection.every(Number.isFinite)) {
+        const [moveX, moveZ] = pose.movementDirection;
+        if (moveX * moveX + moveZ * moveZ > 0.000001) {
+            const movementYaw = Math.atan2(moveX, moveZ);
+            coopRemoteLowerBodyYaw = normalizeCoopAngle(movementYaw - getCoopRemoteVisualYaw(pose));
+        }
+        coopRemoteMovingUntil = coopRemotePoseReceivedAt + 360;
     }
     if (!coopRemoteLastNetworkPosition) coopRemoteLastNetworkPosition = new THREE.Vector3();
     coopRemoteLastNetworkPosition.copy(nextNetworkPosition);
@@ -16957,10 +16988,11 @@ function updateCoopRemotePlayer(delta) {
     }
     if (parts && window.GFACharacterModels && typeof GFACharacterModels.pose === 'function') {
         const remoteMoving = Boolean(coopRemotePose.moving) || performance.now() < coopRemoteMovingUntil;
+        if (remoteMoving) coopRemoteWalkTime += Math.max(0, Math.min(delta, 0.1));
         GFACharacterModels.pose(
             parts,
             Boolean(coopRemotePose.crouching),
-            clock.getElapsedTime(),
+            coopRemoteWalkTime,
             remoteMoving,
             coopRemoteLowerBodyYaw
         );
@@ -17339,6 +17371,7 @@ window.GFACoopGameBridge = Object.freeze({
         coopRemoteMovingUntil = 0;
         coopRemoteLowerBodyYaw = 0;
         coopRemoteLastNetworkPosition = null;
+        coopRemoteWalkTime = 0;
         coopBgmSyncPendingTrack = null;
         coopBgmLastCorrectionAt = 0;
         if (!coopSessionConnected) {
