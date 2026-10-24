@@ -8935,15 +8935,17 @@ function applyAimConstraints(parts, ownerYaw, targetWorldPos, smoothing = 1.0) {
     const maxAimPitch = Math.PI / 2 - 0.1;
     const clampedPitch = clampAngle(-desiredPitch, -maxAimPitch, maxAimPitch);
     const alpha = THREE.MathUtils.clamp(smoothing, 0, 1);
-    parts.aimGroup.rotation.y += normalizeAngle(clampedRelYaw - parts.aimGroup.rotation.y) * alpha;
     if (parts.modernRig && parts.torso) {
-        // Bend the chest as well as the head/arms. The gun has an inverse base
-        // lean, so splitting the pitch preserves the exact final muzzle angle.
-        const torsoShare = clampedPitch * 0.42;
+        // Rotate the complete upper body as one rigid hierarchy. Splitting the
+        // angle with aimGroup rotates the head and arms around the waist and can
+        // visibly pull the neck and shoulders away from the torso.
         const baseTorsoPitch = Number.isFinite(parts.baseTorsoPosePitch) ? parts.baseTorsoPosePitch : 0;
-        parts.torso.rotation.x = THREE.MathUtils.lerp(parts.torso.rotation.x, baseTorsoPitch + torsoShare, alpha);
-        parts.aimGroup.rotation.x = THREE.MathUtils.lerp(parts.aimGroup.rotation.x, clampedPitch - torsoShare, alpha);
+        parts.torso.rotation.x = THREE.MathUtils.lerp(parts.torso.rotation.x, baseTorsoPitch + clampedPitch, alpha);
+        parts.torso.rotation.y += normalizeAngle(clampedRelYaw - parts.torso.rotation.y) * alpha;
+        parts.aimGroup.rotation.x = THREE.MathUtils.lerp(parts.aimGroup.rotation.x, 0, alpha);
+        parts.aimGroup.rotation.y += normalizeAngle(-parts.aimGroup.rotation.y) * alpha;
     } else {
+        parts.aimGroup.rotation.y += normalizeAngle(clampedRelYaw - parts.aimGroup.rotation.y) * alpha;
         parts.aimGroup.rotation.x = THREE.MathUtils.lerp(parts.aimGroup.rotation.x, clampedPitch, alpha);
     }
 }
@@ -16975,19 +16977,19 @@ function applyCoopRemoteUpperBodyPose(parts, pose, smoothing = 1) {
     // Camera +X looks upward, while this visible +Z-facing rig needs -X.
     const totalPitch = THREE.MathUtils.clamp(-cameraPitch, -Math.PI / 2 + 0.1, Math.PI / 2 - 0.1);
     const alpha = THREE.MathUtils.clamp(smoothing, 0, 1);
-    const torsoPitch = totalPitch * 0.7;
     const baseTorsoPitch = Number.isFinite(parts.baseTorsoPosePitch) ? parts.baseTorsoPosePitch : 0;
     parts.torso.rotation.x = THREE.MathUtils.lerp(
         parts.torso.rotation.x,
-        baseTorsoPitch + torsoPitch,
+        baseTorsoPitch + totalPitch,
         alpha
     );
+    parts.torso.rotation.y += normalizeCoopAngle(relativeYaw - parts.torso.rotation.y) * alpha;
     parts.aimGroup.rotation.x = THREE.MathUtils.lerp(
         parts.aimGroup.rotation.x,
-        totalPitch - torsoPitch,
+        0,
         alpha
     );
-    parts.aimGroup.rotation.y += normalizeCoopAngle(relativeYaw - parts.aimGroup.rotation.y) * alpha;
+    parts.aimGroup.rotation.y += normalizeCoopAngle(-parts.aimGroup.rotation.y) * alpha;
     coopRemotePlayer.updateMatrixWorld(true);
 }
 
@@ -17042,6 +17044,7 @@ function updateCoopRemotePlayer(delta) {
 
 function getCoopHostWorldState() {
     if (!coopSessionConnected || coopLocalRole !== 'host' || !isGameRunning) return { active: false };
+    const snapshotAt = performance.now();
     return {
         active: true,
         guestPlayerHp: Number.isFinite(coopRemoteHP) ? coopRemoteHP : null,
@@ -17059,13 +17062,23 @@ function getCoopHostWorldState() {
         ais: ais.map(ai => {
             const parts = ai.userData && ai.userData.parts;
             const muzzle = parts ? getGunMuzzleInfo(parts) : null;
+            if (!ai.userData.coopSnapshotPosition) {
+                ai.userData.coopSnapshotPosition = ai.position.clone();
+                ai.userData.coopSnapshotAt = snapshotAt;
+            }
+            const snapshotSeconds = Math.max(0.001, (snapshotAt - ai.userData.coopSnapshotAt) / 1000);
+            const snapshotDistance = ai.position.distanceTo(ai.userData.coopSnapshotPosition);
+            const moveSpeed = snapshotDistance / snapshotSeconds;
+            ai.userData.coopSnapshotPosition.copy(ai.position);
+            ai.userData.coopSnapshotAt = snapshotAt;
             return {
                 position: [ai.position.x, ai.position.y, ai.position.z],
                 yaw: ai.rotation.y,
                 aimDirection: muzzle && muzzle.direction
                     ? [muzzle.direction.x, muzzle.direction.y, muzzle.direction.z] : null,
                 crouching: Boolean(ai.isCrouching),
-                moving: ['MOVING', 'FOLLOWING', 'MOVING_TO_LADDER', 'CLIMBING', 'DESCENDING'].includes(ai.state),
+                moving: moveSpeed > 0.08 || ['MOVING', 'FOLLOWING', 'MOVING_TO_LADDER', 'CLIMBING', 'DESCENDING'].includes(ai.state),
+                moveSpeed,
                 weapon: ai.currentWeapon || WEAPON_PISTOL,
                 hp: Number.isFinite(ai.hp) ? ai.hp : null,
                 kills: Number.isFinite(ai.kills) ? ai.kills : 0,
@@ -17111,12 +17124,27 @@ function applyCoopHostWorldState(state) {
             ai.position.set(...snapshot.position);
             if (Number.isFinite(snapshot.yaw)) ai.rotation.y = snapshot.yaw;
         }
-        ai.userData.coopTargetPosition = new THREE.Vector3(...snapshot.position);
+        const nextTargetPosition = new THREE.Vector3(...snapshot.position);
+        const receivedAt = performance.now();
+        const previousNetworkPosition = ai.userData.coopLastNetworkPosition;
+        const previousReceivedAt = ai.userData.coopLastNetworkReceivedAt || receivedAt;
+        if (previousNetworkPosition) {
+            const networkDistance = nextTargetPosition.distanceTo(previousNetworkPosition);
+            const networkSeconds = Math.max(0.001, (receivedAt - previousReceivedAt) / 1000);
+            ai.userData.coopNetworkMoveSpeed = networkDistance / networkSeconds;
+            if (ai.userData.coopNetworkMoveSpeed > 0.08) {
+                ai.userData.coopMovingUntil = receivedAt + 500;
+            }
+        }
+        ai.userData.coopLastNetworkPosition = nextTargetPosition.clone();
+        ai.userData.coopLastNetworkReceivedAt = receivedAt;
+        ai.userData.coopTargetPosition = nextTargetPosition;
         ai.userData.coopTargetYaw = Number.isFinite(snapshot.yaw) ? snapshot.yaw : ai.rotation.y;
         ai.userData.coopAimDirection = Array.isArray(snapshot.aimDirection)
             && snapshot.aimDirection.length === 3 && snapshot.aimDirection.every(Number.isFinite)
             ? new THREE.Vector3(...snapshot.aimDirection).normalize() : null;
-        ai.userData.coopMoving = Boolean(snapshot.moving);
+        ai.userData.coopMoving = Boolean(snapshot.moving) || Number(snapshot.moveSpeed) > 0.08;
+        if (ai.userData.coopMoving) ai.userData.coopMovingUntil = receivedAt + 500;
         if (!protectDeathVisual) {
             ai.isCrouching = Boolean(snapshot.crouching);
             ai.visible = Boolean(snapshot.visible);
@@ -17146,7 +17174,11 @@ function updateCoopGuestAI(ai, delta) {
         ai.rotation.y += normalizeCoopAngle(targetYaw - ai.rotation.y) * blend;
         const parts = ai.userData.parts;
         if (parts && window.GFACharacterModels && typeof GFACharacterModels.pose === 'function') {
-            GFACharacterModels.pose(parts, Boolean(ai.isCrouching), clock.getElapsedTime(), Boolean(ai.userData.coopMoving), 0);
+            const remoteMoving = Boolean(ai.userData.coopMoving)
+                || Number(ai.userData.coopNetworkMoveSpeed) > 0.08
+                || target.distanceToSquared(ai.position) > 0.0001
+                || performance.now() < Number(ai.userData.coopMovingUntil || 0);
+            GFACharacterModels.pose(parts, Boolean(ai.isCrouching), performance.now() / 1000, remoteMoving, 0);
             const aimDirection = ai.userData.coopAimDirection;
             if (aimDirection) {
                 const aimTarget = ai.position.clone().add(new THREE.Vector3(0, 1.4, 0))

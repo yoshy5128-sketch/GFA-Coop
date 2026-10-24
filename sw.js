@@ -1,12 +1,12 @@
-const CACHE_NAME = 'gfa-coop-pwa-v14';
+const CACHE_NAME = 'gfa-coop-pwa-v15';
 const CORE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './style.css?v=20261024b',
-  './character-models.js?v=20261024h',
-  './script.js?v=20261024k',
-  './coop/coop-bootstrap.js?v=20261024j',
+  './style.css?v=20261024c',
+  './character-models.js?v=20261024i',
+  './script.js?v=20261024l',
+  './coop/coop-bootstrap.js?v=20261024k',
   './coop/net/peer-transport.js',
   './coop/net/protocol.js',
   './vendor/three-r128.min.js',

@@ -1,7 +1,7 @@
 import { GfaPeerTransport } from './net/peer-transport.js';
 import { normalizeRoomCode } from './net/protocol.js';
 
-const COOP_BUILD_ID = '20261024-v14';
+const COOP_BUILD_ID = '20261024-v15';
 
 const launchButton = document.getElementById('title-coop-button');
 const overlay = document.getElementById('coop-lobby-overlay');
