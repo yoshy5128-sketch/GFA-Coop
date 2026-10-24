@@ -8936,7 +8936,16 @@ function applyAimConstraints(parts, ownerYaw, targetWorldPos, smoothing = 1.0) {
     const clampedPitch = clampAngle(-desiredPitch, -maxAimPitch, maxAimPitch);
     const alpha = THREE.MathUtils.clamp(smoothing, 0, 1);
     parts.aimGroup.rotation.y += normalizeAngle(clampedRelYaw - parts.aimGroup.rotation.y) * alpha;
-    parts.aimGroup.rotation.x = THREE.MathUtils.lerp(parts.aimGroup.rotation.x, clampedPitch, alpha);
+    if (parts.modernRig && parts.torso) {
+        // Bend the chest as well as the head/arms. The gun has an inverse base
+        // lean, so splitting the pitch preserves the exact final muzzle angle.
+        const torsoShare = clampedPitch * 0.42;
+        const baseTorsoPitch = Number.isFinite(parts.baseTorsoPosePitch) ? parts.baseTorsoPosePitch : 0;
+        parts.torso.rotation.x = THREE.MathUtils.lerp(parts.torso.rotation.x, baseTorsoPitch + torsoShare, alpha);
+        parts.aimGroup.rotation.x = THREE.MathUtils.lerp(parts.aimGroup.rotation.x, clampedPitch - torsoShare, alpha);
+    } else {
+        parts.aimGroup.rotation.x = THREE.MathUtils.lerp(parts.aimGroup.rotation.x, clampedPitch, alpha);
+    }
 }
 
 function syncHeadToAimDirection(parts) {
@@ -15579,7 +15588,7 @@ function showEnemyKilledMessage() {
     }, 2000);
 }
 
-function finalizeAIDeathWithoutKillCam(ai, killerSource = 'unknown', impactVelocity = null, impactPoint = null) {
+function finalizeAIDeathWithoutKillCam(ai, killerSource = 'unknown', impactVelocity = null, impactPoint = null, forceDeathAnimation = false) {
     if (!ai) return;
     if (!ai.userData) ai.userData = {};
     syncKillCamLighting();
@@ -15604,7 +15613,7 @@ function finalizeAIDeathWithoutKillCam(ai, killerSource = 'unknown', impactVeloc
         restoreRightButtonsDefault();
         return;
     }
-    if (isClassicBillBattleMode() && killerSource === 'player' && gameSettings.killCamMode === 'off') {
+    if (isClassicBillBattleMode() && killerSource === 'player' && (forceDeathAnimation || gameSettings.killCamMode === 'off')) {
         console.log('Executing death animation in BillBattle mode for player kill');
         if (killerSource === 'player') {
             showEnemyKilledMessage();
@@ -15643,7 +15652,7 @@ function finalizeAIDeathWithoutKillCam(ai, killerSource = 'unknown', impactVeloc
         }, 2700);
         return;
     }
-    if (gameSettings.killCamMode === 'off' || killerSource !== 'player') {
+    if (forceDeathAnimation || gameSettings.killCamMode === 'off' || killerSource !== 'player') {
         console.log('Executing non-killcam death sequence for AI, gameMode:', gameSettings.gameMode, 'killerSource:', killerSource);
         if (killerSource === 'player') {
             showEnemyKilledMessage();
@@ -15699,6 +15708,28 @@ function finalizeAIDeathWithoutKillCam(ai, killerSource = 'unknown', impactVeloc
     ai.userData.isDying = false;
 }
 
+function isRemoteCoopPlayerKill(killerProjectile, killerActor) {
+    if (!coopSessionConnected || coopLocalRole !== 'host') return false;
+    const shooter = killerActor || (killerProjectile && killerProjectile.shooter);
+    return shooter === coopRemotePlayer || isCoopRemoteCombatant(shooter);
+}
+
+function notifyRemoteCoopPlayerKill(ai, impactVelocity, impactPoint, projectile) {
+    const aiIndex = ais.indexOf(ai);
+    if (aiIndex < 0) return;
+    const velocity = impactVelocity && impactVelocity.lengthSq() > 0
+        ? impactVelocity.clone().normalize() : new THREE.Vector3(0, 0, 1);
+    window.dispatchEvent(new CustomEvent('gfa:remote-player-kill', {
+        detail: {
+            aiIndex,
+            velocity: [velocity.x, velocity.y, velocity.z],
+            impactPoint: [impactPoint.x, impactPoint.y, impactPoint.z],
+            weaponType: projectile && projectile.weaponType ? projectile.weaponType : null,
+            isRocket: Boolean(projectile && projectile.isRocket)
+        }
+    }));
+}
+
 function aiFallDownCinematicSequence(impactVelocity, ai, killerSource = 'unknown', killerProjectile = null, killerActor = null) {
     if (!ai) return;
     captureDeathGroundY(ai);
@@ -15710,6 +15741,12 @@ function aiFallDownCinematicSequence(impactVelocity, ai, killerSource = 'unknown
     ai.userData.isDying = true;
     // AIM設定に関係なく、死亡開始時点でAI弾を即時回収する。
     removeAIProjectiles(ai, true);
+    if (killerSource === 'player' && isRemoteCoopPlayerKill(killerProjectile, killerActor)) {
+        notifyRemoteCoopPlayerKill(ai, impactVelocity, deathImpactPoint, killerProjectile);
+        // The host owns the death state but must never play Player 2's kill camera.
+        finalizeAIDeathWithoutKillCam(ai, killerSource, impactVelocity, deathImpactPoint, true);
+        return;
+    }
     if (isBillBattleMode() && killerSource !== 'player') {
         finalizeAIDeathWithoutKillCam(ai, killerSource, impactVelocity, deathImpactPoint);
         return;
@@ -16967,6 +17004,12 @@ function getCoopHostWorldState() {
     };
 }
 
+function isCoopDeathVisualProtected(ai) {
+    if (coopLocalRole !== 'guest' || !ai) return false;
+    if (isAIDeathPlaying && cinematicTargetAI === ai) return true;
+    return Boolean(ai.userData && ai.userData.coopRemoteDeathUntil > performance.now());
+}
+
 function applyCoopHostWorldState(state) {
     if (coopLocalRole !== 'guest' || !state || state.active !== true || !Array.isArray(state.ais)) return;
     coopHostWorldReceivedAt = performance.now();
@@ -16992,7 +17035,8 @@ function applyCoopHostWorldState(state) {
         const ai = ais[index];
         if (!ai || !snapshot || !Array.isArray(snapshot.position) || !snapshot.position.every(Number.isFinite)) return;
         if (!ai.userData) ai.userData = {};
-        if (coopForceSnapshotSnap) {
+        const protectDeathVisual = isCoopDeathVisualProtected(ai);
+        if (coopForceSnapshotSnap && !protectDeathVisual) {
             ai.position.set(...snapshot.position);
             if (Number.isFinite(snapshot.yaw)) ai.rotation.y = snapshot.yaw;
         }
@@ -17002,8 +17046,10 @@ function applyCoopHostWorldState(state) {
             && snapshot.aimDirection.length === 3 && snapshot.aimDirection.every(Number.isFinite)
             ? new THREE.Vector3(...snapshot.aimDirection).normalize() : null;
         ai.userData.coopMoving = Boolean(snapshot.moving);
-        ai.isCrouching = Boolean(snapshot.crouching);
-        ai.visible = Boolean(snapshot.visible);
+        if (!protectDeathVisual) {
+            ai.isCrouching = Boolean(snapshot.crouching);
+            ai.visible = Boolean(snapshot.visible);
+        }
         if (Number.isFinite(snapshot.hp)) ai.hp = snapshot.hp;
         if (Number.isFinite(snapshot.kills)) ai.kills = snapshot.kills;
         if (typeof snapshot.weapon === 'string' && snapshot.weapon !== ai.currentWeapon) {
@@ -17020,6 +17066,7 @@ function updateCoopGuestAI(ai, delta) {
     // 通信が一時停止してもゲストAIをローカル思考へ戻さない。
     // 復帰後の二重シミュレーションと大きな位置ずれを防ぐ。
     if (performance.now() - coopHostWorldReceivedAt > 1500) return true;
+    if (isCoopDeathVisualProtected(ai)) return true;
     const target = ai.userData && ai.userData.coopTargetPosition;
     if (target) {
         const blend = 1 - Math.exp(-Math.max(0, delta) * 12);
@@ -17217,6 +17264,34 @@ function applyCoopLocalDamage(payload) {
     return true;
 }
 
+function playCoopRemotePlayerKill(payload) {
+    if (coopLocalRole !== 'guest' || !payload || !Number.isInteger(payload.aiIndex)) return false;
+    const ai = ais[payload.aiIndex];
+    if (!ai || !Array.isArray(payload.velocity) || payload.velocity.length !== 3
+        || !payload.velocity.every(Number.isFinite)) return false;
+    const velocity = new THREE.Vector3(...payload.velocity);
+    if (velocity.lengthSq() < 0.000001) velocity.set(0, 0, 1);
+    const impactPoint = Array.isArray(payload.impactPoint) && payload.impactPoint.length === 3
+        && payload.impactPoint.every(Number.isFinite)
+        ? new THREE.Vector3(...payload.impactPoint)
+        : ai.position.clone().add(new THREE.Vector3(0, 1.45, 0));
+    if (!ai.userData) ai.userData = {};
+    const willPlayKillCam = shouldPlayAIDeathKillCam(ai, 'player');
+    ai.userData.coopRemoteDeathUntil = performance.now() + (willPlayKillCam ? 1900 : 3200);
+    ai.hp = 0;
+    ai.visible = true;
+    const remoteProjectile = {
+        source: 'player',
+        shooter: player,
+        velocity: velocity.clone(),
+        weaponType: typeof payload.weaponType === 'string' ? payload.weaponType : null,
+        isRocket: Boolean(payload.isRocket),
+        mesh: { getWorldPosition(target) { return target.copy(impactPoint); } }
+    };
+    aiFallDownCinematicSequence(velocity, ai, 'player', remoteProjectile, player);
+    return true;
+}
+
 function setCoopControlValue(id, value) {
     const element = document.getElementById(id);
     if (element && value !== undefined && value !== null) element.value = String(value);
@@ -17225,7 +17300,9 @@ function setCoopControlValue(id, value) {
 function startCoopGameFromHost(payload) {
     const settings = payload && payload.settings;
     if (!settings || typeof settings !== 'object') return false;
+    const localKillCamMode = gameSettings.killCamMode;
     Object.assign(gameSettings, settings, { mapType: 'default', customMapName: '' });
+    if (typeof localKillCamMode === 'string') gameSettings.killCamMode = localKillCamMode;
     activeRandomMapData = null;
     setCoopControlValue('player-hp', gameSettings.playerHP);
     setCoopControlValue('ai-hp', gameSettings.aiHP);
@@ -17278,6 +17355,7 @@ window.GFACoopGameBridge = Object.freeze({
     showHostAIFire: showCoopHostAIFire,
     handleGuestFire: handleCoopGuestFire,
     applyLocalDamage: applyCoopLocalDamage,
+    playRemotePlayerKill: playCoopRemotePlayerKill,
     startAsHost() {
         const mapSelector = document.getElementById('title-map-selector');
         if (mapSelector && mapSelector.value !== 'default') {
@@ -19516,7 +19594,7 @@ function animate() {
                                 playerKills++;
                             }
                             registerPlayerEnemyKillForCombo(ai);
-                            aiFallDownCinematicSequence(p.velocity, ai, 'player', p);
+                            aiFallDownCinematicSequence(p.velocity, ai, 'player', p, p.shooter || player);
                         } else if (ai.state !== 'CLIMBING' && ai.state !== 'DESCENDING' && !ai.isElevating) {
                             ai.state = 'ATTACKING';
                             ai.currentAttackTime = timeElapsed;
@@ -19775,7 +19853,7 @@ function animate() {
                             }
                                 if (ai.hp <= 0) {
                                     registerPlayerEnemyKillForCombo(ai);
-                                    aiFallDownCinematicSequence(new THREE.Vector3().subVectors(ai.position, explosionPos), ai, 'player');
+                                    aiFallDownCinematicSequence(new THREE.Vector3().subVectors(ai.position, explosionPos), ai, 'player', p, p.shooter || player);
                                 }
                             }
                         }

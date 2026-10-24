@@ -1447,7 +1447,7 @@ function create(color,customization){
     const aim=pivot(r.waist);
     [r.head,r.arms[0].root,r.arms[1].root,r.gun].forEach(o=>aim.add(o));
     r.aim=aim;r.mode='stand';r.time=0;
-    const parts={modernRig:true,body:r.waist.children.find(o=>o.isMesh&&o.geometry.attributes.position.count>24),head:r.head,waist:r.pelvis,torso:r.waist,aimGroup:aim,gun:r.gun,
+    const parts={modernRig:true,body:r.waist.children.find(o=>o.isMesh&&o.geometry.attributes.position.count>24),head:r.head,waist:r.pelvis,torso:r.waist,aimGroup:aim,gun:r.gun,baseTorsoPosePitch:0,
         leftArm:r.arms[1].root,rightArm:r.arms[0].root,leftElbow:r.arms[1].bend,rightElbow:r.arms[0].bend,leftForearm:r.arms[1].bend,rightForearm:r.arms[0].bend,leftHand:r.arms[1].end,rightHand:r.arms[0].end,
         leftHip:r.legs[1].root,rightHip:r.legs[0].root,leftKnee:r.legs[1].bend,rightKnee:r.legs[0].bend,leftFoot:r.legs[1].end,rightFoot:r.legs[0].end,baseHeadY:r.head.position.y,baseAimY:0,hairParts:r.hairParts,gearParts:r.gearParts};
     r.root.userData.parts=parts;r.root.userData.footOffset=0;r.root.userData.hairParts=r.hairParts;r.root.userData.gearParts=r.gearParts;
@@ -1502,6 +1502,7 @@ function pose(parts,crouch,time,moving,lowerYaw=0){
         }
     }
     if(r.recoilAmount>0)r.waist.rotation.x-=r.recoilAmount;
+    parts.baseTorsoPosePitch=r.waist.rotation.x;
     r.root.scale.y=1;r.root.updateMatrixWorld(true);
 }
 function reset(parts,id){const r=rigs.get(parts);if(!r)return;activeRagdolls.delete(r);activeRecoils.delete(r);activeHitReactions.delete(r);r.death=null;r.recoilAmount=0;r.hitReaction=null;if(r.gun.parent!==r.aim)r.aim.add(r.gun);r.gun.position.set(0,0,0);r.gun.rotation.set(0,0,0);r.gun.scale.set(1,1,1);r.aim.rotation.set(0,0,0);r.pelvis.rotation.set(0,0,0);r.waist.rotation.set(0,0,0);r.arms.forEach(l=>l.end.rotation.set(0,0,0));r.legs.forEach(l=>l.end.rotation.set(0,0,0));if(id)r.setWeapon(id);pose(parts,false,0,false);r.gun.visible=true;}
